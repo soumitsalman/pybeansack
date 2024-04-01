@@ -14,25 +14,34 @@ def display_user_data(msg_or_event):
 			}
 		}]
 
-def get_beans(msg_or_event):
+def get_trending_items(msg_or_event):
     params = [p.lower() for p in msg_or_event['text'].split(" ")]
     if "beans" in params:
-        res = trending_beans()
-        return _create_bean_blocks([item for item in res if item.get('summary')][:5])
+        return get_beans()
     else:
         res = trending_topics()
         return _create_topic_blocks(res[:10])
-    
+
+def get_beans(topics = None, query_texts = None):    
+    res = trending_beans(topics = topics, query_texts=query_texts)
+    return _create_bean_blocks(res[:5])
+
 def _create_topic_blocks(topics):
+    body_text = lambda data: data.get('keyword') if data.get('Count') < _FIRE_MIN else f"{data.get('keyword')} :fire:"
     body = lambda data: {
-        "type": "plain_text",
-        "text": data.get('keyword') if data.get('Count') < _FIRE_MIN else f"{data.get('keyword')} :fire:",
-        "emoji": True
-    }
+		"type": "button",
+		"text": {
+			"type": "plain_text",
+			"text": body_text(data),
+			"emoji": True
+		},
+		"value": data.get('keyword'),
+		"action_id": f"get_beans({data.get('keyword')})"
+	}
     return [[
         {
-            "type": "section",
-		    "fields": [body(keyword) for keyword in topics]
+            "type": "actions",
+		    "elements": [body(keyword) for keyword in topics]
         }
     ]]
 
@@ -45,10 +54,10 @@ def _create_bean_blocks(beans):
     #     "type": "plain_text",
     #     "text": f":card_index_dividers: {data.get('tags')[0]}"
     # }
-    # subs_element = lambda data: {
-    #     "type": "plain_text",
-    #     "text": f":busts_in_silhouette: {data.get('subscribers', 0)}"
-    # }
+    source_element = lambda data: {
+        "type": "mrkdwn",
+		"text": f":link: <{data.get('url')}|{data.get('source')}>"
+    }
 
     banner = lambda data: {
         "type": "context",
@@ -61,7 +70,7 @@ def _create_bean_blocks(beans):
             #     "type": "plain_text",
             #     "text": f":left_speech_bubble: {data.get('comments', 0)}"
             # },   
-            # subs_element(data),                            
+            source_element(data),                            
             # tags_element(data),
             date_element(data)
         ]
@@ -70,10 +79,9 @@ def _create_bean_blocks(beans):
 		"type": "section",
 		"text": {
 			"type": "mrkdwn",
-			"text": f"[<{data.get('url')}|{data.get('source')}>] *{data.get('title', '')}*\n{data.get('summary')}"
+			"text": f"*:rolled_up_newspaper: {data.get('title', '')}*\n{data.get('summary')}"
 		}
     }
-    value = lambda data: f"{data.get('url')}"
     
     action = lambda data: {    
 		"type": "actions",
@@ -86,7 +94,7 @@ def _create_bean_blocks(beans):
 					"text": ":ok_hand:",
                     "emoji": True
 				},
-				"value": value(data)
+				"value": data.get('url')
 			},
 			{
                 "action_id": f"negative",
@@ -96,7 +104,7 @@ def _create_bean_blocks(beans):
 					"text": ":shit:",
                     "emoji": True
 				},
-				"value": value(data)
+				"value": data.get('url')
 			}
 		]
 	}
@@ -105,10 +113,18 @@ def _create_bean_blocks(beans):
 
 
 _TRENDING_BEANS = "/beans/trending"
+_SEARCH_BEANS = "/beans/search"
 _TRENDING_TOPICS = "/topics/trending"
 
-def trending_beans():
-    resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS)
+def trending_beans(topics = None, query_texts = None):
+    if query_texts:
+        body = {"query_texts": query_texts}
+        resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, data=body)
+    elif topics:
+        params = {"topic":topic for topic in topics}
+        resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
+    else:
+        resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
 def trending_topics():

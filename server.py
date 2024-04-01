@@ -1,3 +1,4 @@
+import re
 import receiver
 import config
 from icecream import ic
@@ -53,13 +54,17 @@ def update_home_tab(event, client):
         )
 
 @app.command("/whatsnew")
-def receive_whatsnew(command, respond, ack):
+def receive_whatsnew(command, say, ack):
     ack()
-    ic("/whatsnew", command['user_name'], command['text'])
-    
-    # items = get_new_items(command['user_name'], command['text'] )
-    for disp_block in receiver.get_beans(command):
-        respond(blocks = disp_block)
+    for disp_block in receiver.get_trending_items(command):
+        say(blocks = disp_block)
+
+@app.action(re.compile("^get_beans*"))
+def receive_getbeans(action, say, ack):
+    ack()
+    # ic(action)
+    for disp_block in receiver.get_beans(topics=[action['value']]):
+        say(blocks = disp_block)
 
 # running in HTTP mode
 server = Flask(__name__)
