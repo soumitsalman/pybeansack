@@ -1,0 +1,6 @@
+icecream
+requests
+slack-bolt
+flask
+pandas
+numpy
