@@ -1,4 +1,5 @@
 import os
+from icecream import ic
 
 APP_NAME = "expresso"
 SLACK_SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "groups:history", "groups:read", "groups:write", "im:history", "im:read", "reactions:read", "reactions:write", "users:read"]
@@ -21,5 +22,12 @@ def get_slack_client_secret():
 def get_beansack_url() -> str:
     return os.getenv("BEANSACK_URL")
 
-# def get_internal_auth_token() -> str:
-#     return os.getenv("INTERNAL_AUTH_TOKEN")
+REDDIT_OAUTH_TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
+REDDIT_OAUTH_AUTHORIZE_URL = "https://www.reddit.com/api/v1/authorize"
+REDDIT_OAUTH_REDIRECT_URL="https://workable-feline-deeply.ngrok-free.app/reddit/oauth_redirect"
+
+def get_reddit_app_secret():
+    return os.getenv("ESPRESSO_REDDIT_APP_SECRET")
+
+def get_reddit_app_id():
+    return os.getenv("ESPRESSO_REDDIT_APP_ID")
