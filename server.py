@@ -3,6 +3,7 @@ import time
 import receiver
 import config
 from icecream import ic
+from itertools import chain
 from slack_bolt import App
 from slack_bolt.oauth.oauth_settings import OAuthSettings
 from slack_sdk.oauth.installation_store import FileInstallationStore
@@ -56,30 +57,41 @@ def update_home_tab(event, client):
         )
 
 @app.command("/whatsnew")
-def receive_whatsnew(command, respond, ack):
+def receive_whatsnew(ack, command, client):
     ack()
-    _display_blocks(receiver.get_trending_items(command), respond)
+    _display_blocks(receiver.get_trending_items(user_id=command['user_id'], params_text=command['text']), client, channel_id = command['channel_id'])
 
-@app.action(re.compile("^get_beans*"))
-def receive_getbeans(action, say, ack):
+@app.action(re.compile("^get_beans:*"))
+def receive_getbeans(ack, action, client):
     ack()
-    _display_blocks(receiver.get_beans(topics=[action['value']]), say)
+    vals = action['value'].split("//")
+    _display_blocks(receiver.get_beans(user_id=vals[1], topics=[vals[0]], window=vals[2]), client, channel_id=vals[1])
 
-@app.action(re.compile("^connect_*"))
+@app.action(re.compile("^search_beans:*"))
+def receive_searchbeans(ack, action, client):
+    ack()
+    vals = action['value'].split("//")
+    _display_blocks(receiver.get_beans(user_id=vals[1], query_texts=[vals[0]]), client, channel_id=vals[1])
+
+@app.action(re.compile("^connect:*"))
 def receive_getbeans(ack):
     ack()
 
-@app.action("modify_interests")
+@app.action("update_interests:")
 def receive_interests(action, ack):
     ack()
     receiver.update_user_interests(user_id = action['block_id'], interests = [interest.strip() for interest in action['value'].split(',')])
 
-def _display_blocks(blocks, say_or_resp):
+def _display_blocks(blocks, client, channel_id):
+    # check if it is an array of an array
     if len(blocks) > 0 and isinstance(blocks[0], list):
-        for disp_block in blocks:
-            say_or_resp(blocks = disp_block)
+        # for disp_block in blocks:
+        client.chat_postMessage(channel=channel_id, text=f"{len(blocks)} Items", blocks=list(chain.from_iterable(blocks)))
+    # or else if there is any element in it
+    elif blocks:
+        client.chat_postMessage(channel=channel_id, text="1 Item", blocks=blocks)
     else:
-        say_or_resp(blocks = blocks)
+        client.chat_postMessage(channel=channel_id, text="No items found")
 
 # running in HTTP mode
 server = Flask(__name__)
