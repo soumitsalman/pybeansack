@@ -1,4 +1,4 @@
-import os
+import config
 from icecream import ic
 import pymongo
 
@@ -6,18 +6,14 @@ _DB = "users"
 _IDS = "ids"
 _PREFERENCES = "preferences"
 
-def _get_db_conn_string():
-    return os.getenv("DB_CONNECTION_STRING")
-
 def create_mongo_client(conn_str: str, db_name: str, coll_name:str):
     client = pymongo.MongoClient(conn_str)
     db = client[db_name]
     return db[coll_name]
 
-_ids = create_mongo_client(_get_db_conn_string(), _DB, _IDS)
-_preferences = create_mongo_client(_get_db_conn_string(), _DB, _PREFERENCES)
+_ids = create_mongo_client(config.get_db_connection_string(), _DB, _IDS)
+_preferences = create_mongo_client(config.get_db_connection_string(), _DB, _PREFERENCES)
 
-# U0G95QKJ6
 def get_userid(source: str, username: str, create_if_not_found: bool = False):    
     item = _ids.find_one(
         {
