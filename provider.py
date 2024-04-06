@@ -248,11 +248,12 @@ def _create_interests_blocks(user_id, interests):
         "type": "button",
         "text": {
             "type": "plain_text",
-            "text": "Update"
+            "text": "Update",
+            "emoji": False
         },
         "style": "primary",
         "value": user_id,
-        "action_id": "update_user_interests"
+        "action_id": f"update_interests:{user_id}"
     }
     if interests:
         return [
