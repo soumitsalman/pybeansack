@@ -21,8 +21,8 @@ def get_user_home_blocks(user_id):
         trending_week = get_topics_blocks(user_id=user_id, window = 7, limit=10))
 
 def get_trending_items_blocks(user_id: str, params: list[str]):
-    params = [p.strip().lower() for p in params]
-    if (not params) or ("topics" in params):
+    params = [p.strip().lower() for p in params if p.strip()]
+    if (len(params) == 0) or ("topics" in params):
         # show everything that is trending regardless of interest/preference
         return get_topics_blocks(user_id=user_id)
 
