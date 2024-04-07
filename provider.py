@@ -9,33 +9,27 @@ import urllib.parse
 _FIRE_MIN = 10
 _SLACK = "SLACK"
 
-def get_user_home_data(user_id):
+def get_user_home_blocks(user_id):
     return _create_home_blocks(
         user_id = user_id,
-        interests = get_user_interests(user_id), 
-        trending_day = get_topics(user_id=user_id, window = 1), 
-        trending_week = get_topics(user_id=user_id, window = 7, limit=10))
+        interests = get_user_preferences(user_id), 
+        trending_day = get_topics_blocks(user_id=user_id, window = 1), 
+        trending_week = get_topics_blocks(user_id=user_id, window = 7, limit=10))
 
-def get_user_interests(user_id):
-    return userops.get_preferences(_SLACK, user_id)
-
-def update_user_interests(user_id: str, interests: list[str]):
-    userops.update_preferences(_SLACK, user_id, interests)    
-
-def get_trending_items(user_id, params_text):
+def get_trending_items_blocks(user_id, params_text):
     params = [p.lower() for p in params_text.split(" ")]
     if "beans" in params:
         prefs = userops.get_preferences(source=_SLACK, username=user_id)
-        return get_beans(user_id=user_id, query_texts=prefs)
+        return get_beans_blocks(user_id=user_id, query_texts=prefs)
     else:
-        return get_topics(user_id=user_id)
+        return get_topics_blocks(user_id=user_id)
 
-def get_beans(user_id, topics = None, query_texts = None, window = 1, limit: int = 5):    
-    res = trending_beans(topics = topics, query_texts=query_texts, window = window)[:limit]
+def get_beans_blocks(user_id, keywords = None, query_texts = None, window = 1, limit: int = 5):    
+    res = get_beans(keywords = keywords, query_texts=query_texts, window = window)
     return _create_bean_blocks(user_id, res)
 
-def get_topics(user_id, window: int = 1, limit: int = 5):    
-    res = trending_topics(window)[:limit]
+def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
+    res = get_topics(window)[:limit]
     return _create_topic_blocks(user_id, res, window=window)
 
 def _create_topic_blocks(user_id, topics, window=1):
@@ -160,22 +154,6 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 			"type": "divider"
 		}
     ]
-    # update_interests = [        
-	# 	{
-    #         "dispatch_action": True,
-	# 		"type": "input",
-    #         "block_id": user_id,
-	# 		"element": {
-	# 			"type": "plain_text_input",
-	# 			"action_id": "modify_interests"
-	# 		},
-	# 		"label": {
-	# 			"type": "plain_text",
-	# 			"text": "Your Interests",
-	# 		}
-	# 	}
-    # ]
-
     connect = [
         {
             "type": "section",
@@ -265,23 +243,33 @@ def _create_reddit_oauth_request_url(user_id) -> str:
     }
     return f"{config.REDDIT_OAUTH_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
-_TRENDING_BEANS = "/trending/beans"
-_SEARCH_BEANS = "/trending/beans/search"
-_TRENDING_TOPICS = "/trending/topics"
+def get_user_preferences(user_id):
+    return userops.get_preferences(_SLACK, user_id)
 
-def trending_beans(topics = None, query_texts = None, window: int = 1):
+def update_user_preferences(user_id: str, interests: list[str]):
+    userops.update_preferences(_SLACK, user_id, interests)    
+
+_TRENDING_BEANS = "/beans/trending"
+_SEARCH_BEANS = "/beans/search"
+_TRENDING_TOPICS = "/topics/trending"
+
+def get_beans(keywords: list[str] = None, query_texts: str|list[str] = None, search_context: str = None, window: int = 1):
     params = {"window": window}
     if query_texts:
-        body = {"query_texts": query_texts}
+        body = {"query_texts": query_texts if isinstance(query_texts, list) else [query_texts]}
         resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
-    elif topics:
-        params.update({"topic":topic for topic in topics})
+    elif search_context:
+        body = {"search_context": search_context}
+        resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
+    elif keywords:
+        params.update({"keyword":topic for topic in keywords})
         resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
     else:        
         resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
-def trending_topics(window: int = 1):
+
+def get_topics(window: int = 1):
     params = {"window": window}
     resp = requests.get(config.get_beansack_url()+_TRENDING_TOPICS, params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
