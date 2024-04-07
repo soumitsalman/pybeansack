@@ -51,27 +51,41 @@ class ChannelManager:
         self.queues = {}
         self.clients = {}
 
-    def queue_msg(self, client, channel_id: str, blocks, override = True):
+    def _get_channel(self, client, channel_id: str = None, channel_type: str = None, user_id: str = None, override = True) -> str:
+        if channel_type == "directmessage":
+            channel_id = user_id
+        elif not channel_id:
+            channel_id = user_id
         if override or (not self.queues[channel_id]):
             self.queues[channel_id] = queue.Queue()
             self.clients[channel_id] = client
+
+        return channel_id
+    
+    def queue_msg(self, blocks, client, channel_id: str = None, channel_type: str = None, user_id: str = None, override = True):
+        # don't do anything if the blocks are empty
+        if not blocks:
+            return
+        
+        channel_id = self._get_channel(client, channel_id=channel_id, channel_type=channel_type, user_id=user_id, override=override)               
         # if this is an array of item
         if len(blocks) > 0 and isinstance(blocks[0], list):            
             for item in blocks:
                 self.queues[channel_id].put(item)
         # if this is only 1 item
-        elif blocks:
+        else:
             self.queues[channel_id].put(blocks)    
     
-    def display_msg(self, channel_id: str):
+    def display_msg(self, channel_id: str = None, channel_type: str = None, user_id: str = None):
+        channel_id = self._get_channel(client=None, channel_id=channel_id, channel_type=channel_type, user_id=user_id, override=False)
         if not self.queues[channel_id].empty():
             self.clients[channel_id].chat_postMessage(channel=channel_id, text="1 item", blocks=self.queues[channel_id].get())
         else:
             self.clients[channel_id].chat_postMessage(channel=channel_id, text="Nothing found")
 
-    def queue_and_display_msg(self, client, channel_id: str, blocks, override = True):
-        self.queue_msg(client = client, channel_id=channel_id, blocks=blocks, override=override)
-        self.display_msg(channel_id=channel_id)
+    def queue_and_display_msg(self, blocks, client, channel_id: str = None, channel_type: str = None, user_id: str = None, override = True):
+        self.queue_msg(blocks = blocks, client = client, channel_id=channel_id, channel_type=channel_type, user_id=user_id, override=override)
+        self.display_msg(channel_id=channel_id, channel_type=channel_type, user_id=user_id)
 
 channel_mgr = ChannelManager()      
 
@@ -83,15 +97,22 @@ def update_home_tab(event, client):
 @app.command("/trending")
 def receive_whatsnew(ack, command, client):
     ack()    
+    # ic(command)
     channel_mgr.queue_and_display_msg(
         client = client, 
-        channel_id = command['user_id'],
-        blocks = provider.get_trending_items_blocks(user_id=command['user_id'], params_text=command['text']))
+        channel_id = command['channel_id'],
+        channel_type=command['channel_name'], 
+        user_id=command['user_id'],
+        blocks = provider.get_trending_items_blocks(user_id=command['user_id'], params=command['text'].split(' ')))
 
 @app.command("/more")
 def receive_whatsnew(ack, command):
     ack()
-    channel_mgr.display_msg(channel_id = command['user_id'])
+    # ic(command)
+    channel_mgr.display_msg(
+        channel_id = command['channel_id'],
+        channel_type=command['channel_name'], 
+        user_id=command['user_id'])
 
 @app.action(re.compile("^get_beans:*"))
 def receive_getbeans(ack, action, client):
@@ -99,7 +120,7 @@ def receive_getbeans(ack, action, client):
     vals = action['value'].split("//")
     channel_mgr.queue_and_display_msg(
         client = client, 
-        channel_id=vals[1],
+        user_id=vals[1],
         blocks=provider.get_beans_blocks(user_id=vals[1], keywords=[vals[0]], window=vals[2]))
 
 @app.action(re.compile("^search_beans:*"))
@@ -108,7 +129,7 @@ def receive_searchbeans(ack, action, client):
     vals = action['value'].split("//")
     channel_mgr.queue_and_display_msg(
         client = client, 
-        channel_id=vals[1],
+        user_id=vals[1],
         blocks = provider.get_beans_blocks(user_id=vals[1], query_texts=vals[0]))
 
 @app.action(re.compile("^connect:*"))
@@ -160,14 +181,3 @@ def _refresh_home_tab(user_id, client):
             "blocks": provider.get_user_home_blocks(user_id)
         }
     )
-
-# def _display_blocks(blocks, client, channel_id):
-#     # check if it is an array of an array
-#     if len(blocks) > 0 and isinstance(blocks[0], list):
-#         # for disp_block in blocks:
-#         client.chat_postMessage(channel=channel_id, text=f"{len(blocks)} Items", blocks=list(chain.from_iterable(blocks)))
-#     # or else if there is any element in it
-#     elif blocks:
-#         client.chat_postMessage(channel=channel_id, text="1 Item", blocks=blocks)
-#     else:
-#         client.chat_postMessage(channel=channel_id, text="No items found")

@@ -8,6 +8,10 @@ import urllib.parse
 
 _FIRE_MIN = 10
 _SLACK = "SLACK"
+_ARTICLE="article"
+_POST="post"
+_CHANNEL="channel"
+_DEFAULT_KIND = _ARTICLE
 
 def get_user_home_blocks(user_id):
     return _create_home_blocks(
@@ -16,16 +20,25 @@ def get_user_home_blocks(user_id):
         trending_day = get_topics_blocks(user_id=user_id, window = 1), 
         trending_week = get_topics_blocks(user_id=user_id, window = 7, limit=10))
 
-def get_trending_items_blocks(user_id, params_text):
-    params = [p.lower() for p in params_text.split(" ")]
-    if "beans" in params:
-        prefs = userops.get_preferences(source=_SLACK, username=user_id)
-        return get_beans_blocks(user_id=user_id, query_texts=prefs)
-    else:
+def get_trending_items_blocks(user_id: str, params: list[str]):
+    params = [p.strip().lower() for p in params]
+    if (not params) or ("topics" in params):
+        # show everything that is trending regardless of interest/preference
         return get_topics_blocks(user_id=user_id)
 
-def get_beans_blocks(user_id, keywords = None, query_texts = None, window = 1, limit: int = 5):    
-    res = get_beans(keywords = keywords, query_texts=query_texts, window = window)
+    # or else pull in the preference and show the type of items the user wants
+    prefs = userops.get_preferences(source=_SLACK, username=user_id)
+
+    if "news" in params:
+        return get_beans_blocks(user_id=user_id, query_texts=prefs, kind=_ARTICLE)
+    elif "posts" in params:
+        return get_beans_blocks(user_id=user_id, query_texts=prefs, kind=_POST)
+    elif "channels" in params:
+        return get_beans_blocks(user_id=user_id, query_texts=prefs, kind=_CHANNEL)
+
+        
+def get_beans_blocks(user_id, keywords = None, query_texts = None, kind: str = _DEFAULT_KIND, window = 1, limit: int = 5):    
+    res = get_beans(keywords = keywords, query_texts=query_texts, kind = kind, window = window)
     return _create_bean_blocks(user_id, res)
 
 def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
@@ -110,8 +123,8 @@ def _create_bean_blocks(userid, beans):
 			}
 		]
 	}
-    
-    return [[banner(item), body(item), action(item)] for item in beans]
+    if beans:
+        return [[banner(item), body(item), action(item)] for item in beans]
 
 def _create_home_blocks(user_id, interests, trending_day, trending_week):
     # THINGS TO SHOW
@@ -253,8 +266,11 @@ _TRENDING_BEANS = "/beans/trending"
 _SEARCH_BEANS = "/beans/search"
 _TRENDING_TOPICS = "/topics/trending"
 
-def get_beans(keywords: list[str] = None, query_texts: str|list[str] = None, search_context: str = None, window: int = 1):
-    params = {"window": window}
+def get_beans(keywords: list[str] = None, query_texts: str|list[str] = None, search_context: str = None, kind:str = _DEFAULT_KIND, window: int = 1):
+    params = {
+        "window": window,
+        "kind": kind
+    }
     if query_texts:
         body = {"query_texts": query_texts if isinstance(query_texts, list) else [query_texts]}
         resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
