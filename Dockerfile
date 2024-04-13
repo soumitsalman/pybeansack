@@ -5,9 +5,15 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-EXPOSE 8000
+EXPOSE 8080
 
 ENV FLASK_APP=server.py
 ENV FLASK_RUN_HOST=0.0.0.0
 
-CMD [ "flask", "run" , "-p", "8000"]
+ENV ESPRESSO_APP_NAME "Espresso by Cafecit.io"
+# ENV ESPRESSO_SLACK_REDIRECT_URI "http://localhost:8080/slack/oauth_redirect"
+
+ENV BEANSACK_URL "https://beansackservice.purplesea-08c513a7.eastus.azurecontainerapps.io"
+ENV REDDITOR_URL "https://redditcollector.orangeflower-f8e1f6b0.eastus.azurecontainerapps.io"
+
+CMD [ "flask", "run" , "-p", "8080"]

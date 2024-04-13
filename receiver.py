@@ -9,6 +9,8 @@ from slack_sdk.oauth.installation_store import FileInstallationStore
 from slack_sdk.oauth.state_store import FileOAuthStateStore
 import queue
 
+_POSTS_AND_ARTICLES = [provider._ARTICLE, provider._POST]
+
 oauth_settings = OAuthSettings(
     client_id=config.get_slack_client_id(),
     client_secret=config.get_slack_client_secret(),
@@ -126,7 +128,7 @@ def receive_getbeans(ack, action, client):
     channel_mgr.queue_and_display_blocks(
         client = client, 
         user_id=vals[1],
-        blocks=provider.get_beans_blocks(user_id=vals[1], keywords=[vals[0]], window=vals[2]))
+        blocks=provider.get_beans_blocks(user_id=vals[1], keywords=[vals[0]], kinds=_POSTS_AND_ARTICLES, window=vals[2]))
 
 @app.action(re.compile("^search_beans:*"))
 def receive_searchbeans(ack, action, client):
@@ -135,7 +137,7 @@ def receive_searchbeans(ack, action, client):
     channel_mgr.queue_and_display_blocks(
         client = client, 
         user_id=vals[1],
-        blocks = provider.get_beans_blocks(user_id=vals[1], query_texts=vals[0]))
+        blocks = provider.get_beans_blocks(user_id=vals[1], query_texts=vals[0], kinds=_POSTS_AND_ARTICLES))
 
 @app.action(re.compile("^connect:*"))
 def receive_connect(ack):

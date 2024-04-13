@@ -5,13 +5,13 @@ import config
 import userops
 from icecream import ic
 import urllib.parse
+import redditor
 
 _FIRE_MIN = 10
 _SLACK = "SLACK"
 _ARTICLE="article"
 _POST="post"
 _CHANNEL="channel"
-_DEFAULT_KIND = _ARTICLE
 
 def get_user_home_blocks(user_id):
     return _create_home_blocks(
@@ -30,15 +30,15 @@ def get_trending_items_blocks(user_id: str, params: list[str]):
     prefs = userops.get_preferences(source=_SLACK, username=user_id)
 
     if "news" in params:
-        return get_beans_blocks(user_id=user_id, query_texts=prefs, kind=_ARTICLE)
+        return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_ARTICLE], window=1)
     elif "posts" in params:
-        return get_beans_blocks(user_id=user_id, query_texts=prefs, kind=_POST)
+        return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_POST], window=1)
     elif "channels" in params:
-        return get_beans_blocks(user_id=user_id, query_texts=prefs, kind=_CHANNEL)
+        return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_CHANNEL], window=1)
 
         
-def get_beans_blocks(user_id, keywords = None, query_texts = None, kind: str = _DEFAULT_KIND, window = 1, limit: int = 5):    
-    res = get_beans(keywords = keywords, query_texts=query_texts, kind = kind, window = window)
+def get_beans_blocks(user_id, keywords = None, query_texts = None, kinds: list[str] = None, window = 1, limit: int = 5):    
+    res = get_beans(keywords = keywords, query_texts=query_texts, kinds = kinds, window = window)
     return _create_bean_blocks(user_id, res)
 
 def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
@@ -73,28 +73,23 @@ def _create_bean_blocks(userid, beans):
         "type": "mrkdwn",
 		"text": f":link: <{data.get('url')}|{data.get('source')}>"
     }
+    author_element = lambda data: {
+        "type": "plain_text",
+		"text": f":writing_hand: {data.get('author')}" 
+    }
 
+    # fix reddit specific show
     banner = lambda data: {
         "type": "context",
-        "elements": [            
-            # {
-            #     "type": "plain_text",
-            #     "text": f":thumbsup: {data.get('likes', 0)}"
-            # },
-            # {
-            #     "type": "plain_text",
-            #     "text": f":left_speech_bubble: {data.get('comments', 0)}"
-            # },   
-            source_element(data),                            
-            # tags_element(data),
-            date_element(data)
-        ]
+        "elements": [source_element(data), date_element(data), author_element(data)] if data.get("author") else [source_element(data), date_element(data)]
     }
+
+
     body = lambda data: {        
 		"type": "section",
 		"text": {
 			"type": "mrkdwn",
-			"text": f"*:rolled_up_newspaper: {data.get('title', '')}*\n{data.get('summary')}"
+			"text": f"*{data.get('title', '')}\n*{data.get('summary')}" if data.get('summary') else f"*{data.get('title', '')}*"
 		}
     }
     
@@ -137,19 +132,28 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
     # 3. Login to LinkedIn 
     interests_header = [
         {
-			"type": "section",
+			"type": "header",
 			"text": {
-				"type": "mrkdwn",
-				"text": "*Your Interests*"
+				"type": "plain_text",
+				"text": "Your Interests"
 			}
 		}
     ] 
+    trending_news_header = [
+        {
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": "Trending In News"
+			}
+		}
+    ]
     one_day_header = [
         {
 			"type": "section",
 			"text": {
 				"type": "mrkdwn",
-				"text": "*Trending Since Yesterday*"
+				"text": "*Since Yesterday*"
 			}
 		}
     ] 
@@ -158,7 +162,7 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 			"type": "section",
 			"text": {
 				"type": "mrkdwn",
-				"text": "*Trending For A Week*"
+				"text": "*For A Week*"
 			}
 		}
     ]
@@ -167,28 +171,45 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 			"type": "divider"
 		}
     ]
-    connect = [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*Connect Your Account*"
-            }
-        },
-        {
+
+    reddit_status = redditor.is_user_authenticated(user_id)
+    if reddit_status != True:
+        reddit_element = {
 			"type": "actions",
 			"elements": [
 				{
 					"type": "button",
 					"text": {
 						"type": "plain_text",
-						"text": "Reddit",
-						"emoji": True
+						"text": "Reddit"
 					},
 					"value": "reddit",
-					"url": _create_reddit_oauth_request_url(user_id),
+					"url": reddit_status,
 					"action_id": "connect:reddit"
-				},
+				}
+			]
+		}
+    else:
+        reddit_element = {
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*Reddit* : Connected :large_green_circle: (Your soul now belongs to us)"
+			}
+		}
+
+    connect = [
+        {
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": "Connect Your Accounts"
+			}
+		},
+        reddit_element,
+        {
+			"type": "actions",
+			"elements": [
 				{
 					"type": "button",
 					"text": {
@@ -203,7 +224,7 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 			]
 		}
     ]
-    return interests_header + _create_interests_blocks(user_id, interests) + divider + one_day_header + trending_day + one_week_header + trending_week + divider + connect
+    return interests_header + _create_interests_blocks(user_id, interests) + divider + trending_news_header + one_day_header + trending_day + one_week_header + trending_week + divider + connect
 
 def _create_interests_blocks(user_id, interests):
     interest_button = lambda data: {
@@ -245,16 +266,16 @@ def _create_interests_blocks(user_id, interests):
             }
         ]
 
-def _create_reddit_oauth_request_url(user_id) -> str:
-    params = {
-        "client_id": config.get_reddit_app_id(),
-		"response_type": "code",
-		"state": user_id,
-		"redirect_uri": config.REDDIT_OAUTH_REDIRECT_URL,
-		"duration": "permanent",
-		"scope": "identity"
-    }
-    return f"{config.REDDIT_OAUTH_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
+# def _create_reddit_oauth_request_url(user_id) -> str:
+#     params = {
+#         "client_id": config.get_reddit_app_id(),
+# 		"response_type": "code",
+# 		"state": user_id,
+# 		"redirect_uri": config.REDDIT_OAUTH_REDIRECT_URL,
+# 		"duration": "permanent",
+# 		"scope": "identity"
+#     }
+#     return f"{config.REDDIT_OAUTH_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
 def get_user_preferences(user_id):
     return userops.get_preferences(_SLACK, user_id)
@@ -266,20 +287,21 @@ _TRENDING_BEANS = "/beans/trending"
 _SEARCH_BEANS = "/beans/search"
 _TRENDING_TOPICS = "/topics/trending"
 
-def get_beans(keywords: list[str] = None, query_texts: str|list[str] = None, search_context: str = None, kind:str = _DEFAULT_KIND, window: int = 1):
+def get_beans(keywords: list[str] = None, query_texts: str|list[str] = None, search_context: str = None, kinds:list[str] = None, window: int = 1):
     params = {
         "window": window,
-        "kind": kind
     }
+    if kinds:
+        params.update({"kind": kinds})
+    if keywords:
+        params.update({"keyword": keywords})
+
     if query_texts:
         body = {"query_texts": query_texts if isinstance(query_texts, list) else [query_texts]}
         resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
     elif search_context:
         body = {"search_context": search_context}
         resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
-    elif keywords:
-        params.update({"keyword":topic for topic in keywords})
-        resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
     else:        
         resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
