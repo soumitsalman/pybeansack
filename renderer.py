@@ -37,8 +37,8 @@ def get_trending_items_blocks(user_id: str, params: list[str]):
         return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_CHANNEL], window=1)
 
         
-def get_beans_blocks(user_id, keywords = None, query_texts = None, kinds: list[str] = None, window = 1, limit: int = 5):    
-    res = get_beans(keywords = keywords, query_texts=query_texts, kinds = kinds, window = window)
+def get_beans_blocks(user_id, keywords = None, query_texts = None, search_context: str = None, kinds: list[str] = None, window = 1, limit: int = 5):    
+    res = get_beans(keywords = keywords, query_texts=query_texts, search_context=search_context, kinds = kinds, window = window)
     return _create_bean_blocks(user_id, res)
 
 def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
@@ -89,37 +89,37 @@ def _create_bean_blocks(userid, beans):
 		"type": "section",
 		"text": {
 			"type": "mrkdwn",
-			"text": f"*{data.get('title', '')}\n*{data.get('summary')}" if data.get('summary') else f"*{data.get('title', '')}*"
+			"text": f"*{data.get('title', '')}*\n{data.get('summary')}" if data.get('summary') else f"*{data.get('title', '')}*"
 		}
     }
     
-    action = lambda data: {    
-		"type": "actions",
-		"elements": [
-			{
-                "action_id": f"positive",
-                "type": "button",
-				"text": {
-					"type": "plain_text",
-					"text": ":ok_hand:",
-                    "emoji": True
-				},
-				"value": data.get('url')
-			},
-			{
-                "action_id": f"negative",
-                "type": "button",
-				"text": {
-					"type": "plain_text",
-					"text": ":shit:",
-                    "emoji": True
-				},
-				"value": data.get('url')
-			}
-		]
-	}
+    # action = lambda data: {    
+	# 	"type": "actions",
+	# 	"elements": [
+	# 		{
+    #             "action_id": f"positive",
+    #             "type": "button",
+	# 			"text": {
+	# 				"type": "plain_text",
+	# 				"text": ":ok_hand:",
+    #                 "emoji": True
+	# 			},
+	# 			"value": data.get('url')
+	# 		},
+	# 		{
+    #             "action_id": f"negative",
+    #             "type": "button",
+	# 			"text": {
+	# 				"type": "plain_text",
+	# 				"text": ":shit:",
+    #                 "emoji": True
+	# 			},
+	# 			"value": data.get('url')
+	# 		}
+	# 	]
+	# }
     if beans:
-        return [[banner(item), body(item), action(item)] for item in beans]
+        return [[banner(item), body(item)] for item in beans]
 
 def _create_home_blocks(user_id, interests, trending_day, trending_week):
     # THINGS TO SHOW
@@ -172,59 +172,61 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 		}
     ]
 
-    reddit_status = redditor.is_user_authenticated(user_id)
-    if reddit_status != True:
-        reddit_element = {
-			"type": "actions",
-			"elements": [
-				{
-					"type": "button",
-					"text": {
-						"type": "plain_text",
-						"text": "Reddit"
-					},
-					"value": "reddit",
-					"url": reddit_status,
-					"action_id": "connect:reddit"
-				}
-			]
-		}
-    else:
-        reddit_element = {
-			"type": "section",
-			"text": {
-				"type": "mrkdwn",
-				"text": "*Reddit* : Connected :large_green_circle: (Your soul now belongs to us)"
-			}
-		}
+    # TODO: enable later
+    # reddit part is working but it is not doing much
+    # reddit_status = redditor.is_user_authenticated(user_id)
+    # if reddit_status != True:
+    #     reddit_element = {
+	# 		"type": "actions",
+	# 		"elements": [
+	# 			{
+	# 				"type": "button",
+	# 				"text": {
+	# 					"type": "plain_text",
+	# 					"text": "Reddit"
+	# 				},
+	# 				"value": "reddit",
+	# 				"url": reddit_status,
+	# 				"action_id": "connect:reddit"
+	# 			}
+	# 		]
+	# 	}
+    # else:
+    #     reddit_element = {
+	# 		"type": "section",
+	# 		"text": {
+	# 			"type": "mrkdwn",
+	# 			"text": "*Reddit* : Connected :large_green_circle: (Your soul now belongs to us)"
+	# 		}
+	# 	}
 
-    connect = [
-        {
-			"type": "header",
-			"text": {
-				"type": "plain_text",
-				"text": "Connect Your Accounts"
-			}
-		},
-        reddit_element,
-        {
-			"type": "actions",
-			"elements": [
-				{
-					"type": "button",
-					"text": {
-						"type": "plain_text",
-						"text": "LinkedIn",
-						"emoji": True
-					},
-					"value": "linkedin",
-					"url": "http://www.linkedin.com",
-					"action_id": "connect:linkedin"
-				}
-			]
-		}
-    ]
-    return interests_header + _create_interests_blocks(user_id, interests) + divider + trending_news_header + one_day_header + trending_day + one_week_header + trending_week + divider + connect
+    # connect = [
+    #     {
+	# 		"type": "header",
+	# 		"text": {
+	# 			"type": "plain_text",
+	# 			"text": "Connect Your Accounts"
+	# 		}
+	# 	},
+    #     reddit_element,
+    #     {
+	# 		"type": "actions",
+	# 		"elements": [
+	# 			{
+	# 				"type": "button",
+	# 				"text": {
+	# 					"type": "plain_text",
+	# 					"text": "LinkedIn",
+	# 					"emoji": True
+	# 				},
+	# 				"value": "linkedin",
+	# 				"url": "http://www.linkedin.com",
+	# 				"action_id": "connect:linkedin"
+	# 			}
+	# 		]
+	# 	}
+    # ]
+    return interests_header + _create_interests_blocks(user_id, interests) + divider + trending_news_header + one_day_header + trending_day + one_week_header + trending_week
 
 def _create_interests_blocks(user_id, interests):
     interest_button = lambda data: {
@@ -234,7 +236,7 @@ def _create_interests_blocks(user_id, interests):
 			"text": data
 		},
 		"value": f"{data}//{user_id}",
-		"action_id": f"search_beans:{data})"
+		"action_id": f"query_beans:{data})"
 	}
     update_button = {
         "type": "button",
@@ -265,17 +267,6 @@ def _create_interests_blocks(user_id, interests):
                 "accessory": update_button
             }
         ]
-
-# def _create_reddit_oauth_request_url(user_id) -> str:
-#     params = {
-#         "client_id": config.get_reddit_app_id(),
-# 		"response_type": "code",
-# 		"state": user_id,
-# 		"redirect_uri": config.REDDIT_OAUTH_REDIRECT_URL,
-# 		"duration": "permanent",
-# 		"scope": "identity"
-#     }
-#     return f"{config.REDDIT_OAUTH_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
 def get_user_preferences(user_id):
     return userops.get_preferences(_SLACK, user_id)
