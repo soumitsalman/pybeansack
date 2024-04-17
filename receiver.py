@@ -4,8 +4,7 @@ import config
 from icecream import ic
 from slack_bolt import App
 from slack_bolt.oauth.oauth_settings import OAuthSettings
-from slack_sdk.oauth.installation_store import FileInstallationStore
-from slack_sdk.oauth.state_store import FileOAuthStateStore
+import slack_stores
 import queue
 
 _SLACK_SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "groups:history", "groups:read", "groups:write", "im:history", "im:read"]
@@ -15,8 +14,8 @@ oauth_settings = OAuthSettings(
     client_id=config.get_slack_client_id(),
     client_secret=config.get_slack_client_secret(),
     scopes=_SLACK_SCOPES,
-    installation_store=FileInstallationStore(base_dir="./data/installations"),
-    state_store=FileOAuthStateStore(expiration_seconds=3600, base_dir="./data/states")
+    installation_store=slack_stores.MongoInstallationStore(conn_str=config.get_db_connection_string(), app_name="espresso"),
+    state_store=slack_stores.MongoOauthStateStore(conn_str=config.get_db_connection_string(), app_name="espresso", expiration_seconds=600)
 )
 
 # set up the initial app
