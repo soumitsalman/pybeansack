@@ -1,7 +1,8 @@
 /.deployment
 *.env
 /.vscode
-*__pycache__
 /.venv
 .gitignore
-/data
+/.github
+/.git
+
