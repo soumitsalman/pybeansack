@@ -126,7 +126,7 @@ def receive_search(ack, command, client):
         channel_id = command['channel_id'],
         channel_type=command['channel_name'], 
         user_id=command['user_id'],
-        blocks = renderer.get_beans_blocks(user_id=command['user_id'], search_context=command['text'], kinds = _POSTS_AND_ARTICLES, window=1, limit=10))
+        blocks = renderer.get_beans_blocks(user_id=command['user_id'], search_text=command['text'], kinds = _POSTS_AND_ARTICLES, window=1, limit=10))
 
 @app.action(re.compile("^get_beans:*"))
 def receive_getbeans(ack, action, client):
@@ -135,7 +135,7 @@ def receive_getbeans(ack, action, client):
     channel_mgr.queue_and_display_blocks(
         client = client, 
         user_id=vals[1],
-        blocks=renderer.get_beans_blocks(user_id=vals[1], keywords=[vals[0]], kinds=_POSTS_AND_ARTICLES, window=vals[2]))
+        blocks=renderer.get_beans_blocks(user_id=vals[1], keywords=vals[0], kinds=_POSTS_AND_ARTICLES, window=vals[2]))
 
 @app.action(re.compile("^query_beans:*"))
 def receive_querybeans(ack, action, client):
@@ -144,7 +144,7 @@ def receive_querybeans(ack, action, client):
     channel_mgr.queue_and_display_blocks(
         client = client, 
         user_id=vals[1],
-        blocks = renderer.get_beans_blocks(user_id=vals[1], query_texts=vals[0], kinds=_POSTS_AND_ARTICLES, window=1))
+        blocks = renderer.get_beans_blocks(user_id=vals[1], categories=vals[0], kinds=_POSTS_AND_ARTICLES, window=1))
 
 @app.action(re.compile("^connect:*"))
 def receive_connect(ack):

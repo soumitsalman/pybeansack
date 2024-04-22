@@ -30,15 +30,15 @@ def get_trending_items_blocks(user_id: str, params: list[str]):
     prefs = userops.get_preferences(source=_SLACK, username=user_id)
 
     if "news" in params:
-        return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_ARTICLE], window=1)
+        return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_ARTICLE], window=1)
     elif "posts" in params:
-        return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_POST], window=1)
+        return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_POST], window=1)
     elif "channels" in params:
-        return get_beans_blocks(user_id=user_id, query_texts=prefs, kinds=[_CHANNEL], window=1)
+        return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_CHANNEL], window=1)
 
         
-def get_beans_blocks(user_id, keywords = None, query_texts = None, search_context: str = None, kinds: list[str] = None, window = 1, limit: int = 5):    
-    res = get_beans(keywords = keywords, query_texts=query_texts, search_context=search_context, kinds = kinds, window = window)
+def get_beans_blocks(user_id, keywords = None, categories = None, search_text: str = None, kinds: list[str] = None, window = 1, limit: int = 5):    
+    res = get_beans(keywords = keywords, categories=categories, search_text=search_text, kinds = kinds, window = window)
     return _create_bean_blocks(user_id, res)
 
 def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
@@ -278,20 +278,20 @@ _TRENDING_BEANS = "/beans/trending"
 _SEARCH_BEANS = "/beans/search"
 _TRENDING_TOPICS = "/topics/trending"
 
-def get_beans(keywords: list[str] = None, query_texts: str|list[str] = None, search_context: str = None, kinds:list[str] = None, window: int = 1):
+def get_beans(keywords: str|list[str] = None, categories: str|list[str] = None, search_text: str = None, kinds:list[str] = None, window: int = 1):
     params = {
         "window": window,
     }
     if kinds:
         params.update({"kind": kinds})
     if keywords:
-        params.update({"keyword": keywords})
+        params.update({"keyword": keywords if isinstance(keywords, list) else [keywords]})
 
-    if query_texts:
-        body = {"query_texts": query_texts if isinstance(query_texts, list) else [query_texts]}
+    if categories:
+        body = {"categories": categories if isinstance(categories, list) else [categories]}
         resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
-    elif search_context:
-        body = {"search_context": search_context}
+    elif search_text:
+        body = {"search_text": search_text}
         resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
     else:        
         resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
