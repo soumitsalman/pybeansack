@@ -84,7 +84,10 @@ class ChannelManager:
         channel_id = self._get_channel(channel_id=channel_id, channel_type=channel_type, user_id=user_id, create_new=False)
         batch, length = self.dequeue_blocks(channel_id)
         if length:
-            client.chat_postMessage(channel=channel_id, text=f"Displaying {length}. {self.queues[channel_id].qsize()} more left.", blocks=batch)
+            remaining = self.queues[channel_id].qsize()
+            client.chat_postMessage(channel=channel_id, text=f"Displaying {length} item(s).", blocks=batch)
+            if remaining:
+                client.chat_postMessage(channel=channel_id, text=f"There are {remaining} more item(s). Run */more* for more.")
         else:
             client.chat_postMessage(channel=channel_id, text="No content :shrug:")
 

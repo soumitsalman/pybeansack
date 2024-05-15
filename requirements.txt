@@ -4,3 +4,4 @@ slack-bolt
 flask
 pymongo
 azure-data-tables
+pandas
