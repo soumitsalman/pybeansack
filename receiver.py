@@ -128,17 +128,27 @@ def receive_search(ack, command, client):
         user_id=command['user_id'],
         blocks = renderer.get_beans_blocks(user_id=command['user_id'], search_text=command['text'], kinds = _POSTS_AND_ARTICLES, window=1, limit=10))
 
-@app.action(re.compile("^get_beans:*"))
+@app.action(re.compile("^get_beans//*"))
 def receive_getbeans(ack, action, client):
     ack()
     vals = action['value'].split("//")
+    keyphrase, description, user_id, window = vals[0], vals[1], vals[2], vals[3]
+    
+    # if the action is coming from the home page then display the description before pulling up the news
+    if "from_home" in action['action_id'].split("//"):
+        channel_mgr.queue_and_display_blocks(
+            client = client,
+            user_id = user_id,
+            blocks=renderer.make_nugget_block(keyphrase, description)
+        )
+
     channel_mgr.queue_and_display_blocks(
         client = client, 
-        user_id=vals[1],
-        blocks=renderer.get_beans_blocks(user_id=vals[1], keywords=vals[0], kinds=_POSTS_AND_ARTICLES, window=vals[2]))
+        user_id=user_id,
+        blocks=renderer.get_beans_blocks(user_id=user_id, nugget=keyphrase, kinds=_POSTS_AND_ARTICLES, window=window))
 
 @app.action(re.compile("^query_beans:*"))
-def receive_querybeans(ack, action, client):
+def receive_searchbeans(ack, action, client):
     ack()
     vals = action['value'].split("//")
     channel_mgr.queue_and_display_blocks(

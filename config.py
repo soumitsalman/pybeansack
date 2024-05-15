@@ -20,8 +20,8 @@ def get_slack_client_id():
 def get_slack_client_secret():
     return os.getenv("ESPRESSO_SLACK_CLIENT_SECRET")
 
-def get_beansack_url() -> str:
-    return os.getenv("BEANSACK_URL")
+def get_beansack_url(route: str) -> str:
+    return os.getenv("BEANSACK_URL") if not route else os.getenv("BEANSACK_URL")+route
 
 def get_redditor_url() -> str:
     return os.getenv("REDDITOR_URL")

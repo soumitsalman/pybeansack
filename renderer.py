@@ -7,7 +7,7 @@ from icecream import ic
 import urllib.parse
 import redditor
 
-_FIRE_MIN = 10
+_FIRE_MIN = 50
 _SLACK = "SLACK"
 _ARTICLE="article"
 _POST="post"
@@ -17,33 +17,52 @@ def get_user_home_blocks(user_id):
     return _create_home_blocks(
         user_id = user_id,
         interests = get_user_preferences(user_id), 
-        trending_day = get_topics_blocks(user_id=user_id, window = 1), 
-        trending_week = get_topics_blocks(user_id=user_id, window = 7, limit=10))
+        trending_day = get_nuggets_blocks(user_id, None, window=1, limit=5, for_home_page=True), 
+        trending_week = get_nuggets_blocks(user_id, None, window=7, limit=10, for_home_page=True))
 
 def get_trending_items_blocks(user_id: str, params: list[str]):
-    params = [p.strip().lower() for p in params if p.strip()]
-    if (len(params) == 0) or ("topics" in params):
-        # show everything that is trending regardless of interest/preference
-        return get_topics_blocks(user_id=user_id)
-
-    # or else pull in the preference and show the type of items the user wants
+    # get the user preference and show the type of items the user wants
     prefs = userops.get_preferences(source=_SLACK, username=user_id)
 
+    params = [p.strip().lower() for p in params if p.strip()]
+    if (len(params) == 0) or ("nuggets" in params):
+        # show everything that is trending regardless of interest/preference
+        return get_nuggets_blocks(user_id=user_id, categories=prefs, window=1, limit=10, for_home_page=False)
     if "news" in params:
         return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_ARTICLE], window=1)
     elif "posts" in params:
         return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_POST], window=1)
     elif "channels" in params:
         return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_CHANNEL], window=1)
+    elif "topics" in params:
+        # show everything that is trending regardless of interest/preference
+        return get_topics_blocks(user_id=user_id)
 
         
-def get_beans_blocks(user_id, keywords = None, categories = None, search_text: str = None, kinds: list[str] = None, window = 1, limit: int = 5):    
-    res = get_beans(keywords = keywords, categories=categories, search_text=search_text, kinds = kinds, window = window)
+def get_beans_blocks(user_id, nugget = None, categories = None, search_text: str = None, kinds: list[str] = None, window = 1, limit: int = 5):    
+    res = get_beans(nugget = nugget, categories=categories, search_text=search_text, kinds = kinds, window = window)
     return _create_bean_blocks(user_id, res)
+
+def get_nuggets_blocks(user_id, categories, window, limit, for_home_page):
+    res = get_nuggets(categories, window)[:limit]
+    return _create_nugget_blocks(user_id, res, window, for_home_page)
 
 def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
     res = get_topics(window)[:limit]
     return _create_topic_blocks(user_id, res, window=window)
+
+def make_nugget_block(keyphrase, description, accessory=None):
+    body = {
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f":rolled_up_newspaper: *{keyphrase}*: {description}",                
+        }
+    }
+    if accessory:
+        body["accessory"] = accessory
+
+    return [body]
 
 def _create_topic_blocks(user_id, topics, window=1):
     body_text = lambda data: data.get('keyword') if data.get('Count') < _FIRE_MIN else f"{data.get('keyword')} :fire:"
@@ -64,6 +83,44 @@ def _create_topic_blocks(user_id, topics, window=1):
         }
     ]
 
+def _create_nugget_blocks(user_id, nuggets, window, for_home_page):
+    value = lambda data: f"{data.get('keyphrase')}//{data.get('description')}//{user_id}//{window}"    
+    action_id = lambda data: "get_beans//"+("from_home" if for_home_page else "from_chat")+"//"+data.get('keyphrase')
+    if for_home_page:        
+        body = lambda data: {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": (":fire: " if data.get("match_count") >= _FIRE_MIN else "") + data.get('keyphrase'),
+                "emoji": True
+            },
+            "value": value(data),
+            "action_id": action_id(data)
+        }
+        return [
+            {
+                "type": "actions",
+                "elements": [body(nugget) for nugget in nuggets]
+            }
+        ]
+        
+    else:
+        body = lambda data: make_nugget_block(
+            data.get('keyphrase'), 
+            data.get('description'),
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Pull Up",
+                    "emoji": False
+                },
+                "value": value(data),
+                "action_id": action_id(data)
+            })
+        
+        return [body(nugget)[0] for nugget in nuggets]
+
 def _create_bean_blocks(userid, beans):
     date_element = lambda data: {
         "type": "plain_text",
@@ -77,19 +134,20 @@ def _create_bean_blocks(userid, beans):
         "type": "plain_text",
 		"text": f":writing_hand: {data.get('author')}" 
     }
-
-    # fix reddit specific show
+    topic_element = lambda data: {
+        "type": "plain_text",
+		"text": f":label: {data.get('topic')}" 
+    }
+    # TODO: fix reddit specific show
     banner = lambda data: {
         "type": "context",
-        "elements": [source_element(data), date_element(data), author_element(data)] if data.get("author") else [source_element(data), date_element(data)]
+        "elements": [source_element(data), date_element(data)] + ([author_element(data)] if data.get("author") else []) + ([topic_element(data)] if data.get("topic") else [])
     }
-
-
     body = lambda data: {        
 		"type": "section",
 		"text": {
 			"type": "mrkdwn",
-			"text": f"*{data.get('title', '')}*\n{data.get('summary')}" if data.get('summary') else f"*{data.get('title', '')}*"
+			"text": f"*{data.get('title').strip()}*\n{data.get('summary').strip() if data.get('summary') else ''}"
 		}
     }
     
@@ -274,31 +332,41 @@ def get_user_preferences(user_id):
 def update_user_preferences(user_id: str, interests: list[str]):
     userops.update_preferences(_SLACK, user_id, interests)    
 
-_TRENDING_BEANS = "/beans/trending"
 _SEARCH_BEANS = "/beans/search"
+_TRENDING_BEANS = "/beans/trending"
 _TRENDING_TOPICS = "/topics/trending"
+_TRENDING_NUGGETS = "/nuggets/trending"
 
-def get_beans(keywords: str|list[str] = None, categories: str|list[str] = None, search_text: str = None, kinds:list[str] = None, window: int = 1):
+def get_beans(nugget: str = None, categories: str|list[str] = None, search_text: str = None, kinds:list[str] = None, window: int = 1):
     params = {
         "window": window,
     }
     if kinds:
-        params.update({"kind": kinds})
-    if keywords:
-        params.update({"keyword": keywords if isinstance(keywords, list) else [keywords]})
+        params["kind"]=kinds
 
-    if categories:
+    if nugget:        
+        body = {"newsnuggets": [nugget]}
+        resp = requests.get(config.get_beansack_url(_SEARCH_BEANS), json=body, params=params)    
+    elif categories:
         body = {"categories": categories if isinstance(categories, list) else [categories]}
-        resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
+        resp = requests.get(config.get_beansack_url(_SEARCH_BEANS), json=body, params=params)
     elif search_text:
         body = {"search_text": search_text}
-        resp = requests.get(config.get_beansack_url()+_SEARCH_BEANS, json=body, params=params)
-    else:        
-        resp = requests.get(config.get_beansack_url()+_TRENDING_BEANS, params=params)
+        resp = requests.get(config.get_beansack_url(_SEARCH_BEANS), json=body, params=params)
+    else:         
+        resp = requests.get(config.get_beansack_url(_TRENDING_BEANS), params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
+def get_nuggets(categories, window):
+    params = {"window": window}
+    if categories:
+        body = {"categories": categories if isinstance(categories, list) else [categories]}
+        resp = requests.get(config.get_beansack_url(_TRENDING_NUGGETS), params=params, json=body)
+    else:
+        resp = requests.get(config.get_beansack_url(_TRENDING_NUGGETS), params=params)
+    return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
 def get_topics(window: int = 1):
     params = {"window": window}
-    resp = requests.get(config.get_beansack_url()+_TRENDING_TOPICS, params=params)
+    resp = requests.get(config.get_beansack_url(_TRENDING_TOPICS), params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
