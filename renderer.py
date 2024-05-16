@@ -5,22 +5,22 @@ import config
 import userops
 from icecream import ic
 import pandas as pd
-import urllib.parse
-import redditor
 
-_FIRE_MIN = 50
+
+_FIRE_MIN = 200
 _SLACK = "SLACK"
 _ARTICLE="article"
 _POST="post"
 _CHANNEL="channel"
 
 def get_user_home_blocks(user_id):
-    prefs = get_user_preferences(user_id)
+    prefs = userops.get_preferences(_SLACK, user_id)
     return _create_home_blocks(
         user_id = user_id,
         interests = prefs, 
-        trending_day = get_nuggets_blocks(user_id, prefs, window=1, limit=5, for_home_page=True), 
-        trending_week = get_nuggets_blocks(user_id, prefs, window=7, limit=10, for_home_page=True))
+        # TODO: category based nugget search doesn't seem to be working
+        trending_for_user = get_nuggets_blocks(user_id, prefs, window=1, limit=5, for_home_page=True), 
+        trending_globally = get_nuggets_blocks(user_id, None, window=1, limit=10, for_home_page=True))
 
 def get_trending_items_blocks(user_id: str, params: list[str]):
     # get the user preference and show the type of items the user wants
@@ -36,9 +36,6 @@ def get_trending_items_blocks(user_id: str, params: list[str]):
         return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_POST], window=1, limit=5)
     # elif "channels" in params:
     #     return get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_CHANNEL], window=1)
-    # elif "topics" in params:
-    #     # show everything that is trending regardless of interest/preference
-    #     return get_topics_blocks(user_id=user_id)
 
         
 def get_beans_blocks(user_id, nugget = None, categories = None, search_text: str = None, kinds: list[str] = None, window: int = None, limit: int = None):    
@@ -48,10 +45,6 @@ def get_beans_blocks(user_id, nugget = None, categories = None, search_text: str
 def get_nuggets_blocks(user_id, categories, window, limit, for_home_page):
     res = get_nuggets(categories, window, limit)
     return _create_nugget_blocks(user_id, res, window, for_home_page)
-
-# def get_topics_blocks(user_id, window: int = 1, limit: int = 5):    
-#     res = get_topics(window)[:limit]
-#     return _create_topic_blocks(user_id, res, window=window)
 
 def make_nugget_block(keyphrase, description, accessory=None):
     body = {
@@ -65,25 +58,6 @@ def make_nugget_block(keyphrase, description, accessory=None):
         body["accessory"] = accessory
 
     return [body]
-
-# def _create_topic_blocks(user_id, topics, window=1):
-#     body_text = lambda data: data.get('keyword') if data.get('Count') < _FIRE_MIN else f"{data.get('keyword')} :fire:"
-#     body = lambda data: {
-# 		"type": "button",
-# 		"text": {
-# 			"type": "plain_text",
-# 			"text": body_text(data),
-# 			"emoji": True
-# 		},
-# 		"value": f"{data.get('keyword')}//{user_id}//{window}",
-# 		"action_id": f"get_beans:{data.get('keyword')})"
-# 	}
-#     return [
-#         {
-#             "type": "actions",
-# 		    "elements": [body(keyword) for keyword in topics]
-#         }
-#     ]
 
 def _create_nugget_blocks(user_id, nuggets, window, for_home_page):
     #  do a dedup, this is temporary breakfix
@@ -107,6 +81,15 @@ def _create_nugget_blocks(user_id, nuggets, window, for_home_page):
                 "type": "actions",
                 "elements": [body(nugget) for nugget in nuggets]
             }
+        ] if nuggets else [ 
+            {
+                "type": "section",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Nothing within your areas of interest. :shrug:",
+                    "emoji": True
+                }
+            }
         ]
         
     else:
@@ -126,65 +109,91 @@ def _create_nugget_blocks(user_id, nuggets, window, for_home_page):
         
         return [body(nugget) for nugget in nuggets]
 
-def _create_bean_blocks(userid, beans):
+def _create_bean_banner(bean):
+    get_url = lambda data: data['noise']['container_url'] if (bean.get('noise') and bean.get('noise').get('container_url')) else data.get('url')
+    get_source = lambda data: data['noise']['channel'] if (bean.get('noise') and bean.get('noise').get('channel')) else data.get('source')
+    source_element = lambda data: {
+        "type": "mrkdwn",
+		"text": f":link: <{get_url(data)}|{get_source(data)}>"
+    }
+
     date_element = lambda data: {
         "type": "plain_text",
         "text": f":date: {datetime.fromtimestamp(data.get('created') if data.get('created') else data.get('updated')).strftime('%b %d, %Y')}"
     }
-    source_element = lambda data: {
-        "type": "mrkdwn",
-		"text": f":link: <{data.get('url')}|{data.get('source')}>"
-    }
+
     author_element = lambda data: {
         "type": "plain_text",
 		"text": f":writing_hand: {data.get('author')}" 
     }
+
     topic_element = lambda data: {
         "type": "plain_text",
 		"text": f":label: {data.get('topic')}" 
     }
-    # TODO: fix reddit specific show
-    banner = lambda data: {
-        "type": "context",
-        "elements": [source_element(data), date_element(data)] + ([author_element(data)] if data.get("author") else []) + ([topic_element(data)] if data.get("topic") else [])
+    
+    comments_element = lambda data: {
+        "type": "plain_text",
+		"text": f":left_speech_bubble: {data.get('noise').get('comments')}" 
     }
+
+    likes_element = lambda data: {
+        "type": "plain_text",
+		"text": f":thumbsup: {data.get('noise').get('likes')}" 
+    }
+    
+    banner_elements = [source_element(bean), date_element(bean)]
+    if bean.get('topic'):
+        banner_elements.append(topic_element(bean))
+    if bean.get('noise') and bean.get('noise').get('comments'):
+        banner_elements.append(comments_element(bean))
+    if bean.get('noise') and bean.get('noise').get('likes'):
+        banner_elements.append(likes_element(bean))
+    if bean.get('author'):
+        banner_elements.append(author_element(bean))
+
+    return {
+        "type": "context",
+        "elements": banner_elements
+    }
+
+def _create_bean_blocks(userid, beans):    
     body = lambda data: {        
 		"type": "section",
 		"text": {
 			"type": "mrkdwn",
 			"text": f"*{data.get('title').strip()}*\n{data.get('summary').strip() if data.get('summary') else ''}"
 		}
-    }
-    
-    # action = lambda data: {    
-	# 	"type": "actions",
-	# 	"elements": [
-	# 		{
-    #             "action_id": f"positive",
-    #             "type": "button",
-	# 			"text": {
-	# 				"type": "plain_text",
-	# 				"text": ":ok_hand:",
-    #                 "emoji": True
-	# 			},
-	# 			"value": data.get('url')
-	# 		},
-	# 		{
-    #             "action_id": f"negative",
-    #             "type": "button",
-	# 			"text": {
-	# 				"type": "plain_text",
-	# 				"text": ":shit:",
-    #                 "emoji": True
-	# 			},
-	# 			"value": data.get('url')
-	# 		}
-	# 	]
-	# }
+    }    
+    action = lambda data: {    
+		"type": "actions",
+		"elements": [
+			{
+                "action_id": f"positive",
+                "type": "button",
+				"text": {
+					"type": "plain_text",
+					"text": ":ok_hand:",
+                    "emoji": True
+				},
+				"value": data.get('url')
+			},
+			{
+                "action_id": f"negative",
+                "type": "button",
+				"text": {
+					"type": "plain_text",
+					"text": ":shit:",
+                    "emoji": True
+				},
+				"value": data.get('url')
+			}
+		]
+	}
     if beans:
-        return [[banner(item), body(item)] for item in beans]
+        return [[_create_bean_banner(item), body(item), action(item)] for item in beans]
 
-def _create_home_blocks(user_id, interests, trending_day, trending_week):
+def _create_home_blocks(user_id, interests, trending_for_user, trending_globally):
     # THINGS TO SHOW
     # VIEW
     # [DONE] 1. Top 5 trending keywords/topics - 1 day, 1 week
@@ -211,21 +220,21 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 			}
 		}
     ]
-    one_day_header = [
+    user_trend_header = [
         {
 			"type": "section",
 			"text": {
 				"type": "mrkdwn",
-				"text": "*Since Yesterday*"
+				"text": "*For You*"
 			}
 		}
     ] 
-    one_week_header = [
+    global_trend_header = [
         {
 			"type": "section",
 			"text": {
 				"type": "mrkdwn",
-				"text": "*For A Week*"
+				"text": "*Globally*"
 			}
 		}
     ]
@@ -234,6 +243,7 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 			"type": "divider"
 		}
     ]
+    return interests_header + _create_interests_blocks(user_id, interests) + divider + trending_news_header + user_trend_header + trending_for_user + global_trend_header + trending_globally
 
     # TODO: enable later
     # reddit part is working but it is not doing much
@@ -289,7 +299,7 @@ def _create_home_blocks(user_id, interests, trending_day, trending_week):
 	# 		]
 	# 	}
     # ]
-    return interests_header + _create_interests_blocks(user_id, interests) + divider + trending_news_header + one_day_header + trending_day + one_week_header + trending_week
+    
 
 def _create_interests_blocks(user_id, interests):
     interest_button = lambda data: {
@@ -331,15 +341,32 @@ def _create_interests_blocks(user_id, interests):
             }
         ]
 
-def get_user_preferences(user_id):
-    return userops.get_preferences(_SLACK, user_id)
+def make_update_interest_view():
+    return {
+        "type": "modal",
+        "callback_id": "new_interest_input",
+        "title": {"type": "plain_text", "text": "Espresso by Cafecit.io"},
+        "submit": {"type": "plain_text", "text": "Update"},
+        "blocks": [
+            {
+                "block_id": "new_interest_input",
+                "type": "input",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "new_interests"
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Your Interests (comma separated)"
+                }
+            }
+        ]
+    }
 
 def update_user_preferences(user_id: str, interests: list[str]):
     userops.update_preferences(_SLACK, user_id, interests)    
 
 _SEARCH_BEANS = "/beans/search"
-# _TRENDING_BEANS = "/beans/trending"
-# _TRENDING_TOPICS = "/topics/trending"
 _TRENDING_NUGGETS = "/nuggets/trending"
 
 def get_beans(nugget: str = None, categories: str|list[str] = None, search_text: str = None, kinds:list[str] = None, window: int = None, limit: int = None):
@@ -360,8 +387,6 @@ def get_beans(nugget: str = None, categories: str|list[str] = None, search_text:
     else:
         body = None
         
-    # else:         
-    #     resp = requests.get(config.get_beansack_url(_TRENDING_BEANS), params=params)
     resp = requests.get(config.get_beansack_url(_SEARCH_BEANS), json=body, params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
@@ -371,7 +396,3 @@ def get_nuggets(categories, window, limit):
     resp = requests.get(config.get_beansack_url(_TRENDING_NUGGETS), params=params, json=body)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
-# def get_topics(window: int = 1):
-#     params = {"window": window}
-#     resp = requests.get(config.get_beansack_url(_TRENDING_TOPICS), params=params)
-#     return resp.json() if (resp.status_code == requests.codes["ok"]) else []

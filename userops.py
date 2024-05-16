@@ -58,7 +58,7 @@ def update_preferences(source: str, username: str, preference: list[str]):
         pref_update = {
             "preference": [{'text': item, 'direction': 'positive'} for item in preference]
         }
-        ic(_preferences.update_one({"_id": userid}, {"$set": pref_update}, upsert=True).matched_count)
+        _preferences.update_one({"_id": userid}, {"$set": pref_update}, upsert=True)
 
 
 

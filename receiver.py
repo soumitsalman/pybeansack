@@ -71,7 +71,7 @@ class ChannelManager:
         channel_id = self._get_channel(channel_id=channel_id, channel_type=channel_type, user_id=user_id, create_new=True)      
         # if this is an array of item
         if blocks:
-            if ic(len(blocks)) > 0 and ic(isinstance(blocks[0], list)):            
+            if len(blocks) > 0 and isinstance(blocks[0], list):            
                 for item in blocks:
                     self.queues[channel_id].put(item)
             # if this is only 1 item
@@ -168,26 +168,7 @@ def trigger_update_interest(ack, action, body, client):
     ack()
     client.views_open(
         trigger_id=body['trigger_id'],
-        view = {
-            "type": "modal",
-            "callback_id": "new_interest_input",
-            "title": {"type": "plain_text", "text": "Espresso by Cafecit.io"},
-            "submit": {"type": "plain_text", "text": "Update"},
-            "blocks": [
-                {
-                    "block_id": "new_interest_input",
-                    "type": "input",
-                    "element": {
-                        "type": "plain_text_input",
-                        "action_id": "new_interests"
-                    },
-                    "label": {
-                        "type": "plain_text",
-                        "text": "Your Interests (comma separated)"
-                    }
-                }
-            ]
-        }
+        view = renderer.make_update_interest_view()
     )
 
 @app.view("new_interest_input")
