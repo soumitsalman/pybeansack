@@ -37,9 +37,9 @@ def get_userid(source: str, username: str, create_if_not_found: bool = False):
 def get_preferences(source: str, username: str):
     userid = get_userid(source, username)
     if userid:
-        prefs = _preferences.find_one({"_id": userid}, {"preference": 1}).get("preference")
-        if prefs:
-            return [item.get('text') for item in prefs if item.get('text')]
+        prefs = _preferences.find_one({"_id": userid}, {"preference": 1})
+        if prefs and prefs.get("preference"):
+            return [item.get('text') for item in prefs.get('preference') if item.get('text')]
 
 
 def update_userid(userid: str, source: str, username: str):
@@ -56,7 +56,7 @@ def update_preferences(source: str, username: str, preference: list[str]):
     userid = get_userid(source, username, True)
     if userid:
         pref_update = {
-            "preference": [{'text': item, 'direction': 'positive'} for item in preference]
+            "preference": [{'text': item.capitalize(), 'direction': 'positive'} for item in preference]
         }
         _preferences.update_one({"_id": userid}, {"$set": pref_update}, upsert=True)
 

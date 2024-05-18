@@ -5,3 +5,4 @@ flask
 pymongo
 azure-data-tables
 pandas
+logger
