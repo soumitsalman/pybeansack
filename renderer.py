@@ -414,13 +414,13 @@ def get_beans(nugget: str = None, categories: str|list[str] = None, search_text:
     else:
         body = None
         
-    resp = requests.get(config.get_beansack_url(_SEARCH_BEANS), json=body, params=params)
+    resp = requests.get(config.get_coffeemaker_url(_SEARCH_BEANS), json=body, params=params)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else []
 
 def get_nuggets(categories, window, limit):
     params = {"window": window, "topn": limit}
     body = {"categories": categories if isinstance(categories, list) else [categories]} if categories else None        
-    resp = requests.get(config.get_beansack_url(_TRENDING_NUGGETS), params=params, json=body)
+    resp = requests.get(config.get_coffeemaker_url(_TRENDING_NUGGETS), params=params, json=body)
     return resp.json() if (resp.status_code == requests.codes["ok"]) else None
 
  
