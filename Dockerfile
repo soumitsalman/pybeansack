@@ -10,8 +10,4 @@ EXPOSE 8080
 ENV FLASK_APP=server.py
 ENV FLASK_RUN_HOST=0.0.0.0
 
-ENV ESPRESSO_APP_NAME "Espresso by Cafecit.io"
-ENV COFFEEMAKER_BASE_URL https://coffeemaker-service-kgpzy.ondigitalocean.app
-ENV EMBEDDER_BASE_URL https://embeddings-service.purplesea-08c513a7.eastus.azurecontainerapps.io/embed
-
 CMD [ "flask", "run" , "-p", "8080"]
