@@ -43,67 +43,8 @@ app = App(
 #     )
 
 
-_MAX_DISPLAY_BATCH_SIZE = 3
 
-is_one_block = lambda data: data and isinstance(data, list) and isinstance(data[0], dict)
-is_list_of_blocks = lambda data: data and isinstance(data, list) and isinstance(data[0], list)
-is_text = lambda data: isinstance(data, str)
-
-class ChannelManager:
-    queues: dict[str, queue.Queue]
-    clients: dict[str, any]
-
-    def __init__(self):
-        self.queues = {}
-
-    def _get_channel(self, channel_id: str = None, channel_type: str = None, user_id: str = None, create_new = True) -> str:
-        if channel_type == "directmessage":
-            channel_id = user_id
-        elif not channel_id:
-            channel_id = user_id
-        if create_new or (not self.queues.get(channel_id)):
-            self.queues[channel_id] = queue.Queue()
-        return channel_id
-            
-    # blocks can be: 
-    #   - list[list[dict]]: represents an array of blocks where each set of blocks represents a news item
-    #   - list[dict]: represents one news or display item
-    #   - str: represents one text message
-    def _queue_blocks(self, blocks, client, channel_id: str = None, channel_type: str = None, user_id: str = None):
-        channel_id = self._get_channel(channel_id=channel_id, channel_type=channel_type, user_id=user_id, create_new=True)        
-        if is_text(blocks) or is_one_block(blocks):
-            # list[dict] or str --> represents 1 item
-            self.queues[channel_id].put(blocks) 
-        elif is_list_of_blocks(blocks):
-            # list[list[dict]] --> represents a list of blocks, so merge them
-            blocks = [list(chain(*blocks[i:i+_MAX_DISPLAY_BATCH_SIZE])) for i in range(0, len(blocks), _MAX_DISPLAY_BATCH_SIZE)]
-            [self.queues[channel_id].put(item) for item in blocks]
-        # don't do anything if the blocks are empty                    
-   
-    # returns a merge batch of blocks to display the batch to display        
-    def _dequeue_blocks(self, channel_id: str) -> list[dict]|str:
-        return self.queues[channel_id].get_nowait() if not self.queues[channel_id].empty() else None
-    
-    def next_page(self, client = None, channel_id: str = None, channel_type: str = None, user_id: str = None):
-        channel_id = self._get_channel(channel_id=channel_id, channel_type=channel_type, user_id=user_id, create_new=False)
-        page = self._dequeue_blocks(channel_id)
-
-        if is_one_block(page):  
-            # this is a set of blocks 
-            client.chat_postMessage(channel=channel_id, text=f"Displaying items.", blocks=page)        
-            remaining = self.queues[channel_id].qsize()        
-            if remaining:
-                client.chat_postMessage(channel=channel_id, text=f"There are {remaining} more item(s). Run */more* for more.")  
-        elif is_text(page):
-            client.chat_postMessage(channel=channel_id, text=page)                        
-        else:
-            client.chat_postMessage(channel=channel_id, text=renderer.NO_MORE_CONTENT)
-
-    def publish(self, blocks, client = None,  channel_id: str = None, channel_type: str = None, user_id: str = None):
-        self._queue_blocks(blocks = blocks, client = client, channel_id=channel_id, channel_type=channel_type, user_id=user_id)
-        self.next_page(client = client, channel_id=channel_id, channel_type=channel_type, user_id=user_id)
-
-channel_mgr = ChannelManager()      
+channel_mgr = renderer.ChannelManager()      
 
 @app.event("app_home_opened")
 def update_home_tab(event, client):
@@ -143,7 +84,7 @@ def receive_lookfor(ack, command, client, say):
 def receive_nugget_search(ack, action, client):
     ack()
     vals = action['value'].split("//")
-    keyphrase, description, user_id, window = vals[0], vals[1], vals[2], vals[3]
+    keyphrase, description, user_id, window = vals[0], vals[1], vals[2], int(vals[3])
 
     channel_mgr.publish(
         client = client, 
