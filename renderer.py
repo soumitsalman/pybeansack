@@ -71,11 +71,11 @@ def get_trending_items(user_id: str, params: list[str]):
     
     if (len(params) == 0) or ("nuggets" in params):
         # show everything that is trending regardless of interest/preference
-        beans = _get_nuggets_blocks(user_id=user_id, categories=prefs, window=1, limit=10, for_home_page=False, preference_included=True)
+        beans = _get_nuggets_blocks(user_id=user_id, categories=prefs, window=_DEFAULT_WINDOW, limit=10, for_home_page=False, preference_included=True)
     elif "news" in params:
-        beans = _get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_ARTICLE], window=1, limit=5)
+        beans = _get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_ARTICLE], window=_DEFAULT_WINDOW, limit=5)
     elif "posts" in params:
-        beans = _get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_POST], window=1, limit=5)
+        beans = _get_beans_blocks(user_id=user_id, categories=prefs, kinds=[_POST], window=_DEFAULT_WINDOW, limit=5)
     else:
         # beans = _create_text_block(INVALID_INPUT)
         beans = INVALID_INPUT
