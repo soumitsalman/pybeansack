@@ -5,5 +5,4 @@ flask
 pymongo
 azure-data-tables
 pandas
-logging
 retry
