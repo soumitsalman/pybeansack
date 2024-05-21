@@ -8,6 +8,7 @@ import userops
 from icecream import ic
 import pandas as pd
 import logging
+from retry import retry
 
 
 _FIRE_MIN = 200
@@ -114,64 +115,61 @@ class ChannelManager:
         self.next_page(client = client, channel_id=channel_id, channel_type=channel_type, user_id=user_id)
 
 
-def get_user_home(user_id):
-    prefs = userops.get_preferences(_SLACK, user_id)
-    interests = _create_interests_blocks(user_id, prefs)
-
-    if prefs:
-        trending_for_user = _get_nuggets_blocks(user_id, prefs, window=_DEFAULT_WINDOW, limit=5, for_home_page=True, preference_included=True) 
+def get_user_home(username):
+    pref_texts = userops.get_preference_texts(_SLACK, username)
+    interests = _create_interests_blocks(username, pref_texts)
+    if pref_texts:
+        trending_for_user = _get_nuggets_blocks(username, userops.get_preference_embeddings(_SLACK, username), window=_DEFAULT_WINDOW, limit=5, for_home_page=True, preference_included=True) 
         if not trending_for_user:
             trending_for_user = _create_text_block(NOTHING_TRENDING)
-    else:
-        trending_for_user = None
 
-    trending_globally = _get_nuggets_blocks(user_id, None, window=_DEFAULT_WINDOW, limit=10, for_home_page=True, preference_included=False)
+    trending_globally = _get_nuggets_blocks(username, None, window=_DEFAULT_WINDOW, limit=10, for_home_page=True, preference_included=False)
     if not trending_globally:
         trending_globally = _create_text_block(NOTHING_TRENDING)
 
-    return _create_home_blocks(user_id, interests, trending_for_user, trending_globally)
+    return _create_home_blocks(username, interests, trending_for_user, trending_globally)
 
-def get_trending_items(user_id: str, params: list[str]):
+def get_trending_items(username: str, params: list[str]):
     # get the user preference and show the type of items the user wants
-    prefs = userops.get_preferences(source=_SLACK, username=user_id)
+    prefs = userops.get_preference_embeddings(source=_SLACK, username=username)
     params = [p.strip().lower() for p in params if p.strip()]
     
     if (len(params) == 0) or ("nuggets" in params):
         # show everything that is trending regardless of interest/preference
-        items = _get_nuggets_blocks(user_id=user_id, categories=prefs, window=_DEFAULT_WINDOW, limit=10, for_home_page=False, preference_included=True)
+        items = _get_nuggets_blocks(user_id=username, categories=prefs, window=_DEFAULT_WINDOW, limit=10, for_home_page=False, preference_included=True)
     elif "news" in params:
-        items = _create_bean_blocks(user_id, get_beans(categories=prefs, kinds=[_ARTICLE], window=_DEFAULT_WINDOW, limit=5))
+        items = _create_bean_blocks(username, get_beans(categories=prefs, kinds=[_ARTICLE], window=_DEFAULT_WINDOW, limit=5))
     elif "posts" in params:
-        items = _create_bean_blocks(user_id, get_beans(categories=prefs, kinds=[_POST], window=_DEFAULT_WINDOW, limit=5))
+        items = _create_bean_blocks(username, get_beans(categories=prefs, kinds=[_POST], window=_DEFAULT_WINDOW, limit=5))
     else:
         items = INVALID_INPUT
 
     return items or NOTHING_TRENDING
 
-def get_beans_by_category(user_id, category):
-    beans = get_beans(user_id=user_id, categories=category, kinds=None, window=_DEFAULT_WINDOW, limit=10)
+def get_beans_by_category(username, category):
+    beans = get_beans(categories=userops.get_embeddings_for_preference(_SLACK, username, category), kinds=None, window=_DEFAULT_WINDOW, limit=10)
     if not beans:
         return NOTHING_TRENDING
-    return [_create_text_block(f":label: *{category}*:")] + _create_bean_blocks(user_id, beans)
+    return [_create_text_block(f":label: *{category}*:")] + _create_bean_blocks(username, beans)
 
-def get_beans_by_nugget(user_id, keyphrase: str, description: str, show_by_preference: bool, window: int):
-    user_prefs = userops.get_preferences(user_id) if show_by_preference else None
+def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_preference: bool, window: int):
+    user_prefs = userops.get_preference_embeddings(_SLACK, username) if show_by_preference else None
     beans = get_beans(nugget=keyphrase, categories=user_prefs, window=window, limit=10)    
     if not beans:
         # this should NOT return nothing, since it is already showing in the trending list
-        logging.warning("get_beans(%s, %s, %d) came empty. Thats not supposed to happen", user_id, keyphrase, window)
+        logging.warning("get_beans(%s, %s, %d) came empty. Thats not supposed to happen", username, keyphrase, window)
         return NOTHING_FOUND
     # always show the nuggets description as initial entry
-    return [_create_text_block(f":rolled_up_newspaper: *{keyphrase}*: {description}")] + _create_bean_blocks(user_id, beans)
+    return [_create_text_block(f":rolled_up_newspaper: *{keyphrase}*: {description}")] + _create_bean_blocks(username, beans)
 
-def get_beans_by_search(user_id, search_text: str):
+def get_beans_by_search(username, search_text: str):
     # this should search across the board without window
     beans = get_beans(search_text=search_text, limit=10)
-    return _create_bean_blocks(user_id, beans) if beans else NOTHING_FOUND
+    return _create_bean_blocks(username, beans) if beans else NOTHING_FOUND
 
 def _get_nuggets_blocks(user_id, categories, window: int, limit: int, for_home_page: bool, preference_included: bool):
-    res = get_nuggets(categories, window, limit)
-    return _create_nugget_blocks(user_id, res, window, for_home_page, preference_included)
+    nuggets = get_nuggets(categories, window, limit)
+    return _create_nugget_blocks(user_id, nuggets, window, for_home_page, preference_included)
 
 def _create_text_block(text, accessory=None):
     body = {
@@ -185,12 +183,12 @@ def _create_text_block(text, accessory=None):
         body["accessory"] = accessory
     return [body]
 
-def _create_nugget_blocks(user_id, nuggets, window, for_home_page, preference_included): 
+def _create_nugget_blocks(username, nuggets, window, for_home_page, preference_included): 
     if not nuggets:
         return None
     
-    value = lambda data: f"{data.get('keyphrase')}//{data.get('description')}//{user_id}//{window}"    
-    action_id = lambda data: "nugget//"+data.get('keyphrase') #+("//show_by_preference" if preference_included else "")
+    value = lambda data: f"{data.get('keyphrase')}//{data.get('description')}//{username}//{window}"    
+    action_id = lambda data: "nugget//"+ data.get('keyphrase') + ("//show_by_preference" if preference_included else "")
     nugget_button = lambda data: {
         "type": "button",
         "text": {
@@ -306,8 +304,7 @@ def _create_bean_blocks(userid, beans):
 	# 		}
 	# 	]
 	# }    
-    if beans:
-        return [[_create_bean_banner(item), body(item)] for item in beans]
+    return [[_create_bean_banner(item), body(item)] for item in beans]
 
 def _create_home_blocks(user_id, interests, trending_for_user, trending_globally):
     # THINGS TO SHOW
@@ -451,7 +448,17 @@ def update_user_preferences(user_id: str, interests: list[str]):
 _SEARCH_BEANS = "/beans/search"
 _TRENDING_NUGGETS = "/nuggets/trending"
 
-def get_beans(nugget: str = None, categories: str|list[str] = None, search_text: str = None, kinds:list[str] = None, window: int = None, limit: int = None):
+def get_beans(nugget: str = None, categories = None, search_text: str = None, kinds:list[str] = None, window: int = None, limit: int = None):
+    return retry_coffemaker(_SEARCH_BEANS, 
+                            _make_params(window=window, limit=limit, kinds=kinds), 
+                            _make_body(nugget=nugget, categories=categories, search_text=search_text))
+
+def get_nuggets(categories, window, limit):    
+    return retry_coffemaker(_TRENDING_NUGGETS, 
+                            _make_params(window=window, limit=limit), 
+                            _make_body(categories=categories))
+
+def _make_params(window = None, limit = None, kinds = None, source=None):
     params = {}
     if window:
         params["window"]=window
@@ -459,23 +466,41 @@ def get_beans(nugget: str = None, categories: str|list[str] = None, search_text:
         params["kind"]=kinds
     if limit:
         params["topn"]=limit
-    
+    if source:
+        params["source"]=source
+    return params if len(params)>0 else None
+
+
+def _make_body(nugget = None, categories = None, search_text = None):
     if nugget:        
-        body = {"nuggets": [nugget]}
+        return {"nuggets": [nugget]}
     elif categories:
-        body = {"categories": categories if isinstance(categories, list) else [categories]}
+        if isinstance(categories, str):
+            # this is a single item of text
+            return {"categories": [categories]}
+        elif isinstance(categories, list) and isinstance(categories[0], float):
+            # this is a single item of embeddings
+            return {"embeddings": [categories]}
+        elif isinstance(categories, list) and isinstance(categories[0], str):
+            # this is list of text
+            return {"categories": categories}
+        elif isinstance(categories, list) and isinstance(categories[0], list):
+            # this is a list of embeddings
+            return {"embeddings": categories}
     elif search_text:
-        body = {"context": search_text}
-    else:
-        body = None
-        
-    resp = requests.get(config.get_coffeemaker_url(_SEARCH_BEANS), json=body, params=params)
-    return resp.json() if (resp.status_code == requests.codes["ok"]) else []
+        return {"context": search_text}
+    
 
-def get_nuggets(categories, window, limit):
-    params = {"window": window, "topn": limit}
-    body = {"categories": categories if isinstance(categories, list) else [categories]} if categories else None        
-    resp = requests.get(config.get_coffeemaker_url(_TRENDING_NUGGETS), params=params, json=body)
-    return resp.json() if (resp.status_code == requests.codes["ok"]) else None
+def retry_coffemaker(path, params, body):
+    @retry(requests.HTTPError, tries=5, delay=5)
+    def _retry_internal(path, params, body):
+        resp = requests.get(config.get_coffeemaker_url(path), params=params, json=body)
+        resp.raise_for_status()
+        return resp.json() if (resp.status_code == requests.codes["ok"]) else None
+    try:
+        return _retry_internal(path, params, body)
+    except:
+        return None
 
+    
  

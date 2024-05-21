@@ -59,7 +59,7 @@ def receive_trending(ack, command, client, say):
         channel_id = command['channel_id'],
         channel_type=command['channel_name'], 
         user_id=command['user_id'],
-        blocks = renderer.get_trending_items(user_id=command['user_id'], params=command['text'].split(' ')))
+        blocks = renderer.get_trending_items(username=command['user_id'], params=command['text'].split(' ')))
 
 @app.command("/more")
 def receive_more(ack, command, client, say):
@@ -78,7 +78,7 @@ def receive_lookfor(ack, command, client, say):
         channel_id = command['channel_id'],
         channel_type=command['channel_name'], 
         user_id=command['user_id'],
-        blocks = renderer.get_beans_by_search(user_id=command['user_id'], search_text=command['text']))
+        blocks = renderer.get_beans_by_search(username=command['user_id'], search_text=command['text']))
 
 @app.action(re.compile("^nugget//*"))
 def receive_nugget_search(ack, action, client):
@@ -90,7 +90,7 @@ def receive_nugget_search(ack, action, client):
         client = client, 
         user_id=user_id,
         blocks=renderer.get_beans_by_nugget(
-            user_id=user_id, 
+            username=user_id, 
             keyphrase=keyphrase, 
             description=description, 
             show_by_preference=("show_by_preference" in action['action_id'].split("//")),
@@ -103,7 +103,7 @@ def receive_category_search(ack, action, client):
     channel_mgr.publish(
         client = client, 
         user_id=vals[1],
-        blocks = renderer.get_beans_by_category(user_id=vals[1], category=vals[0]))
+        blocks = renderer.get_beans_by_category(username=vals[1], category=vals[0]))
 
 # @app.action(re.compile("^connect:*"))
 # def receive_connect(ack):

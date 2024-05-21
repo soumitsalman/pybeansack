@@ -23,6 +23,9 @@ def get_slack_client_secret():
 def get_coffeemaker_url(route: str) -> str:
     return os.getenv("COFFEEMAKER_BASE_URL") if not route else os.getenv("COFFEEMAKER_BASE_URL")+route
 
+def get_embedder_url() -> str:
+    return os.getenv("EMBEDDER_BASE_URL")
+
 def get_redditor_url() -> str:
     return os.getenv("REDDITOR_URL")
 
