@@ -6,3 +6,4 @@ pymongo
 azure-data-tables
 pandas
 retry
+pydantic

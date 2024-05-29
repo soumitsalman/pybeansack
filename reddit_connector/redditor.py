@@ -1,6 +1,6 @@
 import requests
 import requests.auth
-import config
+import shared.config as config
 import urllib
 from icecream import ic
 

@@ -1,15 +1,12 @@
 import re
-import renderer
-import config
+from . import renderer, slack_stores
+from shared import config
 from icecream import ic
 from slack_bolt import App
 from slack_bolt.oauth.oauth_settings import OAuthSettings
-import slack_stores
-import queue
-from itertools import chain
 
 _SLACK_SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "groups:history", "groups:read", "groups:write", "im:history", "im:read"]
-_POSTS_AND_ARTICLES = [renderer._ARTICLE, renderer._POST]
+# _POSTS_AND_ARTICLES = [renderer._ARTICLE, renderer._POST]
 
 oauth_settings = OAuthSettings(
     client_id=config.get_slack_client_id(),
@@ -20,7 +17,7 @@ oauth_settings = OAuthSettings(
 )
 
 # set up the initial app
-app = App(
+slack_router = App(
     # token=config.get_slack_bot_token(),
     signing_secret=config.get_slack_signing_secret(),
     oauth_settings=oauth_settings
@@ -46,12 +43,12 @@ app = App(
 
 channel_mgr = renderer.ChannelManager()      
 
-@app.event("app_home_opened")
+@slack_router.event("app_home_opened")
 def update_home_tab(event, client):
     if event['tab'] == "home":        
         _refresh_home_tab(event['user'], client)
 
-@app.command("/trending")
+@slack_router.command("/trending")
 def receive_trending(ack, command, client, say):
     ack()    
     channel_mgr.publish(
@@ -61,7 +58,7 @@ def receive_trending(ack, command, client, say):
         user_id=command['user_id'],
         blocks = renderer.get_trending_items(username=command['user_id'], params=command['text'].split(' ')))
 
-@app.command("/more")
+@slack_router.command("/more")
 def receive_more(ack, command, client, say):
     ack()
     channel_mgr.next_page(
@@ -70,7 +67,7 @@ def receive_more(ack, command, client, say):
         channel_type=command['channel_name'], 
         user_id=command['user_id'])
     
-@app.command("/lookfor")
+@slack_router.command("/lookfor")
 def receive_lookfor(ack, command, client, say):
     ack()        
     channel_mgr.publish(
@@ -80,7 +77,7 @@ def receive_lookfor(ack, command, client, say):
         user_id=command['user_id'],
         blocks = renderer.get_beans_by_search(username=command['user_id'], search_text=command['text']))
 
-@app.action(re.compile("^nugget//*"))
+@slack_router.action(re.compile("^nugget//*"))
 def receive_nugget_search(ack, action, client):
     ack()
     vals = action['value'].split("//")
@@ -96,7 +93,7 @@ def receive_nugget_search(ack, action, client):
             show_by_preference=("show_by_preference" in action['action_id'].split("//")),
             window=window))
 
-@app.action(re.compile("^category//*"))
+@slack_router.action(re.compile("^category//*"))
 def receive_category_search(ack, action, client):
     ack()
     vals = action['value'].split("//")
@@ -105,11 +102,8 @@ def receive_category_search(ack, action, client):
         user_id=vals[1],
         blocks = renderer.get_beans_by_category(username=vals[1], category=vals[0]))
 
-# @app.action(re.compile("^connect:*"))
-# def receive_connect(ack):
-#     ack()
 
-@app.action(re.compile("^update_interests:*"))
+@slack_router.action(re.compile("^update_interests:*"))
 def trigger_update_interest(ack, action, body, client):
     ack()
     client.views_open(
@@ -117,7 +111,7 @@ def trigger_update_interest(ack, action, body, client):
         view = renderer.UPDATE_INTEREST_VIEW
     )
 
-@app.view("new_interest_input")
+@slack_router.view("new_interest_input")
 def new_interests(ack, body, view, client):
     ack()
     user_id = body["user"]["id"]

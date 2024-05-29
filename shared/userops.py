@@ -1,7 +1,7 @@
 import logging
 import requests
 from retry import retry
-import config
+from . import config
 from icecream import ic
 import pymongo
 
@@ -79,9 +79,10 @@ def get_embeddings_for_preference(source: str, username: str, preference: str):
                 "_id": userid,
                 "preference.text": preference
             },
-            { "embeddings": "$preference.embeddings" }
+            { "preference.$": 1 }
         )   
-        return result["embeddings"] if result else None   
+        if result:
+            return result["preference"][0].get("embeddings")  
 
 def update_userid(userid: str, source: str, username: str):
     _ids.update_one(
@@ -104,15 +105,16 @@ def update_preferences(source: str, username: str, texts: list[str]):
             prefs = [{'text': t.title()} for t in texts]
         _preferences.update_one({"_id": userid}, {"$set": {"preference": prefs}}, upsert=True)
 
-def retry_embeddings(texts: list[str]) -> list[list[float]]:
-    @retry(Exception, tries=5, delay=5)
-    def _retry_internal(texts):
-        resp = requests.post(config.get_embedder_url(), json={"inputs": texts})
-        resp.raise_for_status()
-        result = resp.json() if (resp.status_code == requests.codes["ok"]) else None
-        if len(result) != len(texts):
-            raise Exception(f"Failed Generating Embeddings. Generated {len(result)}. Expected {len(texts)}")
-        return result
+@retry(Exception, tries=5, delay=5)
+def _retry_internal(texts):
+    resp = requests.post(config.get_embedder_url(), json={"inputs": texts})
+    resp.raise_for_status()
+    result = resp.json() if (resp.status_code == requests.codes["ok"]) else None
+    if len(result) != len(texts):
+        raise Exception(f"Failed Generating Embeddings. Generated {len(result)}. Expected {len(texts)}")
+    return result
+
+def retry_embeddings(texts: list[str]) -> list[list[float]]:    
     try:
         return _retry_internal(texts)
     except:

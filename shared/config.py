@@ -1,7 +1,5 @@
 import os
 
-# SLACK_SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "groups:history", "groups:read", "groups:write", "im:history", "im:read", "reactions:read", "reactions:write", "users:read"]
-
 def get_slack_app_name() -> str:
     return os.getenv("ESPRESSO_APP_NAME")
 
