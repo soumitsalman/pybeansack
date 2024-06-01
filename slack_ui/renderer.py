@@ -1,26 +1,13 @@
 from datetime import datetime
 from itertools import chain
 import queue
-from shared import userops, config, beanops, messages
+from shared import userops, config, beanops, messages, llm, fields
 from icecream import ic
 import pandas as pd
 import logging
-from retry import retry
+from datetime import datetime as dt
 
 
-_FIRE_MIN = 200
-_SLACK = "SLACK"
-_ARTICLE="article"
-_POST="post"
-_CHANNEL="channel"
-_DEFAULT_WINDOW = 2
-
-NO_INTERESTS_MESSAGE = "Is there anything under god's green earth that interests you? If so do some clickittyclick and tell us what floats your boat."
-NO_MORE_CONTENT = "Thass'it ... Se acabo! Go get some :coffee:"
-NOTHING_TRENDING = "Nothing trending today."
-NOTHING_FOUND = "Couldn't find anything :white_frowning_face:"
-INVALID_INPUT = "Yeah ... I don't know that is."
-SHRUG = ":shrug:"
 UPDATE_INTEREST_VIEW={
     "type": "modal",
     "callback_id": "new_interest_input",
@@ -46,7 +33,6 @@ DIVIDER = [{
 }]
 
 logging.basicConfig(format="[%(asctime)s]: %(levelname)s - %(message)s",  datefmt='%d/%b/%Y %H:%M:%S')
-
 
 _MAX_DISPLAY_BATCH_SIZE = 3
 
@@ -105,7 +91,7 @@ class ChannelManager:
         elif is_text(page):
             client.chat_postMessage(channel=channel_id, text=page)                        
         else:
-            client.chat_postMessage(channel=channel_id, text=NO_MORE_CONTENT)
+            client.chat_postMessage(channel=channel_id, text=messages.NO_MORE_CONTENT)
 
     def publish(self, blocks, client = None,  channel_id: str = None, channel_type: str = None, user_id: str = None):
         self._queue_blocks(blocks = blocks, client = client, channel_id=channel_id, channel_type=channel_type, user_id=user_id)
@@ -113,74 +99,93 @@ class ChannelManager:
 
 
 def get_user_home(username):
-    pref_texts = userops.get_preference_texts(_SLACK, username)
+    pref_texts = userops.get_preference_texts(config.SLACK, username)
     interests = _create_interests_blocks(username, pref_texts)
     user_nuggets = None
     if pref_texts:
-        trending_for_user = beanops.trending_nuggets(userops.get_preference_embeddings(_SLACK, username), _DEFAULT_WINDOW, 5)
-        user_nuggets = _create_nugget_blocks(username, trending_for_user, _DEFAULT_WINDOW, True, True) if trending_for_user else _create_text_block(NOTHING_TRENDING)
+        trending_for_user = beanops.trending_nuggets(userops.get_preference_embeddings(source=config.SLACK, username=username), config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
+        user_nuggets = _create_nugget_blocks(username, trending_for_user, config.DEFAULT_WINDOW, True, True) if trending_for_user else _create_text_blocks(messages.NOTHING_TRENDING)
 
-    trending_globally = beanops.trending_nuggets(None, _DEFAULT_WINDOW, 10)
-    global_nuggets = _create_nugget_blocks(username, trending_globally, _DEFAULT_WINDOW, True, False) if trending_globally else _create_text_block(NOTHING_TRENDING)
+    trending_globally = beanops.trending_nuggets(None, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
+    global_nuggets = _create_nugget_blocks(username, trending_globally, config.DEFAULT_WINDOW, True, False) if trending_globally else _create_text_blocks(messages.NOTHING_TRENDING)
     
     return _create_home_blocks(username, interests, user_nuggets, global_nuggets)
 
 def get_trending_items(username: str, params: list[str]):
     # get the user preference and show the type of items the user wants
-    prefs = userops.get_preference_embeddings(source=_SLACK, username=username)
+    prefs = userops.get_preference_embeddings(source=config.SLACK, username=username)
     params = [p.strip().lower() for p in params if p.strip()]
     
     if (len(params) == 0) or ("nuggets" in params):
         # show everything that is trending regardless of interest/preference
         items = _create_nugget_blocks(username, 
-            beanops.trending_nuggets(categories=prefs, window=_DEFAULT_WINDOW, limit=10), 
-            window=_DEFAULT_WINDOW, for_home_page=False, preference_included=True)
+            beanops.trending_nuggets(categories=prefs, window=config.DEFAULT_WINDOW, limit=10), 
+            window=config.DEFAULT_WINDOW, for_home_page=False, preference_included=True)
         # items = _get_nuggets_blocks(user_id=username, categories=prefs, window=_DEFAULT_WINDOW, limit=10, for_home_page=False, preference_included=True)
     elif "news" in params:
         items = _create_bean_blocks(username, 
-            beanops.trending_beans(categories=prefs, kinds=[_ARTICLE], window=_DEFAULT_WINDOW, limit=5))
+            beanops.trending_beans(categories=prefs, kinds=[config.ARTICLE], window=config.DEFAULT_WINDOW, limit=config.DEFAULT_LIMIT))
     elif "posts" in params:
         items = _create_bean_blocks(username, 
-            beanops.trending_beans(categories=prefs, kinds=[_POST], window=_DEFAULT_WINDOW, limit=5))
+            beanops.trending_beans(categories=prefs, kinds=[config.POST], window=config.DEFAULT_WINDOW, limit=config.DEFAULT_LIMIT))
     else:
-        items = INVALID_INPUT
+        items = messages.INVALID_INPUT
 
-    return items or NOTHING_TRENDING
+    return items or messages.NOTHING_TRENDING
 
 def get_beans_by_category(username, category):
-    embs = userops.get_embeddings_for_preference(_SLACK, username, category)
+    embs = [item["embeddings"] for item in userops.get_selected_preferences(source = config.SLACK, username=username, pref=category)]
     # if there is no embedding for this query with the text
-    beans = beanops.trending_beans(categories=(embs or category), window=_DEFAULT_WINDOW, limit=10)
+    beans = beanops.trending_beans(categories=(embs or category), window=config.DEFAULT_WINDOW, limit=10)
     if not beans:
-        return NOTHING_TRENDING
-    return [_create_text_block(f":label: *{category}*:")] + _create_bean_blocks(username, beans)
+        return messages.NOTHING_TRENDING
+    return [_create_text_blocks(f":label: *{category}*:")] + _create_bean_blocks(username, beans)
 
 def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_preference: bool, window: int):
-    user_prefs = userops.get_preference_embeddings(_SLACK, username) if show_by_preference else None
+    user_prefs = userops.get_preference_embeddings(source=config.SLACK, username=username) if show_by_preference else None
     beans = beanops.search_beans(nugget=keyphrase, categories=user_prefs, window=window, limit=10)    
     if not beans:
         # this should NOT return nothing, since it is already showing in the trending list
         logging.warning("get_beans(%s, %s, %d) came empty. Thats not supposed to happen", username, keyphrase, window)
-        return NOTHING_FOUND
+        return messages.NOTHING_FOUND
     # always show the nuggets description as initial entry
-    return [_create_text_block(f":rolled_up_newspaper: *{keyphrase}*: {description}")] + _create_bean_blocks(username, beans)
+    return [_create_text_blocks(f":rolled_up_newspaper: *{keyphrase}*: {description}")] + _create_bean_blocks(username, beans)
 
 def get_beans_by_search(username, search_text: str):
     # this should search across the board without window
     beans = beanops.search_beans(search_text=search_text, limit=10)
-    return _create_bean_blocks(username, beans) if beans else NOTHING_FOUND
+    return _create_bean_blocks(username, beans) if beans else messages.NOTHING_FOUND
 
-def _create_text_block(text, accessory=None):
-    body = {
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": text,                
+def get_digests(username, search_text: str):
+    # this should search across the board without window
+    result = llm._create_digest(search_text, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)  
+    return [_create_digest_blocks(nug, res, beans) for nug, res, beans in result] if result else messages.NOTHING_FOUND
+
+def _create_digest_blocks(nugget, summary, beans): 
+    # sources = {bean['source']: f"<{bean['url']}|{bean['source']}>" for bean in beans}
+    return _create_text_blocks([
+        f":rolled_up_newspaper: *{nugget[config.KEYPHRASE]}: {nugget[config.DESCRIPTION]}*", 
+        summary,
+        "*:link: * "+", ".join({bean['source']: f"<{bean['url']}|{bean['source']}>" for bean in beans}.values())
+    ])
+
+def _create_text_blocks(texts: str|list[str], accessory=None):
+    if isinstance(texts, str):
+        texts = [texts]
+    
+    result = []
+    for t in texts:
+        body = {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": t,                
+            }
         }
-    }
-    if accessory:
-        body["accessory"] = accessory
-    return [body]
+        if accessory:
+            body["accessory"] = accessory
+        result.append(body)
+    return result
 
 def _create_nugget_blocks(username, nuggets, window, for_home_page, preference_included): 
     if not nuggets:
@@ -192,7 +197,7 @@ def _create_nugget_blocks(username, nuggets, window, for_home_page, preference_i
         "type": "button",
         "text": {
             "type": "plain_text",
-            "text": (":fire: " if data.get("match_count") >= _FIRE_MIN else "") + data.get('keyphrase'),
+            "text": (":fire: " if data.get("match_count") >= config.FIRE_MIN else "") + data.get('keyphrase'),
             "emoji": True
         },
         "value": value(data),
@@ -439,8 +444,8 @@ def _create_interests_blocks(user_id, interests):
             }
         ]
     else:
-        return _create_text_block(NO_INTERESTS_MESSAGE, update_button)
+        return _create_text_blocks(messages.NO_INTERESTS_MESSAGE, update_button)
 
 def update_user_preferences(user_id: str, interests: list[str]):
-    userops.update_preferences(_SLACK, user_id, interests)    
+    userops.update_preferences(source=config.SLACK, username=user_id, items=interests)    
  

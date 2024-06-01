@@ -1,0 +1,79 @@
+display_information:
+  name: EspressoTEST
+  description: Expresso by Cafecit.io is an LLM powered news app
+  background_color: "#5c2600"
+  long_description: "Espresso by Cafecit.io is an LLM powered news app. Its aim is to bring to you the trending contents across media for that day and week. Espresso primarily focuses on technology news and their intersection with business and politics. \r
+
+    Espresso scrapes through different news sources and social media to collect the content and uses a suite of various small language models to create a digest of the contents for you.\r
+
+    Espresso is current in pre-alpha experimental phase and completely free to use. Privacy and Security is still a work in progress. We are currently in active development to add capabilities and fine-tuning your experience for efficient daily news consumption.\r
+
+    Give it a try and follow our journey that literally started with optimizing our drive to an amaze-balls Cuban coffee shop in Miami.\r
+
+    \r
+
+    -- \r
+
+    Soumit & Danny (AKA Manolo y Cabeza de Huevo)\r
+
+    Co-founders and Chaos Monkeys of Project Cafecito"
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Espresso TEST
+    always_online: true
+  slash_commands:
+    - command: /trending
+      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
+      description: Shows what is trending across news and media sources. Options - news, posts or topics
+      usage_hint: "[news] [posts] [nuggets]"
+      should_escape: false
+    - command: /more
+      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
+      description: Shows the next page for paginated list of news and posts
+      should_escape: false
+    - command: /lookfor
+      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
+      description: Vector search on the news repo
+      usage_hint: recent news on us politics
+      should_escape: false
+    - command: /digest
+      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
+      description: creates summary on a topic of your interest
+      usage_hint: recent security incidents and breaches
+      should_escape: false
+oauth_config:
+  redirect_urls:
+    - https://workable-feline-deeply.ngrok-free.app/slack/oauth_redirect
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:read
+      - chat:write
+      - commands
+      - groups:history
+      - groups:read
+      - groups:write
+      - im:history
+      - im:read
+      - mpim:history
+settings:
+  event_subscriptions:
+    request_url: https://workable-feline-deeply.ngrok-free.app/slack/events
+    bot_events:
+      - app_home_opened
+      - app_mention
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+  interactivity:
+    is_enabled: true
+    request_url: https://workable-feline-deeply.ngrok-free.app/slack/actions
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

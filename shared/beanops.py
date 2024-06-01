@@ -2,17 +2,23 @@ import requests
 from retry import retry
 from . import config
 
+_RETRIEVE_BEANS = "/beans"
 _SEARCH_BEANS = "/beans/search"
 _TRENDING_BEANS = "/beans/trending"
 _TRENDING_NUGGETS = "/nuggets/trending"
 
-def trending_beans(nugget = None, categories = None, search_text: str = None, kinds:list[str] = None, window: int = None, limit: int = None):
-    return retry_coffemaker(_TRENDING_BEANS, 
+def retrieve_beans(urls: list, kinds: list[str] = None, window:int = None, limit:int = None):
+    return retry_coffemaker(_RETRIEVE_BEANS, 
                             _make_params(window=window, limit=limit, kinds=kinds), 
-                            _make_body(nugget=nugget, categories=categories, search_text=search_text))
+                            _make_body(urls = urls))
 
 def search_beans(nugget: str = None, categories = None, search_text: str = None, kinds:list[str] = None, window: int = None, limit: int = None):
     return retry_coffemaker(_SEARCH_BEANS, 
+                            _make_params(window=window, limit=limit, kinds=kinds), 
+                            _make_body(nugget=nugget, categories=categories, search_text=search_text))
+
+def trending_beans(nugget = None, categories = None, search_text: str = None, kinds:list[str] = None, window: int = None, limit: int = None):
+    return retry_coffemaker(_TRENDING_BEANS, 
                             _make_params(window=window, limit=limit, kinds=kinds), 
                             _make_body(nugget=nugget, categories=categories, search_text=search_text))
 
@@ -20,6 +26,16 @@ def trending_nuggets(categories, window, limit):
     return retry_coffemaker(_TRENDING_NUGGETS, 
                             _make_params(window=window, limit=limit), 
                             _make_body(categories=categories))
+
+# this is same as trending_beans but it returns result bucketed per topic
+# topics has to be an list of dict where each element should be { "text": str, "embeddings": list[float] }
+def trending_beans_by_topics(topics: list, kinds, window, limit):
+    return { topic["text"]: trending_beans(categories=topic["embeddings"], kinds=kinds, window=window, limit=limit) for topic in topics }
+
+# this is same as trending_nuggets but it returns result bucketed per topic
+# topics has to be an list of dict where each element should be { "text": str, "embeddings": list[float] }
+def trending_nuggets_by_topics(topics: list, window, limit):
+    return { topic["text"]: trending_nuggets(topic["embeddings"], window, limit) for topic in topics }
 
 def _make_params(window = None, limit = None, kinds = None, source=None):
     params = {}
@@ -33,7 +49,7 @@ def _make_params(window = None, limit = None, kinds = None, source=None):
         params["source"]=source
     return params if len(params)>0 else None
 
-def _make_body(nugget = None, categories = None, search_text = None):
+def _make_body(nugget = None, categories = None, search_text = None, urls = None):
     body = {}
     if nugget:        
         body["nuggets"] = [nugget]
@@ -54,6 +70,9 @@ def _make_body(nugget = None, categories = None, search_text = None):
     
     if search_text:
         body["context"] = search_text
+
+    if urls:
+        body["urls"] = urls
     
     return body if len(body) > 0 else None
     

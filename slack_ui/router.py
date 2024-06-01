@@ -1,6 +1,6 @@
 import re
 from . import renderer, slack_stores
-from shared import config
+from shared import config, messages
 from icecream import ic
 from slack_bolt import App
 from slack_bolt.oauth.oauth_settings import OAuthSettings
@@ -23,14 +23,6 @@ slack_router = App(
     oauth_settings=oauth_settings
 )
 
-# @app.message()
-# def receive_message(message, say, client): 
-#     receiver.new_message(
-#         message_or_event = message,         
-#         say = say, 
-#         client = client
-#     )
-
 # @app.event("app_mention")
 # def receive_mention(event, say, client):
 #     receiver.new_message(
@@ -47,6 +39,11 @@ channel_mgr = renderer.ChannelManager()
 def update_home_tab(event, client):
     if event['tab'] == "home":        
         _refresh_home_tab(event['user'], client)
+
+@slack_router.message()
+def receive_message(message, say, client): 
+    ic(message)
+    say("I do nothing")
 
 @slack_router.command("/trending")
 def receive_trending(ack, command, client, say):
@@ -69,13 +66,25 @@ def receive_more(ack, command, client, say):
     
 @slack_router.command("/lookfor")
 def receive_lookfor(ack, command, client, say):
-    ack()        
+    ack()    
+    say(messages.PROCESSING) 
     channel_mgr.publish(
         client = client, 
         channel_id = command['channel_id'],
         channel_type=command['channel_name'], 
         user_id=command['user_id'],
         blocks = renderer.get_beans_by_search(username=command['user_id'], search_text=command['text']))
+
+@slack_router.command("/digest")
+def receive_trending(ack, command, client, say):
+    ack()   
+    say(messages.PROCESSING) 
+    channel_mgr.publish(
+        client = client, 
+        channel_id = command['channel_id'],
+        channel_type=command['channel_name'], 
+        user_id=command['user_id'],
+        blocks = renderer.get_digests(username=command['user_id'], search_text=command['text']))
 
 @slack_router.action(re.compile("^nugget//*"))
 def receive_nugget_search(ack, action, client):

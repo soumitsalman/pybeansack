@@ -8,6 +8,7 @@ import pymongo
 _DB = "users"
 _IDS = "ids"
 _PREFERENCES = "preferences"
+EDITOR_USER = "__EDITOR__"
 
 def create_mongo_client(conn_str: str, db_name: str, coll_name:str):
     client = pymongo.MongoClient(conn_str)
@@ -15,9 +16,9 @@ def create_mongo_client(conn_str: str, db_name: str, coll_name:str):
     return db[coll_name]
 
 _ids = create_mongo_client(config.get_db_connection_string(), _DB, _IDS)
-_preferences = create_mongo_client(config.get_db_connection_string(), _DB, _PREFERENCES)
+preferences = create_mongo_client(config.get_db_connection_string(), _DB, _PREFERENCES)
 
-def get_userid(source: str, username: str, create_if_not_found: bool = False):    
+def get_userid(username: str, source: str, create_if_not_found: bool = False):    
     item = _ids.find_one(
         {
             "connected_ids": {
@@ -37,10 +38,22 @@ def get_userid(source: str, username: str, create_if_not_found: bool = False):
             }
         ).inserted_id
     
-def get_preference_texts(source: str, username: str):
-    userid = get_userid(source, username)
-    if userid:
-        result = _preferences.find_one(
+def update_userid(userid: str, username: str, source: str):
+    if userid != EDITOR_USER:
+        _ids.update_one(
+            {"_id": userid}, 
+            { 
+                "$push": {
+                    "connected_ids": {"source": source, "userid": username}
+                }
+            }
+        )
+    
+# returns the user preference text labels if something exists
+# input params are None, then it will return the global/master/editor accounts preferences
+def get_preference_texts(username: str=EDITOR_USER, source: str=None):    
+    if userid := (get_userid(source = source, username=username) if source else username):
+        result = preferences.find_one(
             { "_id": userid },            
             {                
                 "texts": { 
@@ -54,10 +67,9 @@ def get_preference_texts(source: str, username: str):
         )
         return result["texts"] if result else None
 
-def get_preference_embeddings(source: str, username: str):
-    userid = get_userid(source, username)
-    if userid:
-        result = _preferences.find_one(
+def get_preference_embeddings(username: str = EDITOR_USER, source: str = None):
+    if userid := (get_userid(source = source, username=username) if source else username):
+        result = preferences.find_one(
             { "_id": userid },            
             {                
                 "embeddings": { 
@@ -70,40 +82,70 @@ def get_preference_embeddings(source: str, username: str):
             }
         )
         return result["embeddings"] if result else None
+    
+def get_all_preferences(username: str = EDITOR_USER, source: str = None):
+    if userid := (get_userid(source = source, username=username) if source else username):
+        result = list(preferences.aggregate(
+            [
+                {
+                    "$match": {"_id": userid}
+                },
+                {
+                    "$unwind": "$preference"
+                },
+                {
+                     "$project": {
+                        "_id": 0,
+                        "text": "$preference.text",
+                        "embeddings": "$preference.embeddings"
+                    }
+                }
+            ]
+        ))
+        return result
 
-def get_embeddings_for_preference(source: str, username: str, preference: str):
-    userid = get_userid(source, username)
-    if userid:
-        result = _preferences.find_one(
-            {         
-                "_id": userid,
-                "preference.text": preference
-            },
-            { "preference.$": 1 }
-        )   
-        if result:
-            return result["preference"][0].get("embeddings")  
+def get_selected_preferences(pref: str|list, username: str = EDITOR_USER, source: str = None):
+    if userid := (get_userid(source = source, username=username) if source else username):
+        texts = [pref] if isinstance(pref, str) else pref # make it an array
+        result = list(preferences.aggregate(
+            [
+                {
+                    "$match": {"_id": userid}
+                },
+                {
+                    "$unwind": "$preference"
+                },
+                {
+                    "$match": {
+                        "preference.text": { "$in": texts }
+                    }
+                },
+                {
+                     "$project": {
+                        "_id": 0,
+                        "text": "$preference.text",
+                        "embeddings": "$preference.embeddings"
+                    }
+                }
+            ]
+        ))
+        return result # [emb["embeddings"] for emb in result]   
 
-def update_userid(userid: str, source: str, username: str):
-    _ids.update_one(
-        {"_id": userid}, 
-        { 
-            "$push": {
-                "connected_ids": {"source": source, "userid": username}
-            }
-        }
-    )
+def update_preferences(items: list|dict, username: str = EDITOR_USER, source: str = None):
+    if userid := (get_userid(source = source, username=username, create_if_not_found=True) if source else username):
+        if isinstance(items, list):
+            labels = items
+            embeddings = retry_embeddings([f"classification: {item}" for item in items])
+        else:    
+            labels = list(items.keys())
+            embeddings = retry_embeddings([f"classification: {item}" for item in items.values()])
 
-def update_preferences(source: str, username: str, texts: list[str]):
-    userid = get_userid(source, username, True)
-    if userid:
-        embeddings = retry_embeddings(["classification: "+t for t in texts])
         if embeddings:
-            prefs = [{"text": t.title(), "embeddings": e} for t, e in zip(texts, embeddings)]           
+            prefs = [{"text": t.title(), "embeddings": e} for t, e in zip(labels, embeddings)]           
         else:
-            logging.warning("[userops] generated embeddings are NOT supposed to be none.")        
-            prefs = [{'text': t.title()} for t in texts]
-        _preferences.update_one({"_id": userid}, {"$set": {"preference": prefs}}, upsert=True)
+            logging.warning("[userops] failed generating user preference embeddings.")        
+            prefs = [{'text': t.title()} for t in labels]
+        preferences.update_one({"_id": userid}, {"$set": {"preference": prefs}}, upsert=True)
 
 @retry(Exception, tries=5, delay=5)
 def _retry_internal(texts):
