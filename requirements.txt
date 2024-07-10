@@ -11,3 +11,6 @@ streamlit
 langchain
 langchain-groq
 langchain-community
+nicegui
+fastapi
+
