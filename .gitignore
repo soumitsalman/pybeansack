@@ -4,3 +4,4 @@
 /.deployment
 *__pycache__
 /data
+models/

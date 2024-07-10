@@ -1,8 +1,8 @@
 import json
 import os
-from beanops.datamodels import *
+from pybeansack.datamodels import *
 from web_ui.custom_ui import *
-from .interactives import tools, prompt_parser
+from interactives import tools, prompt_parser
 from nicegui import ui, app
 from icecream import ic
 from datetime import datetime as dt
@@ -240,7 +240,7 @@ def home():
 
     with ui.header().classes(replace="row items-center"):
         with ui.avatar():
-            ui.image("espresso/images/cafecito.png")
+            ui.image("images/cafecito.png")
         with ui.tabs() as page_tabs:
             trending_news_tab = ui.tab("Trending News", icon="trending_up")
             console_tab = ui.tab("Console", icon="terminal")
@@ -260,4 +260,4 @@ def home():
 
 def run_web(db_conn, embedder, llm):
     tools.initiatize_tools(db_conn, embedder, llm)
-    ui.run(title=APP_NAME, favicon="espresso/images/cafecito-ico.png", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'))
+    ui.run(title=APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'))

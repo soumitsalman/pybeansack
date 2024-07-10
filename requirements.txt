@@ -1,13 +1,10 @@
 icecream
-requests
 slack-bolt
-flask
 pymongo
 azure-data-tables
 pandas
 retry
 pydantic
-streamlit
 langchain
 langchain-groq
 langchain-community
