@@ -3,20 +3,25 @@ import requests
 from retry import retry
 from . import config
 from icecream import ic
-import pymongo
+from pymongo import MongoClient
+from pymongo.collection import Collection
 
-_DB = "users"
-_IDS = "ids"
-_PREFERENCES = "preferences"
+DB = "users"
+COLLECTION = "userdata"
+userdata: Collection = None
+embedder = None
+
 EDITOR_USER = "__EDITOR__"
 
-def create_mongo_client(conn_str: str, db_name: str, coll_name:str):
-    client = pymongo.MongoClient(conn_str)
-    db = client[db_name]
-    return db[coll_name]
 
-_ids = create_mongo_client(config.get_db_connection_string(), _DB, _IDS)
-preferences = create_mongo_client(config.get_db_connection_string(), _DB, _PREFERENCES)
+def initialize(conn_str: str, emb):
+    client = MongoClient(conn_str)
+    global userdata, embedder
+    userdata = client[DB][COLLECTION]
+    embedder = emb
+
+def get_preferences(userid):
+    return ["Cybersecurity", "Generative AI", "Robotics", "Space and Rockets", "Politics", "Yo Momma"]
 
 def get_userid(username: str, source: str, create_if_not_found: bool = False):    
     item = _ids.find_one(

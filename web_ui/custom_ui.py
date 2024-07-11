@@ -4,7 +4,6 @@ from nicegui.binding import BindableProperty, bind_from
 from typing import cast
 from datetime import datetime as dt
 from itertools import groupby
-from icecream import ic
 
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 
@@ -42,7 +41,6 @@ class BindableTimeline(ui.timeline):
                         subtitle=(date_to_str(date) if isinstance(date, (int, float)) else date)):
                         for item in group:
                             self.render_item(item)
-        self.update()
 
     def bind_items_from(self, target_object, target_name: str = 'items', backward = lambda x: x) -> Self:
         bind_from(self, "items", target_object, target_name, backward)
@@ -63,7 +61,6 @@ class BindableList(ui.list):
             for item in (value or []):                    
                 with ui.item():
                     self.render_item(item)
-        self.update()
 
     def bind_items_from(self, target_object, target_name: str = 'items', backward = lambda x: x) -> Self:
         bind_from(self, "items", target_object, target_name, backward)
@@ -104,7 +101,6 @@ class HighlightableItem(ui.item):
         self._render()
    
     def _render(self):  
-        # self.clear() 
         self.style(add=self.highlight_style) if self.highlight else self.style(remove=self.highlight_style)  
 
     def bind_highlight_from(self, target_object, target_name: str = 'highlight', backward = lambda x: x) -> Self:

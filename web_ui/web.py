@@ -1,14 +1,14 @@
-import json
-import os
+import time
+from shared.config import *
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
-from interactives import tools, prompt_parser
-from nicegui import ui, app
+from shared import prompt_parser, userops, beanops
+from nicegui import ui, run
 from icecream import ic
 from datetime import datetime as dt
-
-
-APP_NAME="Espresso by Cafecit.io"
+from shared.messages import *
+from shared.beanops import *
+import asyncio
 
 EDITORIAL_PAGE = "Editorial"
 TRENDING_PAGE = "Trending"
@@ -22,25 +22,9 @@ ENGAGEMENTS_HEADER = "Your Social Media Stats"
 CONSOLE_HEADER = "Espresso Console"
 CHAT_HEADER = "(Beta) Chat with Espresso"
 
-NO_ACTION = "I don't really do much. I just sit here and look pretty."
-NOTHING_FOUND = "Couldn't find anything"
-NOTHING_TRENDING = "Nothing Trending."
 
-DEFAULT_LIMIT=10
-DEFAULT_LAST_NDAYS=15
-
-# session_settings: settings.Settings = None
-
-latest = lambda item: -item.updated
 nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
 counter_markdown = lambda counter: counter if counter < 100 else str(99)+'+'
-
-
-def get_editor_categories():
-    return ["Cybersecurity", "Generative AI", "Robotics", "Space and Rockets", "Politics", "Yo Momma"]
-
-def get_user_categories(user_id):
-    return ["Space and Rocket Launch", "Generative AI", "Tesla & Cybertruck", "Miami Events"]
 
 F_NAME = "header"
 F_NUGGETS = "nuggets"
@@ -83,11 +67,9 @@ def render_nugget_as_card(nugget: Nugget):
         return card
 
 def render_nuggets(category: dict, settings: dict):
-    def on_select_nugget(nugget):
+    async def on_select_nugget(nugget):
         category[F_SELECTED] = nugget
-        category[F_BEANS] = sorted(
-            tools.get_beans_for_nugget(nugget['data'].id, settings['content_types'], settings['last_ndays'], settings['topn']), 
-            key = latest)
+        category[F_BEANS] = get_beans_for_nugget(nugget['data'].id, settings['content_types'], settings['last_ndays'], settings['topn'])
         # clear the other nuggets
         for nug in category.get(F_NUGGETS) or []:
             nug[F_SELECTED] = (nug == nugget)
@@ -97,41 +79,53 @@ def render_nuggets(category: dict, settings: dict):
             ui.markdown(nugget_markdown(nugget['data']))
         return item
 
-    return BindableTimeline(date_field=lambda nug: nug['data'].updated, header_field=lambda nug: nug['data'].keyphrase, item_render_func=render_nugget_as_timeline_item).props("side=right").bind_items_from(category, "nuggets")
+    return BindableList(render_nugget_as_timeline_item).bind_items_from(category, 'nuggets')
+    # return BindableTimeline(date_field=lambda nug: nug['data'].updated, header_field=lambda nug: nug['data'].keyphrase, item_render_func=render_nugget_as_timeline_item).props("side=right").bind_items_from(category, "nuggets")
 
 def render_beans(category: dict):    
     return BindableList(render_bean_as_card).bind_items_from(category, F_BEANS)
 
-def category_tab(category: dict, settings: dict):
-    with ui.tab(category[F_NAME], label=category[F_NAME]) as tab:                
-        if "nuggets" not in category:
-            nuggets = sorted(tools.highlights(category["header"], settings['last_ndays'], settings['topn']), key = latest)         
-            category[F_NUGGETS] = [{'data': item} for item in nuggets]
-        n_count = len(category.get(F_NUGGETS))       
-        if n_count:
-            ui.badge(str(n_count)).props("floating transparent")
+def initialize_category_tab(category: dict):
+    with ui.tab(category[F_NAME], label=category[F_NAME]) as tab:   
+        ui.badge() \
+            .bind_text_from(category, F_NUGGETS, lambda x: str(len(x or []))) \
+            .bind_visibility_from(category, F_NUGGETS) \
+            .props("floating transparent")
     return tab
 
-def category_panel(category: dict, settings: dict):
+def initialize_category_panel(category: dict, settings: dict):
     with ui.tab_panel(category[F_NAME]) as panel:
-        with ui.row().style('display: noflex; flex-wrap: nowrap;'):
+        with ui.row().style('display: noflex; flex-wrap: nowrap;'):                    
             render_nuggets(category, settings).classes("w-full").style('flex: 1;')           
             render_beans(category).classes("w-full").style('flex: 1;')
     return panel
 
-@ui.page("/trending")
-def trending_page(viewmodel: dict, settings: dict):
-    if not viewmodel.get("categories"):
-        viewmodel["categories"] = {cat: {F_NAME:cat} for cat in settings.get("topics", [])+get_editor_categories()}.values()
+async def load_nuggets_for_trending_panel(viewmodel, settings):
+    for category in viewmodel["categories"]:
+        nuggets = highlights(category["header"], settings['last_ndays'], settings['topn'])     
+        category[F_NUGGETS] = [{'data': item} for item in nuggets]
+    time.sleep(60)
 
-    with ui.tabs().bind_value(viewmodel, "selected") as tabs:    
+
+
+async def initialize_trending_page(viewmodel: dict, settings: dict): 
+    initialize_category = lambda cat: {F_NAME:cat, F_NUGGETS: None, F_BEANS: None, F_SELECTED: None}
+    viewmodel["categories"] = {cat: initialize_category(cat) for cat in userops.get_preferences(viewmodel.get('userid'))}.values()
+
+    async def load_nuggets_for_category():
+        ic(viewmodel[F_SELECTED])
+        nuggets = highlights(ic(viewmodel[F_SELECTED]), settings['last_ndays'], settings['topn']) 
+        ## problem here VV    
+        viewmodel['categories'][viewmodel[F_SELECTED]][F_NUGGETS] = [{'data': item} for item in nuggets]
+
+    with ui.tabs(on_change=load_nuggets_for_category).bind_value(viewmodel, F_SELECTED) as tabs:    
         for category in viewmodel["categories"]:
-            category_tab(category, settings)
+            initialize_category_tab(category)
 
     with ui.tab_panels(tabs):
         for category in viewmodel["categories"]:
-            category_panel(category, settings)
-        
+            initialize_category_panel(category, settings)
+     
 
 EXAMPLE_OPTIONS = ["trending -t posts -q \"cyber security breches\"", "lookfor -q \"GPU vs LPU\"", "settings -d 7 -n 20"]   
 PLACEHOLDER = "Tell me lies, sweet little lies"
@@ -148,35 +142,31 @@ def settings_markdown(settings: dict):
     return "Topics of Interest: %s\n\nDefault Content Types: %s\n\nPulling top **%d** items from last **%d** days." % \
         (", ".join([f"**{topic}**" for topic in settings['topics']]), ", ".join([f"**{ctype}**" for ctype in settings['content_types']]), settings['topn'], settings['last_ndays'])      
 
-ui.page("/console")
-def console_page(viewmodel, settings: dict):
+def initialize_console_page(viewmodel, settings: dict):
     parser = prompt_parser.InteractiveInputParser(settings)
 
     viewmodel['processing'] = False
     viewmodel['text_response'] = None
     viewmodel['list_response'] = None
    
-    def process_prompt():
+    async def process_prompt():
         if viewmodel['prompt']:  
             viewmodel['text_response'] = None
             viewmodel['list_response'] = None
 
-            task, query, ctype, ndays, topn = parser.parse(viewmodel['prompt'])
+            task, query, ctype, ndays, topn = ic(parser.parse(viewmodel['prompt']))
             if task == "trending":
-                viewmodel['list_response'] = tools.trending(query, ctype, ndays, topn) if ctype != "highlights" else tools.highlights(query, ndays, topn)
+                viewmodel['list_response'] = trending(query, ctype, ndays, topn) if ctype != "highlights" else highlights(query, ndays, topn)
                 viewmodel['response_banner'] = f"{len(viewmodel['list_response'])} results found" if viewmodel['list_response'] else NOTHING_FOUND         
             elif task in ["lookfor", "search"]:
-                viewmodel['list_response'] = tools.search(query, ctype, ndays, topn)
+                viewmodel['list_response'] = search(query, ctype, ndays, topn)
                 viewmodel['response_banner'] = f"{len(viewmodel['list_response'])} results found" if viewmodel['list_response'] else NOTHING_FOUND
-            elif task == "write":
-                viewmodel['text_response'] = tools.write(query, ctype, ndays, topn)
-                viewmodel['response_banner'] = f"{ctype} on {query}" if viewmodel['text_response'] else NOTHING_FOUND
             elif task == "settings":
                 settings = parser.update_defaults(query, ctype, ndays, topn)
                 viewmodel['text_response'] = settings_markdown(settings)
                 viewmodel['response_banner'] = "Updated settings"
             else:
-                beans, nuggets = tools.search_all(viewmodel['prompt'], ndays, topn)
+                beans, nuggets = search_all(viewmodel['prompt'], ndays, topn)
                 viewmodel['list_response'] = beans + nuggets
                 viewmodel['response_banner'] = f"{len(viewmodel['list_response'])} results found" if viewmodel['list_response'] else NOTHING_FOUND
         
@@ -189,7 +179,12 @@ def console_page(viewmodel, settings: dict):
     ui.markdown().bind_content_from(viewmodel, "text_response", lambda x: x or "").bind_visibility_from(viewmodel, "text_response")
     
 
-def settings_panel(viewmodel):    
+async def initialize_settings_panel(viewmodel):   
+    if "sources" not in viewmodel['search']:
+        viewmodel['search']['sources'] = beanops.get_sources()
+    if "content_types" not in viewmodel['search']:
+        viewmodel['search']['content_types'] = [ARTICLE, POST, COMMENT] 
+
     with ui.list():
         ui.item_label('Search Settings').classes("text-subtitle1")
         with ui.item():
@@ -213,22 +208,7 @@ def settings_panel(viewmodel):
         ui.switch(text="Reddit")
         ui.switch(text="LinkedIn")
 
-@ui.page("/")
-def home():
-    default_settings = {
-        "search": {
-            "topics": get_user_categories(None),
-            "last_ndays": DEFAULT_LAST_NDAYS, 
-            "topn": DEFAULT_LIMIT, 
-            "content_types": [ARTICLE, POST, COMMENT], 
-            "sources": tools.get_sources()
-        }
-    }
-    app.storage.user['settings'] = user_settings = app.storage.user.get('settings', default_settings)
-
-    # global session_settings
-    # session_settings = settings.Settings(topics=["Space and Rocket Launch", "Generative AI", "Tesla & Cybertruck", "Miami Events"], last_ndays=7, limit=5)
-
+async def load_home(user_settings):
     ui.add_css(content="""
         @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
             
@@ -238,26 +218,25 @@ def home():
         }
     """)
 
+    #header
     with ui.header().classes(replace="row items-center"):
         with ui.avatar():
             ui.image("images/cafecito.png")
         with ui.tabs() as page_tabs:
-            trending_news_tab = ui.tab("Trending News", icon="trending_up")
-            console_tab = ui.tab("Console", icon="terminal")
+            trending_news_tab = ui.tab(TRENDING_PAGE, icon="trending_up")
+            console_tab = ui.tab(CONSOLE_PAGE, icon="terminal")
         ui.space()
         ui.label(APP_NAME).classes("text-h6")
         ui.space()
-        ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
+        # ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
 
+    #pages
     with ui.tab_panels(page_tabs, value = trending_news_tab).classes("w-full"):
         with ui.tab_panel(trending_news_tab):
-            trending_page({"selected": None, "categories": None}, user_settings['search'])
+            await initialize_trending_page({"selected": None, "categories": None}, user_settings['search'])
         with ui.tab_panel(console_tab):
-            console_page({"prompt": None}, user_settings['search'])
+            initialize_console_page({"prompt": None}, user_settings['search'])
 
-    with ui.right_drawer(elevated=True, value=False) as settings_drawer:
-        settings_panel(user_settings)
-
-def run_web(db_conn, embedder, llm):
-    tools.initiatize_tools(db_conn, embedder, llm)
-    ui.run(title=APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'))
+    # # settings
+    # with ui.right_drawer(elevated=True, value=False) as settings_drawer:
+    #     initialize_settings_panel(user_settings)

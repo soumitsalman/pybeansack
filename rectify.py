@@ -12,10 +12,10 @@ from shared import userops
 
 
 EDITORS_CHOICE = {
-    "Business": "IPO, Federal Trade Commission, Tech Company, Fiscal Reports, Stock Market, Company CEO, CTO, CXO related contents",
-    "Crypto Currency": "Crypto Currency, Crypto Finance, Crypto Currency Technology and Tools, Ethereum, Bitcoin, Dogecoin, Solidity Framework, Digital Currency, Crypto Currency Company. Crypto Currency Policy & Regulations",
+    "Business & Finance": "IPO, Federal Trade Commission, Tech Company, Fiscal Reports, Stock Market, Company CEO, CTO, CXO related contents",
+    "Crypto": "Crypto Currency, Crypto Finance, Crypto Currency Technology and Tools, Ethereum, Bitcoin, Dogecoin, Solidity Framework, Digital Currency, Crypto Currency Company. Crypto Currency Policy & Regulations",
     "Cyber Security": "Cyber Security, Information Security, Cyber Threat Intelligence, Data Breach, Network Breach, Cyber Security Tool, Cybersecurity Incidents, Cyber Security Events, Cyber Security Policty & Regulations related content",
-    "Electronics": "New Laptop Release, New Phone Release, Windows, Linux, MacOS, Android, iPhone, New Device Release, New Headphone Release, New Wearables related content",
+    "Electronics & Gadgets": "New Laptop Release, New Phone Release, Windows, Linux, MacOS, Android, iPhone, New Device Release, New Headphone Release, New Wearables related content",
     "Generative AI": "Generative AI, Large Language Models, Use of AI in Enterprise, Text-to-Vision Models, Text-to-Speech Models, Machine Learning, MLOps, AI Tools, AI Policy & Regulations, AI Safety related content",
     "Influencial Figures": "Elon Musk, Satya Nadala, Sam Altman, Sundar Pichai, Jeff Bezos, Microsoft, Google, Apple, Netflix, Amazon, OpenAI, Twitter, SpaceX, Tesla, US President, Tech CEO related content",
     "Politics": "US Politics, International Politics, Ongoing War, Immigration and Border Policy, Election, Congress, Parliament, Senate related content",

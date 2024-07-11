@@ -3,26 +3,21 @@
 ####################
 from retry import retry
 from pybeansack.chains import combine_texts
-from collectors.utils import create_logger
+from pybeansack.utils import create_logger
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_community.llms.deepinfra import DeepInfra
 
-WRITER_TEMPLATE = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are a {content_type} writer. Your task is to rewrite one section of a {content_type} on a given topic from the drafts provided by the user. 
+WRITER_TEMPLATE = """You are a {content_type} writer. Your task is to rewrite one section of a {content_type} on a given topic from the drafts provided by the user. 
 From the drafts extract ONLY the contents that are strictly relevant to the topic and write the section based on ONLY that. You MUST NOT use your own knowledge for this. 
 The section should have a title and body. The section should be less that 400 words. Output MUST be in markdown format.
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-Rewrite a section on topic '{topic}' ONLY based on the following drafts:\n{drafts}
-<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+Rewrite a section of a {content_type} on topic '{topic}' ONLY based on the following drafts:\n{drafts}"""
 WRITER_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
 WRITER_BATCH_SIZE = 6144
 DEFAULT_CONTENT_TYPE = "blog"
 
 class ArticleWriter:
-    def __init__(self, api_key: str):
+    def __init__(self, llm: str):
         prompt = PromptTemplate.from_template(template=WRITER_TEMPLATE)
-        llm = DeepInfra(deepinfra_api_token=api_key, model_id=WRITER_MODEL, verbose=False)
         self.chain = prompt | llm | StrOutputParser()
 
     # highlights, coontents and sources should havethe same number of items
@@ -53,3 +48,23 @@ class ArticleWriter:
             if len(drafts) <= 1:
                 return drafts[0]
             
+article_writer = None
+bean_search_func = None
+
+def initiatize(llm, search_func):
+    global article_writer, bean_search_func
+    article_writer = ArticleWriter(llm)
+    bean_search_func = search_func
+
+DEFAULT_CTYPE_TO_WRITE="newsletter"
+def write(topic: str, content_type: str, last_ndays: int, stream: bool = False):
+    """Writes a newsletter, blogs, social media posts from trending news articles, social media posts blog articles or news highlights on user interest/topic"""
+    nuggets_and_beans = bean_search_func(topic, last_ndays, 5)
+    if nuggets_and_beans:    
+        highlights = [item[0].digest() for item in nuggets_and_beans]
+        makecontents = lambda beans: [f"## {bean.title}\n{bean.text}" for bean in beans]
+        initial_content = [makecontents(item[1]) for item in nuggets_and_beans]
+        makesources = lambda beans: [(bean.source, bean.url) for bean in beans]
+        sources = [makesources(item[1]) for item in nuggets_and_beans]
+                
+        return article_writer.write_article(highlights, initial_content, sources, content_type)  
