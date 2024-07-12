@@ -31,7 +31,7 @@ class InteractiveInputParser:
     def parse(self, prompt: str):
         def one_or_list(items):
             if isinstance(items, list):
-                return items if len(items) > 1 else items[0]
+                return tuple(items) if len(items) > 1 else items[0]
             else:
                 return items            
             
@@ -45,7 +45,7 @@ class InteractiveInputParser:
             topn = int(args.topn) if args.topn else self.defaults.get('topn')
             return (args.task, one_or_list(query), one_or_list(ctypes) , ndays, topn)
         except:
-            return (None, self.defaults.get('topics', []), self.defaults.get('content_types', []), self.defaults.get('last_ndays'), self.defaults.get('topn'))
+            return (None, self.defaults.get('topics', []), one_or_list(self.defaults.get('content_types', [])), self.defaults.get('last_ndays'), self.defaults.get('topn'))
         
     def update_defaults(self, topics: str|list[str], content_types, last_ndays: int, topn: int):
         """Changes/updates application settings settings so that by default all future contents follow the change directive."""

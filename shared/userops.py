@@ -23,6 +23,9 @@ def initialize(conn_str: str, emb):
 def get_preferences(userid):
     return ["Cybersecurity", "Generative AI", "Robotics", "Space and Rockets", "Politics", "Yo Momma"]
 
+def get_default_preferences():
+    return ["Cybersecurity", "Generative AI", "Robotics", "Space and Rockets", "Politics", "Yo Momma"]
+
 def get_userid(username: str, source: str, create_if_not_found: bool = False):    
     item = _ids.find_one(
         {

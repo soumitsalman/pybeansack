@@ -1,190 +1,12 @@
-import time
-from shared.config import *
+from shared import beanops, userops, config
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
-from shared import prompt_parser, userops, beanops
 from nicegui import ui, run
 from icecream import ic
-from datetime import datetime as dt
-from shared.messages import *
-from shared.beanops import *
-import asyncio
-
-EDITORIAL_PAGE = "Editorial"
-TRENDING_PAGE = "Trending"
-ENGAGEMENTS_PAGE = "Social Media"
-CONSOLE_PAGE = "Console"
-CHAT_PAGE = "(Beta) Chat"
-
-EDITORIAL_HEADER = "Espresso Founder's Picks"
-TRENDING_HEADER = "Trending News, Blogs & Posts"
-ENGAGEMENTS_HEADER = "Your Social Media Stats"
-CONSOLE_HEADER = "Espresso Console"
-CHAT_HEADER = "(Beta) Chat with Espresso"
-
-
-nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
-counter_markdown = lambda counter: counter if counter < 100 else str(99)+'+'
-
-F_NAME = "header"
-F_NUGGETS = "nuggets"
-F_SELECTED = "selected"
-F_BEANS = "beans"
-
-def render_bean_as_card(bean: Bean):
-    def banner_markdown():
-        banners = []
-        if bean.source:
-            banners.append(f"🔗 [{bean.source}]({bean.url})")   
-        if bean.created:
-            banners.append(f"📅 {dt.fromtimestamp(bean.created).strftime('%a, %b %d')}") 
-        if bean.author:
-            banners.append(f"✍️ {bean.author}")
-        if bean.noise and bean.noise.comments:
-            banners.append(f"💬 {bean.noise.comments}")
-        if bean.noise and bean.noise.likes:
-            banners.append(f"👍 {bean.noise.likes}")
-        return " ".join(banners)
-    if bean:
-        with ui.card() as card:
-            ui.markdown(banner_markdown()).classes('text-caption')
-            ui.markdown(f"**{bean.title}**")
-            ui.markdown(bean.summary)
-            if bean.tags:
-                with ui.row().classes("gap-0"):
-                    [ui.chip(word, on_click=lambda : ui.notify(NO_ACTION)).props('outline square') for word in bean.tags[:3]]
-        return card
-
-def render_nugget_as_card(nugget: Nugget):
-    if nugget:
-        with ui.card() as card:
-            if nugget.urls:
-                ui.markdown(f"🗞️ {counter_markdown(len(nugget.urls))}").classes('text-caption')
-            ui.markdown(nugget_markdown(nugget))
-            if "keywords" in nugget:
-                with ui.row().classes("gap-0"):
-                    [ui.chip(word, on_click=lambda : ui.notify(NO_ACTION)).props('outline square') for word in (nugget['keywords'] or [])[:3]]
-        return card
-
-def render_nuggets(category: dict, settings: dict):
-    async def on_select_nugget(nugget):
-        category[F_SELECTED] = nugget
-        category[F_BEANS] = get_beans_for_nugget(nugget['data'].id, settings['content_types'], settings['last_ndays'], settings['topn'])
-        # clear the other nuggets
-        for nug in category.get(F_NUGGETS) or []:
-            nug[F_SELECTED] = (nug == nugget)
-
-    def render_nugget_as_timeline_item(nugget: dict):
-        with HighlightableItem("background-color: lightblue; padding: 15px; border-radius: 4px;", on_click=lambda nugget=nugget: on_select_nugget(nugget)).props("clickable").classes("w-full").bind_highlight_from(nugget, F_SELECTED) as item:            
-            ui.markdown(nugget_markdown(nugget['data']))
-        return item
-
-    return BindableList(render_nugget_as_timeline_item).bind_items_from(category, 'nuggets')
-    # return BindableTimeline(date_field=lambda nug: nug['data'].updated, header_field=lambda nug: nug['data'].keyphrase, item_render_func=render_nugget_as_timeline_item).props("side=right").bind_items_from(category, "nuggets")
-
-def render_beans(category: dict):    
-    return BindableList(render_bean_as_card).bind_items_from(category, F_BEANS)
-
-def initialize_category_tab(category: dict):
-    with ui.tab(category[F_NAME], label=category[F_NAME]) as tab:   
-        ui.badge() \
-            .bind_text_from(category, F_NUGGETS, lambda x: str(len(x or []))) \
-            .bind_visibility_from(category, F_NUGGETS) \
-            .props("floating transparent")
-    return tab
-
-def initialize_category_panel(category: dict, settings: dict):
-    with ui.tab_panel(category[F_NAME]) as panel:
-        with ui.row().style('display: noflex; flex-wrap: nowrap;'):                    
-            render_nuggets(category, settings).classes("w-full").style('flex: 1;')           
-            render_beans(category).classes("w-full").style('flex: 1;')
-    return panel
-
-async def load_nuggets_for_trending_panel(viewmodel, settings):
-    for category in viewmodel["categories"]:
-        nuggets = highlights(category["header"], settings['last_ndays'], settings['topn'])     
-        category[F_NUGGETS] = [{'data': item} for item in nuggets]
-    time.sleep(60)
-
-
-
-async def initialize_trending_page(viewmodel: dict, settings: dict): 
-    initialize_category = lambda cat: {F_NAME:cat, F_NUGGETS: None, F_BEANS: None, F_SELECTED: None}
-    viewmodel["categories"] = {cat: initialize_category(cat) for cat in userops.get_preferences(viewmodel.get('userid'))}.values()
-
-    async def load_nuggets_for_category():
-        ic(viewmodel[F_SELECTED])
-        nuggets = highlights(ic(viewmodel[F_SELECTED]), settings['last_ndays'], settings['topn']) 
-        ## problem here VV    
-        viewmodel['categories'][viewmodel[F_SELECTED]][F_NUGGETS] = [{'data': item} for item in nuggets]
-
-    with ui.tabs(on_change=load_nuggets_for_category).bind_value(viewmodel, F_SELECTED) as tabs:    
-        for category in viewmodel["categories"]:
-            initialize_category_tab(category)
-
-    with ui.tab_panels(tabs):
-        for category in viewmodel["categories"]:
-            initialize_category_panel(category, settings)
-     
-
-EXAMPLE_OPTIONS = ["trending -t posts -q \"cyber security breches\"", "lookfor -q \"GPU vs LPU\"", "settings -d 7 -n 20"]   
-PLACEHOLDER = "Tell me lies, sweet little lies"
-
-def render_prompt_response(resp):
-    if isinstance(resp, str):
-        ui.markdown(resp)
-    elif isinstance(resp, Bean):
-        render_bean_as_card(resp) 
-    elif isinstance(resp, Nugget):
-        render_nugget_as_card(resp)
-    
-def settings_markdown(settings: dict):
-    return "Topics of Interest: %s\n\nDefault Content Types: %s\n\nPulling top **%d** items from last **%d** days." % \
-        (", ".join([f"**{topic}**" for topic in settings['topics']]), ", ".join([f"**{ctype}**" for ctype in settings['content_types']]), settings['topn'], settings['last_ndays'])      
-
-def initialize_console_page(viewmodel, settings: dict):
-    parser = prompt_parser.InteractiveInputParser(settings)
-
-    viewmodel['processing'] = False
-    viewmodel['text_response'] = None
-    viewmodel['list_response'] = None
+from .render import *
+from . import trending, search
    
-    async def process_prompt():
-        if viewmodel['prompt']:  
-            viewmodel['text_response'] = None
-            viewmodel['list_response'] = None
-
-            task, query, ctype, ndays, topn = ic(parser.parse(viewmodel['prompt']))
-            if task == "trending":
-                viewmodel['list_response'] = trending(query, ctype, ndays, topn) if ctype != "highlights" else highlights(query, ndays, topn)
-                viewmodel['response_banner'] = f"{len(viewmodel['list_response'])} results found" if viewmodel['list_response'] else NOTHING_FOUND         
-            elif task in ["lookfor", "search"]:
-                viewmodel['list_response'] = search(query, ctype, ndays, topn)
-                viewmodel['response_banner'] = f"{len(viewmodel['list_response'])} results found" if viewmodel['list_response'] else NOTHING_FOUND
-            elif task == "settings":
-                settings = parser.update_defaults(query, ctype, ndays, topn)
-                viewmodel['text_response'] = settings_markdown(settings)
-                viewmodel['response_banner'] = "Updated settings"
-            else:
-                beans, nuggets = search_all(viewmodel['prompt'], ndays, topn)
-                viewmodel['list_response'] = beans + nuggets
-                viewmodel['response_banner'] = f"{len(viewmodel['list_response'])} results found" if viewmodel['list_response'] else NOTHING_FOUND
-        
-    with ui.input(placeholder=PLACEHOLDER, autocomplete=EXAMPLE_OPTIONS).bind_value(viewmodel, "prompt") \
-        .props('rounded outlined input-class=mx-3').classes('w-full self-center').on('keydown.enter', process_prompt) as prompt_input:
-        ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
-    ui.label("Examples: "+", ".join(EXAMPLE_OPTIONS)).classes('text-caption self-center')
-    ui.label().bind_text_from(viewmodel, "response_banner").classes("text-bold")
-    BindableGrid(render_prompt_response, columns=3).bind_items_from(viewmodel, "list_response").bind_visibility_from(viewmodel, "list_response")
-    ui.markdown().bind_content_from(viewmodel, "text_response", lambda x: x or "").bind_visibility_from(viewmodel, "text_response")
-    
-
-async def initialize_settings_panel(viewmodel):   
-    if "sources" not in viewmodel['search']:
-        viewmodel['search']['sources'] = beanops.get_sources()
-    if "content_types" not in viewmodel['search']:
-        viewmodel['search']['content_types'] = [ARTICLE, POST, COMMENT] 
-
+def render_settings_panel(viewmodel):   
     with ui.list():
         ui.item_label('Search Settings').classes("text-subtitle1")
         with ui.item():
@@ -208,7 +30,11 @@ async def initialize_settings_panel(viewmodel):
         ui.switch(text="Reddit")
         ui.switch(text="LinkedIn")
 
-async def load_home(user_settings):
+def render_home_page(viewmodel: dict, settings: dict):
+    ui.label("PLACEHOLDER")
+
+
+def load(last_known_settings):
     ui.add_css(content="""
         @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
             
@@ -218,25 +44,85 @@ async def load_home(user_settings):
         }
     """)
 
+    usersettings = last_known_settings or _default_user_settings()
+    pages = _create_pages()   
+
     #header
     with ui.header().classes(replace="row items-center"):
-        with ui.avatar():
+        with ui.avatar(square=True):
             ui.image("images/cafecito.png")
+
         with ui.tabs() as page_tabs:
-            trending_news_tab = ui.tab(TRENDING_PAGE, icon="trending_up")
-            console_tab = ui.tab(CONSOLE_PAGE, icon="terminal")
+            for p in pages['pages']:
+                ui.tab(p['title'], icon=p['icon'])
+        
         ui.space()
-        ui.label(APP_NAME).classes("text-h6")
-        ui.space()
-        # ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
+        ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
+
+    async def load_page_viewmodel():
+        page = next(p for p in pages['pages'] if p['title'] == pages[F_SELECTED])
+        if page['title'] == 'Trending':
+            trending.refresh_trending_viewmodel(page['viewmodel'], usersettings['search'])    
 
     #pages
-    with ui.tab_panels(page_tabs, value = trending_news_tab).classes("w-full"):
-        with ui.tab_panel(trending_news_tab):
-            await initialize_trending_page({"selected": None, "categories": None}, user_settings['search'])
-        with ui.tab_panel(console_tab):
-            initialize_console_page({"prompt": None}, user_settings['search'])
+    with ui.tab_panels(page_tabs, on_change=load_page_viewmodel).bind_value(pages, F_SELECTED).classes("w-full"):
+        for p in pages['pages']:
+            with ui.tab_panel(p['title']):
+                p['render'](p['viewmodel'], usersettings['search'])
 
-    # # settings
-    # with ui.right_drawer(elevated=True, value=False) as settings_drawer:
-    #     initialize_settings_panel(user_settings)
+
+    # settings
+    with ui.right_drawer(elevated=True, value=False) as settings_drawer:
+        render_settings_panel(usersettings)
+
+    return usersettings
+
+def _create_pages():
+    return {
+        "pages": [
+            {
+                "title": "Home",
+                "icon": "home",
+                "render": render_home_page,
+                "viewmodel": {}
+            }, 
+            {
+                "title": "Search",
+                "icon": "search",
+                "render": search.render_search_page,
+                "viewmodel": {
+                    F_PROMPT: None,
+                    F_PROCESSING_PROMPT: False,
+                    F_RESPONSE_BANNER: None,
+                    F_RESPONSE: None
+                }
+            }, 
+            {
+                "title": "Trending",
+                "icon": "trending_up",
+                "render": trending.render_trending_page,
+                "viewmodel": {
+                    F_CATEGORIES: {},
+                    F_SELECTED: None
+                }
+            }
+        ],
+        F_SELECTED: "Home"
+    }
+
+def _default_user_settings():
+    return {
+        "search": {
+            "last_ndays": config.DEFAULT_WINDOW,
+            "topn": config.DEFAULT_LIMIT,
+            "topics": userops.get_default_preferences(),
+            "sources": beanops.get_sources(),
+            "content_types": beanops.get_content_types()
+        },
+        "connections": {
+            config.REDDIT: None,
+            config.SLACK: None
+        }            
+    }
+
+

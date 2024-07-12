@@ -32,15 +32,9 @@ from web_ui import web
 #     return handler.handle(req)
 
 @ui.page("/")
-async def home():
-    if "settings" not in app.storage.user:
-        app.storage.user['settings'] = {
-            "search": {
-                "last_ndays": config.DEFAULT_WINDOW, 
-                "topn": config.DEFAULT_LIMIT
-            }
-        }
-    await web.load_home(app.storage.user['settings'])
+def home():    
+    settings = web.load(app.storage.user.get('settings'))
+    app.storage.user['settings'] = settings
 
 def start_server():
     tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())

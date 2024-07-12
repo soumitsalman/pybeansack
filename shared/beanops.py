@@ -4,7 +4,10 @@ from pybeansack.datamodels import *
 from cachetools import TTLCache, cached
 
 # cached for 8 hours
-cache = TTLCache(maxsize=10000, ttl=28000)
+EIGHT_HOUR = 28000
+ONE_DAY = 86400
+ONE_WEEK = 604800
+CACHE_SIZE = 1000
 
 beansack: Beansack = None
 PROJECTION = {K_EMBEDDING: 0, K_TEXT:0}
@@ -16,30 +19,38 @@ def initiatize(db_conn, embedder):
     # this is content retrieval (not processing). This does not need an llm in the beansack
     beansack=Beansack(db_conn, embedder)
 
-@cached(TTLCache(maxsize=10, ttl=86400))
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_WEEK))
 def get_sources():
     return beansack.get_sources()
 
-# @cached(cache)
-def get_beans_for_nugget(nugget_id: str, content_types: str|list[str], last_ndays: int, topn: int):
-    return beansack.get_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION)
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_WEEK))
+def get_content_types():
+    return beansack.get_kinds()
 
-@cached(cache)
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def get_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
+    return beansack.get_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION) or []
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def count_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
+    return beansack.count_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn)
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def highlights(query, last_ndays: int, topn: int):
     """Retrieves the trending news highlights that match user interest, topic or query."""
     return _retrieve_queries(query, lambda q: beansack.trending_nuggets(query=q, filter=timewindow_filter(last_ndays), limit=topn, projection=PROJECTION))
     
-@cached(cache)
-def trending(query, content_types: str|list[str], last_ndays: int, topn: int):
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def trending(query, content_types: str|tuple[str], last_ndays: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
     return _retrieve_queries(query, lambda q: beansack.trending_beans(query=q, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION))
     
-@cached(cache)
-def search(query: str, content_types: str|list[str], last_ndays: int, topn: int):
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def search(query: str, content_types: str|tuple[str], last_ndays: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     return _retrieve_queries(query, lambda q: beansack.search_beans(query=q, filter=_create_filter(content_types, last_ndays), limit=topn, sort_by=LATEST, projection=PROJECTION))
 
-@cached(cache)
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def search_all(query: str, last_ndays: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter = timewindow_filter(last_ndays)
@@ -53,14 +64,14 @@ def _retrieve_queries(query_items, retrieval_func):
         nugs = retrieval_func(q)
         if nugs:
             results.extend(nugs)
-    return sorted(results, key=latest)
+    return results
         
-def _create_filter(content_types: str|list[str], last_ndays: int):
+def _create_filter(content_types: str|tuple[str], last_ndays: int):
     filter = timewindow_filter(last_ndays)
     if isinstance(content_types, str):
         filter.update({K_KIND: content_types})
-    elif isinstance(content_types, list):
-        filter.update({K_KIND: { "$in": content_types } })
+    elif isinstance(content_types, (tuple, list)):
+        filter.update({K_KIND: { "$in": list(content_types) } })
     return filter
 
 
