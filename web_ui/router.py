@@ -16,11 +16,13 @@ def render_trending(usersettings):
 def render_search(usersettings):
     search.render(usersettings['search'])
 
-def render_beans(usersettings):
-    ui.markdown(items_render.settings_markdown(usersettings['search']))
-
-def render_nuggets(usersettings):
-    ui.markdown(items_render.settings_markdown(usersettings['search']))
+def render_beans(usersettings, keyword):
+    ui.label(f"News and social media posts on: {keyword}").classes("text-h5")
+    items_render.render_beans_as_list(beanops.get_beans_by_keyword(keyword, 0, 10))
+    
+def render_nuggets(usersettings, keyword):
+    ui.label(f"News and social media highlights on: {keyword}").classes("text-h5")
+    items_render.render_nuggets_as_list(beanops.get_nuggets_by_keyword(keyword, 0, 10))
 
 def render_settings_panel(usersettings):   
     with ui.list():
@@ -49,17 +51,15 @@ def render_settings_panel(usersettings):
         ui.switch(text="Reddit")
         ui.switch(text="LinkedIn")
 
-def load_page(page, usersettings):
+def load_page(page, usersettings, *args):
     ui.add_css(content=_CSS)
 
     #header
     with ui.header().classes(replace="row items-center"):
         with ui.avatar(square=True):
             ui.image("images/cafecito.png")
-
         with ui.button_group().props("flat dense"):
-            [ui.button(text=p['title'], icon=p['icon'], on_click=lambda p=p: ui.navigate.to(p['target'])) for p in _PAGES]
-        
+            [ui.button(text=p['title'], icon=p['icon'], on_click=lambda p=p: ui.navigate.to(p['target'])) for p in _PAGES]   
         ui.space()
         ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
 
@@ -67,7 +67,7 @@ def load_page(page, usersettings):
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
         render_settings_panel(usersettings)
 
-    page(usersettings)
+    page(usersettings, *args)
 
 def create_default_settings():
     return {

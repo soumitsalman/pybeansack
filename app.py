@@ -50,17 +50,17 @@ def trending():
         app.storage.user['settings'] = router.create_default_settings()
     router.load_page(router.render_trending, app.storage.user['settings'])
 
-@ui.page("/highlights/{keyphrase}")
-def highlights():    
+@ui.page("/nuggets/{keyword}")
+def nuggets(keyword):    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_nuggets, app.storage.user['settings'])
+    router.load_page(router.render_nuggets, app.storage.user['settings'], keyword)
 
-@ui.page("/keyword/{keyword}")
-def beans():    
+@ui.page("/beans/{keyword}")
+def beans(keyword):    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_beans, app.storage.user['settings'])
+    router.load_page(router.render_beans, app.storage.user['settings'], keyword)
 
 def start_server():
     tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())

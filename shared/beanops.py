@@ -28,8 +28,16 @@ def get_content_types():
     return beansack.get_kinds()
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
+def get_beans_by_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
     return beansack.get_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION) or []
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def get_beans_by_keyword(keyword, start_index, limit):
+    return beansack.get_beans(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, limit=limit)
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def get_nuggets_by_keyword(keyword, start_index, limit):
+    return beansack.get_nuggets(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, limit=limit)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def count_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
