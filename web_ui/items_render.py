@@ -5,9 +5,6 @@ from nicegui import ui
 from datetime import datetime as dt
 from icecream import ic
 
-nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
-counter_text = lambda counter: str(counter) if counter < 100 else str(99)+'+'
-
 F_NAME = "header"
 F_NUGGETS = "nuggets"
 F_SELECTED = "selected"
@@ -19,6 +16,15 @@ F_RESPONSE = "response"
 F_RESPONSE_BANNER = "response_banner"
 F_PROMPT = "prompt"
 F_PROCESSING_PROMPT = "processing_prompt"
+
+BEAN_NAVIGATE_PATH = "keyword/%s"
+NUGGET_NAVIGATE_PATH = "highlights/%s"
+
+nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
+counter_text = lambda counter: str(counter) if counter < 100 else str(99)+'+'
+def settings_markdown(settings: dict):
+    return "Topics of Interest: %s\n\nPulling top **%d** %s from last **%d** days." % \
+        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['topn'], ", ".join([f"**{ctype}**" for ctype in settings['content_types']]), settings['last_ndays'])      
 
 def render_bean_as_card(bean: Bean):
     if bean:
@@ -36,7 +42,7 @@ def render_bean_as_card(bean: Bean):
                     ui.label(f"👍 {bean.noise.likes}")
             if bean.tags:
                 with ui.row().classes("gap-0"):
-                    [ui.chip(word, on_click=lambda : ui.notify(messages.NO_ACTION)).props('outline square') for word in bean.tags[:3]]
+                    [ui.chip(word, on_click=lambda : ui.navigate.to(BEAN_NAVIGATE_PATH%word)).props('outline square') for word in bean.tags[:3]]
             ui.label(bean.title).classes("text-bold")
             ui.markdown(bean.summary)
             
@@ -45,7 +51,7 @@ def render_bean_as_card(bean: Bean):
 def _render_nugget_body(nugget):
     with ui.row(align_items="center").classes('text-caption'):
         ui.label("📅 "+ date_to_str(nugget.updated))
-        ui.chip(nugget.keyphrase, on_click=lambda : ui.notify(messages.NO_ACTION)).classes('text-caption').props('outline square')
+        ui.chip(nugget.keyphrase, on_click=lambda: ui.navigate.to(NUGGET_NAVIGATE_PATH%nugget.keyphrase)).classes('text-caption').props('outline square')
     ui.label(text=nugget.description)
 
 def render_nugget_as_card(nugget: Nugget):

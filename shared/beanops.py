@@ -58,7 +58,7 @@ def search_all(query: str, last_ndays: int, topn: int):
         + _retrieve_queries(query, lambda q: beansack.search_nuggets(query=q, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
 
 def _retrieve_queries(query_items, retrieval_func):
-    query_items = query_items if isinstance(query_items, list) else [query_items]
+    query_items = list(query_items) if isinstance(query_items, tuple) else [query_items]
     results = []
     for q in query_items:
         nugs = retrieval_func(q)
