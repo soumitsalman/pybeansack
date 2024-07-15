@@ -33,34 +33,34 @@ from icecream import ic
 #     return handler.handle(req)
 
 @ui.page("/")
-def home():    
+async def home():    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_home, app.storage.user['settings'])
+    await router.load_page(router.render_home, app.storage.user['settings'])
 
 @ui.page("/search")
-def search():    
+async def search():    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_search, app.storage.user['settings'])
+    await router.load_page(router.render_search, app.storage.user['settings'])
 
 @ui.page("/trending")
-def trending():    
+async def trending():    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_trending, app.storage.user['settings'])
+    await router.load_page(router.render_trending, app.storage.user['settings'])
 
 @ui.page("/nuggets/{keyword}")
-def nuggets(keyword):    
+async def nuggets(keyword):    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_nuggets, app.storage.user['settings'], keyword)
+    await router.load_page(router.render_nuggets, app.storage.user['settings'], keyword)
 
 @ui.page("/beans/{keyword}")
-def beans(keyword):    
+async def beans(keyword):    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page(router.render_beans, app.storage.user['settings'], keyword)
+    await router.load_page(router.render_beans, app.storage.user['settings'], keyword)
 
 def start_server():
     tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())

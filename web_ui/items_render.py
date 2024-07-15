@@ -93,11 +93,10 @@ def render_beans_as_list(beans: list[Bean]):
                 render_bean_as_card(bean)
     return contents
 
-def render_nuggets_as_list(nuggets: list[Nugget]):
-    with ui.list() as contents:
-        for nugget in nuggets:
-            with ui.item():
-                with ui.column().classes("w-full"):           
-                    _render_nugget_body(nugget)
-                    ui.separator()
-    return contents
+def render_nuggets_as_bindable_list(viewmodel: dict):
+    def r_nugget(nugget):
+        with ui.item():
+            with ui.column().classes("w-full"):           
+                _render_nugget_body(nugget)
+                ui.separator()
+    return BindableList(r_nugget).bind_items_from(viewmodel, F_NUGGETS)

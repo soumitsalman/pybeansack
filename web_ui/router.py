@@ -7,22 +7,42 @@ from nicegui import ui
 from icecream import ic
 from . import trending, search
    
-def render_home(usersettings):
+async def render_home(usersettings):
     ui.markdown(items_render.settings_markdown(usersettings['search']))
 
-def render_trending(usersettings):
-    trending.render(usersettings['search'])
+async def render_trending(usersettings):
+    await trending.render(usersettings['search'])
 
-def render_search(usersettings):
+async def render_search(usersettings):
     search.render(usersettings['search'])
 
-def render_beans(usersettings, keyword):
+async def render_beans(usersettings, keyword):
+    # TODO: abstract this out
+    # TODO: calculate count
+    viewmodel = {"page_index": 1, "beans": beanops.get_beans_by_keyword(keyword, 0, _PAGINATION_LIMIT)}
+    # connect this to the view model
+
+    def load_new_page():
+        viewmodel['beans'] = beanops.get_beans_by_keyword(keyword, (viewmodel["page_index"]-1)*_PAGINATION_LIMIT, _PAGINATION_LIMIT)
+
     ui.label(f"News and social media posts on: {keyword}").classes("text-h5")
-    items_render.render_beans_as_list(beanops.get_beans_by_keyword(keyword, 0, 10))
+    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
+    items_render.render_beans_as_bindable_list(viewmodel)
+    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
     
-def render_nuggets(usersettings, keyword):
-    ui.label(f"News and social media highlights on: {keyword}").classes("text-h5")
-    items_render.render_nuggets_as_list(beanops.get_nuggets_by_keyword(keyword, 0, 10))
+async def render_nuggets(usersettings, keyword):
+    # TODO: abstract this out
+    # TODO: calculate count
+    viewmodel = {"page_index": 1, "nuggets": beanops.get_nuggets_by_keyword(keyword, 0, _PAGINATION_LIMIT)}
+    # connect this to the view model
+
+    def load_new_page():
+        viewmodel['nuggets'] = beanops.get_nuggets_by_keyword(keyword, (viewmodel["page_index"]-1)*_PAGINATION_LIMIT, _PAGINATION_LIMIT)
+
+    ui.label(f"News and social media highlights on: {keyword}").classes("text-h5")    
+    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
+    items_render.render_nuggets_as_bindable_list(viewmodel)
+    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
 
 def render_settings_panel(usersettings):   
     with ui.list():
@@ -51,7 +71,7 @@ def render_settings_panel(usersettings):
         ui.switch(text="Reddit")
         ui.switch(text="LinkedIn")
 
-def load_page(page, usersettings, *args):
+async def load_page(page, usersettings, *args):
     ui.add_css(content=_CSS)
 
     #header
@@ -67,7 +87,7 @@ def load_page(page, usersettings, *args):
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
         render_settings_panel(usersettings)
 
-    page(usersettings, *args)
+    await page(usersettings, *args)
 
 def create_default_settings():
     return {
@@ -84,6 +104,7 @@ def create_default_settings():
         }            
     }
 
+_PAGINATION_LIMIT = 10
 
 _PAGES = [
     {

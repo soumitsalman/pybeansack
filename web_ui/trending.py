@@ -9,7 +9,7 @@ async def _load_trending_nuggets(category, settings):
     nuggets = beanops.highlights(category[F_NAME], settings['last_ndays'], settings['topn']) 
     category[F_NUGGETS] = [{'data': item} for item in nuggets]
 
-def render(settings: dict):  
+async def render(settings: dict):  
     viewmodel = _create_page_viewmodel(settings)
 
     async def select_category():
@@ -29,6 +29,9 @@ def render(settings: dict):
         for category in viewmodel[F_CATEGORIES].values():
             with ui.tab_panel(category[F_NAME]) as panel:
                 render_nuggets_as_expandable_list(category, settings).classes("w-full").style('flex: 1;') 
+
+    for cat in viewmodel[F_CATEGORIES].values():
+        await _load_trending_nuggets(cat, settings)
 
     return panel
 
