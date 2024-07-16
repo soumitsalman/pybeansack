@@ -1,48 +1,19 @@
 import json
 from shared import beanops, userops, config
 from pybeansack.datamodels import *
-from . import items_render
 from web_ui.custom_ui import *
 from nicegui import ui
 from icecream import ic
-from . import trending, search
+from . import trending, search, render, theme
    
-async def render_home(usersettings):
-    ui.markdown(items_render.settings_markdown(usersettings['search']))
+HOME = 'home'
+CONSOLE = 'console'
+TRENDING = 'trending'
+SOCIALMEDIA = 'social_media'
+URL_SEARCH = 'url_search'
 
-async def render_trending(usersettings):
-    await trending.render(usersettings['search'])
-
-async def render_search(usersettings):
-    search.render(usersettings['search'])
-
-async def render_beans(usersettings, keyword):
-    # TODO: abstract this out
-    # TODO: calculate count
-    viewmodel = {"page_index": 1, "beans": beanops.get_beans_by_keyword(keyword, 0, _PAGINATION_LIMIT)}
-    # connect this to the view model
-
-    def load_new_page():
-        viewmodel['beans'] = beanops.get_beans_by_keyword(keyword, (viewmodel["page_index"]-1)*_PAGINATION_LIMIT, _PAGINATION_LIMIT)
-
-    ui.label(f"News and social media posts on: {keyword}").classes("text-h5")
-    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
-    items_render.render_beans_as_bindable_list(viewmodel)
-    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
-    
-async def render_nuggets(usersettings, keyword):
-    # TODO: abstract this out
-    # TODO: calculate count
-    viewmodel = {"page_index": 1, "nuggets": beanops.get_nuggets_by_keyword(keyword, 0, _PAGINATION_LIMIT)}
-    # connect this to the view model
-
-    def load_new_page():
-        viewmodel['nuggets'] = beanops.get_nuggets_by_keyword(keyword, (viewmodel["page_index"]-1)*_PAGINATION_LIMIT, _PAGINATION_LIMIT)
-
-    ui.label(f"News and social media highlights on: {keyword}").classes("text-h5")    
-    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
-    items_render.render_nuggets_as_bindable_list(viewmodel)
-    ui.pagination(1, 5, direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index")
+def render_home(viewmodel):
+    ui.markdown(render.settings_markdown(viewmodel['settings']['search']))
 
 def render_settings_panel(usersettings):   
     with ui.list():
@@ -71,23 +42,48 @@ def render_settings_panel(usersettings):
         ui.switch(text="Reddit")
         ui.switch(text="LinkedIn")
 
-async def load_page(page, usersettings, *args):
-    ui.add_css(content=_CSS)
+def load_page(page, viewmodel, *args):    
+    ui.colors(secondary=theme.SECONDARY_COLOR)
+    ui.add_css(content=theme.CSS)
 
-    #header
+    render.tag_route = lambda kind, keyword: navigate_to(kind, viewmodel, keyword)
+
+    # header
     with ui.header().classes(replace="row items-center"):
         with ui.avatar(square=True):
             ui.image("images/cafecito.png")
-        with ui.button_group().props("flat dense"):
-            [ui.button(text=p['title'], icon=p['icon'], on_click=lambda p=p: ui.navigate.to(p['target'])) for p in _PAGES]   
+        
+        with ui.tabs() as page_tabs:
+            [ui.tab(name=p['title'], icon=p['icon']).tooltip(p['title']) for p in PAGES]
         ui.space()
         ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
 
     # settings
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
-        render_settings_panel(usersettings)
+        render_settings_panel(viewmodel['settings']) 
 
-    await page(usersettings, *args)
+    async def select_page():
+        if viewmodel[render.F_SELECTED]:
+            await trending.load_nuggets(viewmodel)
+
+    # panels
+    with ui.tab_panels(tabs=page_tabs, on_change=select_page).bind_value(viewmodel, render.F_SELECTED):
+        for p in PAGES:
+            with ui.tab_panel(p['title']):
+                p["render"](viewmodel)
+
+    # now load the page that was asked to load
+    navigate_to(page, viewmodel, *args)
+
+def navigate_to(page, viewmodel, *args):
+    if any(p for p in PAGES if p['title']==page):
+        viewmodel[render.F_SELECTED] = page
+    elif page == "SearchBeans":
+        search.load_beans_by_keyword(viewmodel, *args)
+        viewmodel[render.F_SELECTED] = "Search"
+    elif page == "SearchNuggets":
+        search.load_nuggets_by_keyword(viewmodel, *args)
+        viewmodel[render.F_SELECTED] = "Search"
 
 def create_default_settings():
     return {
@@ -104,15 +100,12 @@ def create_default_settings():
         }            
     }
 
-_PAGINATION_LIMIT = 10
-
-_PAGES = [
+PAGES = [
     {
         "title": "Home",
         "icon": "home",
         "target": "/",
-        "render": render_home,
-        "viewmodel": {}
+        "render": render_home
     }, 
     {
         "title": "Search",
@@ -128,14 +121,6 @@ _PAGES = [
     }
 ]
 
-_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
-    
-body {
-    font-family: 'Open Sans', sans-serif;
-    color: #1A1A1A;        
-}
-"""
 
 
 

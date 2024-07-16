@@ -33,34 +33,34 @@ from icecream import ic
 #     return handler.handle(req)
 
 @ui.page("/")
-async def home():    
+def home():    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    await router.load_page(router.render_home, app.storage.user['settings'])
+    router.load_page("Home", {'settings': app.storage.user['settings']})
 
 @ui.page("/search")
-async def search():    
+def search():    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    await router.load_page(router.render_search, app.storage.user['settings'])
+    router.load_page("Search", {'settings': app.storage.user['settings']})
 
 @ui.page("/trending")
-async def trending():    
+def trending():    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    await router.load_page(router.render_trending, app.storage.user['settings'])
+    router.load_page("Trending", {'settings': app.storage.user['settings']})
 
-@ui.page("/nuggets/{keyword}")
-async def nuggets(keyword):    
+@ui.page("/search/nuggets/{keyword}")
+def nuggets(keyword):    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    await router.load_page(router.render_nuggets, app.storage.user['settings'], keyword)
+    router.load_page("SearchNuggets", {'settings': app.storage.user['settings']}, keyword)
 
-@ui.page("/beans/{keyword}")
-async def beans(keyword):    
+@ui.page("/search/beans/{keyword}")
+def beans(keyword):    
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    await router.load_page(router.render_beans, app.storage.user['settings'], keyword)
+    router.load_page("SearchBeans", {'settings': app.storage.user['settings']}, keyword)
 
 def start_server():
     tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())

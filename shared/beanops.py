@@ -32,17 +32,24 @@ def get_beans_by_nugget(nugget_id, content_types: str|tuple[str], last_ndays: in
     return beansack.get_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION) or []
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def count_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
+    return beansack.count_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn)
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def get_beans_by_keyword(keyword, start_index, limit):
     return beansack.get_beans(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def count_beans_by_keyword(keyword):
+    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }})
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def get_nuggets_by_keyword(keyword, start_index, limit):
     return beansack.get_nuggets(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
-    return beansack.count_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn)
-
+def count_nuggets_by_keyword(keyword):
+    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }})
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def highlights(query, last_ndays: int, topn: int):

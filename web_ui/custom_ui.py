@@ -4,6 +4,8 @@ from nicegui.binding import BindableProperty, bind_from
 from typing import cast
 from datetime import datetime as dt
 from itertools import groupby
+from typing import Callable
+from icecream import ic
 
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 
@@ -106,3 +108,64 @@ class HighlightableItem(ui.item):
     def bind_highlight_from(self, target_object, target_name: str = 'highlight', backward = lambda x: x) -> Self:
         bind_from(self, "highlight", target_object, target_name, backward)
         return self
+    
+
+PAGE_LIMIT = 10
+MAX_PAGES = 10
+_page_count = lambda item_count: min(MAX_PAGES, -(-item_count//PAGE_LIMIT)) if item_count else 0
+
+class BindablePagination(ui.pagination):
+    item_count = BindableProperty(on_change=lambda sender, value: cast(Self, sender)._render(value))
+
+    def __init__(self, item_count: int, *args, **kwargs):
+        self.item_count = item_count
+        super().__init__(1, _page_count(item_count), *args, **kwargs)
+        self.bind_visibility_from(self, "item_count", lambda x: (x > PAGE_LIMIT) if isinstance(x, int) else False)
+
+    def _render(self, count):  
+        self._props['max'] = _page_count(count)
+        self.update()  
+
+    def bind_item_count_from(self, target_object, target_name: str = 'item_count', backward = lambda x: x) -> Self:
+        bind_from(self, "item_count", target_object, target_name, backward)
+        return self
+    
+class BindablePaginatedList(ui.column):
+    item_render_func: Callable
+    contents = BindableProperty(on_change=lambda sender, value: cast(Self, sender)._render(value))
+    _get_page: Callable
+    _item_count: int
+    _banner: str
+    _page_index: int
+    _items: list    
+
+    def __init__(self, item_render_func: Callable):
+        self.item_render_func = item_render_func        
+        super().__init__()
+        self._render((None, None, None)) 
+
+    def bind_contents_from(self, target_object, target_name: str = 'contents', backward = lambda x: x) -> Self:
+        bind_from(self, "contents", target_object, target_name, backward)
+        return self
+    
+    def _load_new_page(self):
+        self._items = self._get_page((self._page_index-1)*PAGE_LIMIT, PAGE_LIMIT)
+
+    def _render(self, value):
+        self.clear()
+
+        # unpack value
+        self._get_page, self._item_count, self._banner = value
+        if not self._get_page:
+            return
+        
+        self._page_index, self._items = 1, self._get_page(0, PAGE_LIMIT)
+        with self:
+            ui.label().bind_text_from(self, '_banner').bind_visibility_from(self, '_banner').classes("text-h5")
+            BindablePagination(self._item_count, direction_links=True, on_change=self._load_new_page).bind_value(self, "_page_index").bind_item_count_from(self, '_item_count')
+            BindableList(item_render_func=self.item_render_func).bind_items_from(self, "_items")
+            BindablePagination(self._item_count, direction_links=True, on_change=self._load_new_page).bind_value(self, "_page_index").bind_item_count_from(self, '_item_count')
+        
+    
+
+

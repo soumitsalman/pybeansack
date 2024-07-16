@@ -22,6 +22,7 @@ class InteractiveInputParser:
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('task', help='The main task')
         self.parser.add_argument('-q', '--query', help='The search query')
+        self.parser.add_argument('-k', '--keyword', help='The keyword to search with')
         self.parser.add_argument('-t', '--type', help='The type of content to search or to create.')    
         self.parser.add_argument('-d', '--ndays', help='The last N days of data to retrieve. N should be between 1 - 30')
         self.parser.add_argument('-n', '--topn', help='The top N items to retrieve. Must be a positive int')
