@@ -5,7 +5,7 @@ from nicegui import ui, run
 from icecream import ic
 from .render import *
 
-async def _load_trending_nuggets(category, settings):    
+def load_trending_nuggets_for_category(category, settings):    
     nuggets = beanops.highlights(category[F_NAME], settings['last_ndays'], settings['topn']) 
     category[F_NUGGETS] = [{'data': item} for item in nuggets]
 
@@ -30,6 +30,7 @@ def render_nuggets_as_expandable_list(viewmodel: dict, settings: dict):
                 ui.separator()
         return view
 
+    # ui.label(messages.NOTHING_TRENDING).bind_visibility_from(viewmodel, F_NUGGETS, lambda x: not x)
     return BindableList(render_nugget_as_expandable_item).bind_items_from(viewmodel, F_NUGGETS)
 
 def render(viewmodel: dict):  
@@ -39,8 +40,8 @@ def render(viewmodel: dict):
 
     async def select_category():
         selected = trendingmodel[F_SELECTED]
-        if selected and not trendingmodel[F_CATEGORIES][selected][F_NUGGETS]:
-            await _load_trending_nuggets(trendingmodel[F_CATEGORIES][selected], settings)
+        if selected:
+            await run.io_bound(load_trending_nuggets_for_category, trendingmodel[F_CATEGORIES][selected], settings)
 
     with ui.tabs(on_change=select_category, value=None).bind_value(trendingmodel, F_SELECTED) as tabs:    
         for category in trendingmodel[F_CATEGORIES].values():
@@ -55,10 +56,11 @@ def render(viewmodel: dict):
             with ui.tab_panel(category[F_NAME]):
                 render_nuggets_as_expandable_list(category, settings).classes("w-full").style('flex: 1;') 
 
-async def load_nuggets(viewmodel: dict):
+def load_trending_nuggets(viewmodel: dict):
+    print("loading nuggets")
     for cat in viewmodel['trending'][F_CATEGORIES].values():
-        if not cat[F_NUGGETS]:
-            await _load_trending_nuggets(cat, viewmodel['settings']['search'])
+        # if not cat[F_NUGGETS]:
+        load_trending_nuggets_for_category(cat, viewmodel['settings']['search'])
 
 def _init_page_viewmodel(viewmodel):
     if not viewmodel.get('trending'):

@@ -2,18 +2,22 @@ import json
 from shared import beanops, userops, config
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
-from nicegui import ui
+from nicegui import ui, run
 from icecream import ic
 from . import trending, search, render, theme
+import logging
    
 HOME = 'home'
 CONSOLE = 'console'
 TRENDING = 'trending'
 SOCIALMEDIA = 'social_media'
-URL_SEARCH = 'url_search'
 
 def render_home(viewmodel):
-    ui.markdown(render.settings_markdown(viewmodel['settings']['search']))
+    settings = viewmodel['settings']['search']
+    ui.markdown(render.settings_markdown(settings))
+    nuggets = beanops.trending_keyphrases(settings['last_ndays'], settings['topn'])
+    with ui.row().classes("gap-0"):
+        [render.render_tag("SearchNuggets", nugget.keyphrase) for nugget in nuggets]
 
 def render_settings_panel(usersettings):   
     with ui.list():
@@ -42,7 +46,10 @@ def render_settings_panel(usersettings):
         ui.switch(text="Reddit")
         ui.switch(text="LinkedIn")
 
-def load_page(page, viewmodel, *args):    
+def load_page(page, viewmodel, *args):  
+    print("entered")
+
+
     ui.colors(secondary=theme.SECONDARY_COLOR)
     ui.add_css(content=theme.CSS)
 
@@ -57,14 +64,18 @@ def load_page(page, viewmodel, *args):
             [ui.tab(name=p['title'], icon=p['icon']).tooltip(p['title']) for p in PAGES]
         ui.space()
         ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
+    
+    print("header loaded")
 
     # settings
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
         render_settings_panel(viewmodel['settings']) 
 
+    print("drawer loaded")
+
     async def select_page():
-        if viewmodel[render.F_SELECTED]:
-            await trending.load_nuggets(viewmodel)
+        if ic(viewmodel[render.F_SELECTED]) == "Trending":
+            await run.io_bound(trending.load_trending_nuggets, viewmodel)
 
     # panels
     with ui.tab_panels(tabs=page_tabs, on_change=select_page).bind_value(viewmodel, render.F_SELECTED):
@@ -72,18 +83,33 @@ def load_page(page, viewmodel, *args):
             with ui.tab_panel(p['title']):
                 p["render"](viewmodel)
 
+    print("panels loaded")
+
     # now load the page that was asked to load
     navigate_to(page, viewmodel, *args)
 
+    print("navigations done")
+
 def navigate_to(page, viewmodel, *args):
-    if any(p for p in PAGES if p['title']==page):
+    if page == "Home":
         viewmodel[render.F_SELECTED] = page
+        # TODO: load home contents
+
+    elif page == "Search":
+        viewmodel[render.F_SELECTED] = page
+        
+    elif page == "Trending":
+        viewmodel[render.F_SELECTED] = page
+        trending.load_trending_nuggets(viewmodel)
+
     elif page == "SearchBeans":
+        viewmodel[render.F_SELECTED] = "Search"
         search.load_beans_by_keyword(viewmodel, *args)
-        viewmodel[render.F_SELECTED] = "Search"
+
     elif page == "SearchNuggets":
-        search.load_nuggets_by_keyword(viewmodel, *args)
         viewmodel[render.F_SELECTED] = "Search"
+        search.load_nuggets_by_keyword(viewmodel, *args)
+        
 
 def create_default_settings():
     return {

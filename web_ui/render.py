@@ -103,19 +103,3 @@ def render_nuggets_as_list(nuggets: list[Nugget]):
     with ui.list() as view:
         [render_nugget_as_item(nugget) for nugget in nuggets]
     return view
-
-# @ui.refreshable
-# def render_items_as_bindable_pagination(viewmodel, query_func, render_func):
-#     # load the first page by-default
-#     viewmodel['items'] = query_func(0, PAGE_LIMIT)
-
-#     def load_new_page():
-#         viewmodel['items'] = query_func((viewmodel["page_index"]-1)*PAGE_LIMIT, PAGE_LIMIT)
-#         ic(len(viewmodel['items']))
-
-#     ui.label().bind_text_from(viewmodel, F_BANNER).bind_visibility_from(viewmodel, F_BANNER).classes("text-h5")
-#     BindablePagination(viewmodel.get('item_count'), direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index").bind_item_count_from(viewmodel, 'item_count')
-#     BindableList(item_render_func=render_func).bind_items_from(viewmodel, "items")
-#     BindablePagination(viewmodel.get('item_count'), direction_links=True, on_change=load_new_page).bind_value(viewmodel, "page_index").bind_item_count_from(viewmodel, 'item_count')
-
-    

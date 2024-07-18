@@ -21,11 +21,11 @@ def initiatize(db_conn, embedder):
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_WEEK))
 def get_sources():
-    return beansack.get_sources()
+    return beansack.beanstore.distinct(K_SOURCE)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_WEEK))
 def get_content_types():
-    return beansack.get_kinds()
+    return beansack.beanstore.distinct(K_KIND)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def get_beans_by_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
@@ -50,6 +50,10 @@ def get_nuggets_by_keyword(keyword, start_index, limit):
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def count_nuggets_by_keyword(keyword):
     return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }})
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def trending_keyphrases(last_ndays: int, topn: int):
+    return beansack.get_nuggets(filter = timewindow_filter(last_ndays), sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def highlights(query, last_ndays: int, topn: int):
