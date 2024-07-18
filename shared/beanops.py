@@ -40,16 +40,16 @@ def get_beans_by_keyword(keyword, start_index, limit):
     return beansack.get_beans(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans_by_keyword(keyword):
-    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }})
+def count_beans_by_keyword(keyword, topn):
+    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }}, limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def get_nuggets_by_keyword(keyword, start_index, limit):
     return beansack.get_nuggets(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_nuggets_by_keyword(keyword):
-    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }})
+def count_nuggets_by_keyword(keyword, topn: int):
+    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }}, limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def trending_keyphrases(last_ndays: int, topn: int):

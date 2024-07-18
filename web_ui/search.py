@@ -45,10 +45,10 @@ def render(viewmodel: dict):
     BindablePaginatedList(render_item).bind_contents_from(searchmodel, F_SEARCH_RESULT).classes("w-full")
 
 def load_beans_by_keyword(viewmodel, keyword):
-    viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops.get_beans_by_keyword(keyword, start, limit)), beanops.count_beans_by_keyword(keyword), keyword)
+    viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops.get_beans_by_keyword(keyword, start, limit)), beanops.count_beans_by_keyword(keyword, MAX_LIMIT), keyword)
     
 def load_nuggets_by_keyword(viewmodel, keyword):
-    viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops.get_nuggets_by_keyword(keyword, start, limit)), beanops.count_nuggets_by_keyword(keyword), keyword)
+    viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops.get_nuggets_by_keyword(keyword, start, limit)), beanops.count_nuggets_by_keyword(keyword, MAX_LIMIT), keyword)
     
 def _init_page_viewmodel(viewmodel: dict):
     if not viewmodel.get('console'):

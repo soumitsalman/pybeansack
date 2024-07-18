@@ -3,7 +3,6 @@ from web_ui.custom_ui import *
 from nicegui import ui, run
 from datetime import datetime as dt
 from urllib.parse import quote
-from . import theme
 from shared import messages
 from icecream import ic
 

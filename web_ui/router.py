@@ -4,7 +4,7 @@ from pybeansack.datamodels import *
 from web_ui.custom_ui import *
 from nicegui import ui, run
 from icecream import ic
-from . import trending, search, render, theme
+from . import trending, search, render, defaults
 import logging
    
 HOME = 'home'
@@ -24,10 +24,10 @@ def render_settings_panel(usersettings):
         ui.item_label('Search Settings').classes("text-subtitle1")
         with ui.item():
             with ui.item_section().bind_text_from(usersettings['search'], "last_ndays", lambda x: f"Last {x} days"):
-                ui.slider(min=1, max=30, step=1).bind_value(usersettings['search'], "last_ndays")
+                ui.slider(min=defaults.MIN_WINDOW, max=defaults.MAX_WINDOW, step=1).bind_value(usersettings['search'], "last_ndays")
         with ui.item():
             with ui.item_section().bind_text_from(usersettings['search'], "topn", lambda x: f"Top {x} results"):
-                ui.slider(min=1, max=50, step=1).bind_value(usersettings['search'], "topn")
+                ui.slider(min=defaults.MIN_LIMIT, max=defaults.MAX_LIMIT, step=1).bind_value(usersettings['search'], "topn")
         with ui.item():
             with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
                 ui.select(options=userops.get_default_preferences(), multiple=True).bind_value(usersettings['search'], 'topics').props("use-chips")
@@ -50,8 +50,8 @@ def load_page(page, viewmodel, *args):
     print("entered")
 
 
-    ui.colors(secondary=theme.SECONDARY_COLOR)
-    ui.add_css(content=theme.CSS)
+    ui.colors(secondary=defaults.SECONDARY_COLOR)
+    ui.add_css(content=defaults.CSS)
 
     render.tag_route = lambda kind, keyword: navigate_to(kind, viewmodel, keyword)
 

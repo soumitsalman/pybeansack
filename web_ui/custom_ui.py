@@ -6,6 +6,7 @@ from datetime import datetime as dt
 from itertools import groupby
 from typing import Callable
 from icecream import ic
+from .defaults import *
 
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 
@@ -110,8 +111,7 @@ class HighlightableItem(ui.item):
         return self
     
 
-PAGE_LIMIT = 10
-MAX_PAGES = 10
+
 _page_count = lambda item_count: min(MAX_PAGES, -(-item_count//PAGE_LIMIT)) if item_count else 0
 
 class BindablePagination(ui.pagination):
