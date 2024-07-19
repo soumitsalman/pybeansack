@@ -1,13 +1,9 @@
 from icecream import ic
 from pybeansack.beansack import *
 from pybeansack.datamodels import *
+from .espressops import *
 from cachetools import TTLCache, cached
 
-# cached for 8 hours
-EIGHT_HOUR = 28000
-ONE_DAY = 86400
-ONE_WEEK = 604800
-CACHE_SIZE = 1000
 
 beansack: Beansack = None
 PROJECTION = {K_EMBEDDING: 0, K_TEXT:0}
@@ -19,11 +15,11 @@ def initiatize(db_conn, embedder):
     # this is content retrieval (not processing). This does not need an llm in the beansack
     beansack=Beansack(db_conn, embedder)
 
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_WEEK))
+@cached(TTLCache(maxsize=1, ttl=ONE_WEEK))
 def get_sources():
     return beansack.beanstore.distinct(K_SOURCE)
 
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_WEEK))
+@cached(TTLCache(maxsize=1, ttl=ONE_WEEK))
 def get_content_types():
     return beansack.beanstore.distinct(K_KIND)
 
@@ -36,54 +32,82 @@ def count_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays:
     return beansack.count_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_beans_by_keyword(keyword, start_index, limit):
-    return beansack.get_beans(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
+def get_beans_by_keyword(keyword, start_index, limit):    
+    return beansack.text_search_beans(keyword, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def count_beans_by_keyword(keyword, topn):
-    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }}, limit=topn)
+    return beansack.count_text_search_beans(keyword, limit=topn)
 
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_nuggets_by_keyword(keyword, start_index, limit):
-    return beansack.get_nuggets(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def get_nuggets_by_keyword(keyword, start_index, limit):
+#     return beansack.get_nuggets(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
 
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_nuggets_by_keyword(keyword, topn: int):
-    return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }}, limit=topn)
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def count_nuggets_by_keyword(keyword, topn: int):
+#     return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }}, limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def trending_keyphrases(last_ndays: int, topn: int):
-    return beansack.get_nuggets(filter = timewindow_filter(last_ndays), sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
+    pipeline = [
+        {
+            "$match": timewindow_filter(last_ndays)
+        },
+        {
+            "$sort": LATEST_AND_TRENDING,
+        },
+        {
+            "$group": {
+                "_id": "$keyphrase",
+                "keyphrase": {"$first": "$keyphrase"}
+            }
+        },
+        {
+            "$limit": topn
+        }
+    ]
+    return [item[K_KEYPHRASE] for item in beansack.nuggetstore.aggregate(pipeline)]
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def highlights(query, last_ndays: int, topn: int):
     """Retrieves the trending news highlights that match user interest, topic or query."""
-    return _retrieve_queries(query, lambda q: beansack.trending_nuggets(query=q, filter=timewindow_filter(last_ndays), limit=topn, projection=PROJECTION))
-    
+    return _search(query, lambda emb: beansack.trending_nuggets(embedding=emb, filter=timewindow_filter(last_ndays), limit=topn, projection=PROJECTION))
+
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def count_highlights(query, last_ndays: int, topn: int):
+    """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
+    results = _search(query, lambda emb: beansack.count_trending_nuggets(embedding=emb, filter=timewindow_filter(last_ndays), limit=topn))
+    if results:
+        return results[0] if len(results) == 1 else results
+    else:
+        return 0
+
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def trending(query, content_types: str|tuple[str], last_ndays: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
-    return _retrieve_queries(query, lambda q: beansack.trending_beans(query=q, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION))
+    return _search(query, lambda emb: beansack.trending_beans(embedding=emb, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION))
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def search(query: str, content_types: str|tuple[str], last_ndays: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
-    return _retrieve_queries(query, lambda q: beansack.search_beans(query=q, filter=_create_filter(content_types, last_ndays), limit=topn, sort_by=LATEST, projection=PROJECTION))
+    return _search(query, lambda emb: beansack.search_beans(embedding=emb, filter=_create_filter(content_types, last_ndays), limit=topn, sort_by=LATEST, projection=PROJECTION))
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def search_all(query: str, last_ndays: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter = timewindow_filter(last_ndays)
-    return _retrieve_queries(query, lambda q: beansack.search_beans(query=q, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION)) \
-        + _retrieve_queries(query, lambda q: beansack.search_nuggets(query=q, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
+    return _search(query, lambda emb: beansack.search_beans(embedding=emb, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION)) \
+        + _search(query, lambda emb: beansack.search_nuggets(embedding=emb, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
 
-def _retrieve_queries(query_items, retrieval_func):
+def _search(query_items, retrieval_func):
     query_items = list(query_items) if isinstance(query_items, tuple) else [query_items]
     results = []
     for q in query_items:
-        nugs = retrieval_func(q)
-        if nugs:
-            results.extend(nugs)
+        resp = retrieval_func(get_embedding(q, None))
+        if isinstance(resp, list):
+            results.extend(resp)
+        else:
+            results.append(resp)
     return results
         
 def _create_filter(content_types: str|tuple[str], last_ndays: int):

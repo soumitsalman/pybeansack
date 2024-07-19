@@ -447,5 +447,5 @@ def _create_interests_blocks(user_id, interests):
         return _create_text_blocks(messages.NO_INTERESTS_MESSAGE, update_button)
 
 def update_user_preferences(user_id: str, interests: list[str]):
-    userops.update_preferences(source=config.SLACK, username=user_id, items=interests)    
+    userops.update_topics(source=config.SLACK, username=user_id, items=interests)    
  

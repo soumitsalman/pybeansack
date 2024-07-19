@@ -6,8 +6,8 @@ from urllib.parse import quote
 from shared import messages
 from icecream import ic
 
-F_NAME = "header"
 F_NUGGETS = "nuggets"
+F_NUGGETCOUNT = "nugget_count"
 F_SELECTED = "selected"
 F_BEANS = "beans"
 F_CATEGORIES = "categories"
@@ -22,14 +22,14 @@ nugget_navigate_path = lambda keyword: "/search/nuggets/"+quote(keyword)
 
 nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
 counter_text = lambda counter: str(counter) if counter < 100 else str(99)+'+'
-tag_route = lambda kind, word: ui.notify(messages.NO_ACTION)
+tag_route = lambda tag: ui.notify(messages.NO_ACTION)
 
 def settings_markdown(settings: dict):
     return "Topics of Interest: %s\n\nPulling top **%d** %s from last **%d** days." % \
         (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['topn'], ", ".join([f"**{ctype}**" for ctype in settings['content_types']]), settings['last_ndays'])      
 
-def render_tag(kind, text):
-    ui.chip(text, on_click=lambda kind=kind, text=text: tag_route(kind, text)).props('outline square')
+def render_tag(text):
+    ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline square')
 
 def render_bean_as_card(bean: Bean):
     if bean:
@@ -47,7 +47,7 @@ def render_bean_as_card(bean: Bean):
                     ui.label(f"👍 {bean.noise.likes}")
             if bean.tags:
                 with ui.row().classes("gap-0"):
-                    [render_tag("SearchBeans", word) for word in bean.tags[:3]]
+                    [render_tag(word) for word in bean.tags[:3]]
             ui.label(bean.title).classes("text-bold")
             ui.markdown(bean.summary)
         return card
@@ -55,7 +55,7 @@ def render_bean_as_card(bean: Bean):
 def render_nugget_banner(nugget: Nugget):
     with ui.row(align_items="center").classes('text-caption') as view:
         ui.label("📅 "+ date_to_str(nugget.updated))
-        render_tag("SearchNuggets", nugget.keyphrase)
+        render_tag(nugget.keyphrase)
     return view
 
 def render_nugget_as_card(nugget: Nugget):
@@ -67,7 +67,7 @@ def render_nugget_as_card(nugget: Nugget):
 
 def render_nugget_as_item(nugget: Nugget):
     with ui.item() as view:
-        with ui.column():   
+        with ui.column(wrap=True):   
             render_nugget_banner(nugget)
             ui.label(text=nugget.description)
             ui.separator()

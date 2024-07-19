@@ -3,14 +3,16 @@
 # from utils import create_logger
 from langchain_groq import ChatGroq
 from pybeansack.embedding import LocalEmbedder
-from . import beanops, userops, writer
+from . import beanops, espressops, userops, writer
 
 def initialize(db_conn_str, embedder_path, llm_api_key):
     embedder = LocalEmbedder(embedder_path)
     llm = ChatGroq(api_key=llm_api_key, model="llama3-8b-8192", temperature=0.1, verbose=False, streaming=False)
     beanops.initiatize(db_conn_str, embedder)
-    userops.initialize(db_conn_str, embedder)
+    userops.initialize(db_conn_str)
+    espressops.initialize(db_conn_str, embedder)
     writer.initiatize(llm, lambda topic, last_ndays, limit: beanops.search_all(topic, last_ndays, limit))
+
 
 
 

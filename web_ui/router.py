@@ -15,9 +15,9 @@ SOCIALMEDIA = 'social_media'
 def render_home(viewmodel):
     settings = viewmodel['settings']['search']
     ui.markdown(render.settings_markdown(settings))
-    nuggets = beanops.trending_keyphrases(settings['last_ndays'], settings['topn'])
+    nuggets = beanops.trending_keyphrases(settings['last_ndays'], 10)
     with ui.row().classes("gap-0"):
-        [render.render_tag("SearchNuggets", nugget.keyphrase) for nugget in nuggets]
+        [render.render_tag(nugget) for nugget in nuggets]
 
 def render_settings_panel(usersettings):   
     with ui.list():
@@ -30,7 +30,7 @@ def render_settings_panel(usersettings):
                 ui.slider(min=defaults.MIN_LIMIT, max=defaults.MAX_LIMIT, step=1).bind_value(usersettings['search'], "topn")
         with ui.item():
             with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
-                ui.select(options=userops.get_default_preferences(), multiple=True).bind_value(usersettings['search'], 'topics').props("use-chips")
+                ui.select(options=userops.get_topics(userops.EDITOR, text_only=True), multiple=True).bind_value(usersettings['search'], 'topics').props("use-chips")
         with ui.item():
             with ui.expansion("Content Types", caption="Select content types to filter on"):
                 ui.select(options=usersettings['search']['content_types'], multiple=True).bind_value(usersettings['search'], 'content_types').props("use-chips")
@@ -53,7 +53,7 @@ def load_page(page, viewmodel, *args):
     ui.colors(secondary=defaults.SECONDARY_COLOR)
     ui.add_css(content=defaults.CSS)
 
-    render.tag_route = lambda kind, keyword: navigate_to(kind, viewmodel, keyword)
+    render.tag_route = lambda keyword: navigate_to("SearchByTag", viewmodel, keyword)
 
     # header
     with ui.header().classes(replace="row items-center"):
@@ -74,8 +74,8 @@ def load_page(page, viewmodel, *args):
     print("drawer loaded")
 
     async def select_page():
-        if ic(viewmodel[render.F_SELECTED]) == "Trending":
-            await run.io_bound(trending.load_trending_nuggets, viewmodel)
+        if viewmodel[render.F_SELECTED] == "Trending":
+            await run.io_bound(trending.load_trending, viewmodel)
 
     # panels
     with ui.tab_panels(tabs=page_tabs, on_change=select_page).bind_value(viewmodel, render.F_SELECTED):
@@ -100,15 +100,15 @@ def navigate_to(page, viewmodel, *args):
         
     elif page == "Trending":
         viewmodel[render.F_SELECTED] = page
-        trending.load_trending_nuggets(viewmodel)
+        trending.load_trending(viewmodel)
 
-    elif page == "SearchBeans":
+    elif page == "SearchByTag":
         viewmodel[render.F_SELECTED] = "Search"
         search.load_beans_by_keyword(viewmodel, *args)
 
-    elif page == "SearchNuggets":
-        viewmodel[render.F_SELECTED] = "Search"
-        search.load_nuggets_by_keyword(viewmodel, *args)
+    # elif page == "SearchNuggets":
+    #     viewmodel[render.F_SELECTED] = "Search"
+    #     search.load_nuggets_by_keyword(viewmodel, *args)
         
 
 def create_default_settings():

@@ -6,7 +6,7 @@ from icecream import ic
 from .render import *
 
 def load_trending_nuggets_for_category(category, settings):    
-    nuggets = beanops.highlights(category[F_NAME], settings['last_ndays'], settings['topn']) 
+    nuggets = beanops.highlights(category[K_TEXT], settings['last_ndays'], settings['topn']) 
     category[F_NUGGETS] = [{'data': item} for item in nuggets]
 
 def render_nuggets_as_expandable_list(viewmodel: dict, settings: dict):
@@ -17,7 +17,7 @@ def render_nuggets_as_expandable_list(viewmodel: dict, settings: dict):
     def render_nugget_as_expandable_item(nugget: dict):
         bean_count = beanops.count_beans_for_nugget(nugget['data'].id, tuple(settings['content_types']), settings['last_ndays'], settings['topn'])   
         with ui.item() as view:
-            with ui.column(align_items="start"):                        
+            with ui.column(align_items="start", wrap=True):                        
                 render_nugget_banner(nugget['data'])  
                 with ui.expansion(
                         group="group", 
@@ -45,34 +45,40 @@ def render(viewmodel: dict):
 
     with ui.tabs(on_change=select_category, value=None).bind_value(trendingmodel, F_SELECTED) as tabs:    
         for category in trendingmodel[F_CATEGORIES].values():
-            with ui.tab(category[F_NAME], label=category[F_NAME]):   
+            with ui.tab(category[K_TEXT], label=category[K_TEXT]):   
                 ui.badge() \
-                    .bind_text_from(category, F_NUGGETS, lambda x: str(len(x or []))) \
-                    .bind_visibility_from(category, F_NUGGETS) \
+                    .bind_text_from(category, F_NUGGETCOUNT, lambda x: str(x)) \
+                    .bind_visibility_from(category, F_NUGGETCOUNT) \
                     .props("floating transparent")
 
     with ui.tab_panels(tabs):
         for category in trendingmodel[F_CATEGORIES].values():
-            with ui.tab_panel(category[F_NAME]):
+            with ui.tab_panel(category[K_TEXT]):
                 render_nuggets_as_expandable_list(category, settings).classes("w-full").style('flex: 1;') 
 
-def load_trending_nuggets(viewmodel: dict):
+def load_trending(viewmodel: dict):
     print("loading nuggets")
-    for cat in viewmodel['trending'][F_CATEGORIES].values():
-        # if not cat[F_NUGGETS]:
-        load_trending_nuggets_for_category(cat, viewmodel['settings']['search'])
+    trendingmodel = viewmodel['trending']
+    settings = viewmodel['settings']['search'] 
+    if len(trendingmodel[F_CATEGORIES]) > 0:
+        trendingmodel[F_SELECTED] = next(iter(trendingmodel[F_CATEGORIES].values()))[K_TEXT] 
+    for cat in trendingmodel[F_CATEGORIES].values():
+        cat[F_NUGGETCOUNT] = beanops.count_highlights(cat[K_TEXT], last_ndays=settings["last_ndays"], topn=settings['topn'])
+
 
 def _init_page_viewmodel(viewmodel):
-    if not viewmodel.get('trending'):
+    if 'trending' not in viewmodel:
+        if not viewmodel['settings']['search']["topics"]:
+            viewmodel['settings']['search']["topics"] = userops.get_topics(viewmodel.get('userid'), text_only=True) or userops.get_topics(userops.EDITOR, text_only=True)
         viewmodel['trending'] = {
-            F_CATEGORIES: {cat: _create_category_viewmodel(cat) for cat in viewmodel['settings']['search']["topics"] or userops.get_default_preferences()},
+            F_CATEGORIES: {cat: _create_category_viewmodel(cat) for cat in viewmodel['settings']['search']["topics"]},
             F_SELECTED: None
         }
     return viewmodel
         
-def _create_category_viewmodel(cat: str):
+def _create_category_viewmodel(cat):
     return {
-        F_NAME:cat, 
+        K_TEXT:cat,
         F_NUGGETS: None, 
         F_BEANS: None, 
         F_SELECTED: None,
