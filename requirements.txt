@@ -11,4 +11,5 @@ langchain-community
 nicegui
 fastapi
 cachetools
+tiktoken
 
