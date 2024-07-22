@@ -5,12 +5,14 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 from dotenv import load_dotenv
 
 env_path = f"{curr_dir}/.env"
+logger_path = f"{curr_dir}/app.log"
+embedder_path = f"{curr_dir}/models/nomic.gguf"
 load_dotenv(env_path)
 
 # initializing logger
 from pybeansack import utils
 
-logger_path = f"{curr_dir}/app.log"
+
 utils.set_logger_path(logger_path)  
 logger = utils.create_logger("CDN")
 
@@ -54,7 +56,7 @@ async def trending(category: str=None, days: int=defaults.DEFAULT_WINDOW, topn: 
     await router.render_trending(_get_session_settings(), category, days, topn)
 
 def start_server():
-    tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())
+    tools.initialize(config.get_db_connection_str(), embedder_path, config.get_llm_api_key())
     ui.run(title=config.APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3)
 
 if __name__ in {"__main__", "__mp_main__"}:

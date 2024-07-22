@@ -23,5 +23,3 @@ def get_db_connection_str():
     return os.getenv("DB_CONNECTION_STRING")
 def get_llm_api_key():
     return os.getenv("GROQ_API_TOKEN")
-def get_embedder_model_path():
-    return os.getenv("EMBEDDER_PATH")
