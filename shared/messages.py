@@ -1,10 +1,10 @@
 # messages
 NO_INTERESTS_MESSAGE = "Is there anything under god's green earth that interests you? If so do some clickittyclick and tell us what floats your boat."
 NO_MORE_CONTENT = "Thass'it ... Se acabo! Go get some :coffee:"
-NOTHING_TRENDING_TODAY = "*Nothing trending today.*"
 NO_ACTION = "I don't really do much. I just sit here and look pretty."
 NOTHING_FOUND = "Couldn't find anything"
 NOTHING_TRENDING = "Nothing trending."
+NOTHING_TRENDING_IN = "Nothing trending last %d day(s)."
 INVALID_INPUT = "Yeah ... I don't know that is."
 SHRUG = ":shrug:"
 PROCESSING = "Hol' on to your lilly white :peach: Imma' go dig up some :shit:"

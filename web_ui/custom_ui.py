@@ -61,9 +61,8 @@ class BindableList(ui.list):
     def _render(self, value):    
         self.clear()    
         with self:
-            for item in (value or []):                    
-                with ui.item():
-                    self.render_item(item)
+            for item in (value or []):                                    
+                self.render_item(item)
 
     def bind_items_from(self, target_object, target_name: str = 'items', backward = lambda x: x) -> Self:
         bind_from(self, "items", target_object, target_name, backward)
@@ -110,8 +109,6 @@ class HighlightableItem(ui.item):
         bind_from(self, "highlight", target_object, target_name, backward)
         return self
     
-
-
 _page_count = lambda item_count: min(MAX_PAGES, -(-item_count//PAGE_LIMIT)) if item_count else 0
 
 class BindablePagination(ui.pagination):

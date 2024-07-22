@@ -1,6 +1,6 @@
 from shared import beanops, messages, prompt_parser
 from pybeansack.datamodels import *
-from .render import *
+from .renderer import *
 from web_ui.custom_ui import *
 from nicegui import ui, run
 

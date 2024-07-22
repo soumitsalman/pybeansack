@@ -24,28 +24,20 @@ def get_content_types():
     return beansack.beanstore.distinct(K_KIND)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_beans_by_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
-    return beansack.get_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION) or []
+def get_beans_by_nugget(nugget_id: str, kind: str|tuple[str], last_ndays: int, topn: int):
+    return beansack.get_beans_by_nugget(nugget=nugget_id, filter=_create_filter(kind, last_ndays), limit=topn, projection=PROJECTION) or []
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans_for_nugget(nugget_id, content_types: str|tuple[str], last_ndays: int, topn: int):
-    return beansack.count_beans_by_nugget(nugget_id=nugget_id, filter=_create_filter(content_types, last_ndays), limit=topn)
+def count_beans_for_nugget(nugget_id: str, kind: str|tuple[str], last_ndays: int, topn: int):
+    return beansack.count_beans_by_nugget(nugget=nugget_id, filter=_create_filter(kind, last_ndays), limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_beans_by_keyword(keyword, start_index, limit):    
-    return beansack.text_search_beans(keyword, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
+def get_beans_by_keyword(keyword: str, start_index: int, topn: int): 
+    return beansack.get_beans(filter={"tags": {"$in": [keyword]}}, skip=start_index, limit=topn, sort_by=LATEST, projection=PROJECTION)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans_by_keyword(keyword, topn):
-    return beansack.count_text_search_beans(keyword, limit=topn)
-
-# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-# def get_nuggets_by_keyword(keyword, start_index, limit):
-#     return beansack.get_nuggets(filter = {"$text": { "$search": keyword }}, sort_by=LATEST, projection=PROJECTION, skip=start_index, limit=limit)
-
-# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-# def count_nuggets_by_keyword(keyword, topn: int):
-#     return beansack.beanstore.count_documents(filter = {"$text": { "$search": keyword }}, limit=topn)
+def count_beans_by_keyword(keyword: str, topn: int):
+    return beansack.beanstore.count_documents(filter={"tags": {"$in": [keyword]}},  limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def trending_keyphrases(last_ndays: int, topn: int):

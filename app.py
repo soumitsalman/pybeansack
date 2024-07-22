@@ -18,7 +18,7 @@ logger = utils.create_logger("CDN")
 from slack_bolt.adapter.fastapi import SlackRequestHandler
 from nicegui import app, ui
 from shared import config, tools
-from web_ui import router
+from web_ui import router, defaults
 from icecream import ic
 # from slack_ui.router import slack_router
 
@@ -32,39 +32,31 @@ from icecream import ic
 # def slack_events(req):
 #     return handler.handle(req)
 
-@ui.page("/")
-def home():    
+def _get_session_settings():
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = router.create_default_settings()
-    router.load_page("Home", {'settings': app.storage.user['settings']})
+    return app.storage.user['settings']
+
+@ui.page("/")
+def home():   
+    router.render_home(_get_session_settings())
 
 @ui.page("/search")
-def search():    
-    if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = router.create_default_settings()
-    router.load_page("Search", {'settings': app.storage.user['settings']})
+async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=defaults.DEFAULT_WINDOW, topn: int=defaults.DEFAULT_LIMIT):  
+    days = min(days, defaults.MAX_WINDOW)
+    topn = min(topn, defaults.MAX_LIMIT)    
+    await router.render_search(_get_session_settings(), q, keyword, kind, days, topn)
 
 @ui.page("/trending")
-def trending():    
-    if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = router.create_default_settings()
-    router.load_page("Trending", {'settings': app.storage.user['settings']})
-
-@ui.page("/search/nuggets/{keyword}")
-def nuggets(keyword):    
-    if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = router.create_default_settings()
-    router.load_page("SearchNuggets", {'settings': app.storage.user['settings']}, keyword)
-
-@ui.page("/search/beans/{keyword}")
-def beans(keyword):    
-    if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = router.create_default_settings()
-    router.load_page("SearchBeans", {'settings': app.storage.user['settings']}, keyword)
+async def trending(category: str=None, days: int=defaults.DEFAULT_WINDOW, topn: int=defaults.DEFAULT_LIMIT):  
+    days = min(days, defaults.MAX_WINDOW)
+    topn = min(topn, defaults.MAX_LIMIT)    
+    await router.render_trending(_get_session_settings(), category, days, topn)
 
 def start_server():
     tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())
-    ui.run(title=config.APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False)
+    ui.navigate.to("/")
+    ui.run(title=config.APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3)
 
 if __name__ in {"__main__", "__mp_main__"}:
     start_server()

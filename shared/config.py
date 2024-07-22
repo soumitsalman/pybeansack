@@ -6,15 +6,6 @@ APP_NAME="Espresso by Cafecit.io"
 SLACK = "SLACK"
 REDDIT = "REDDIT"
 
-# time window, limit and special trend limit
-DEFAULT_WINDOW = 2
-MIN_WINDOW = 1
-MAX_WINDOW = 30
-DEFAULT_LIMIT = 5
-MIN_LIMIT = 1
-MAX_LIMIT = 50
-
-
 def get_slack_bot_token() -> str:
     return os.getenv("ESPRESSO_SLACK_BOT_TOKEN")
 def get_slack_app_token() -> str:

@@ -5,6 +5,7 @@ from datetime import datetime as dt
 from urllib.parse import quote
 from shared import messages
 from icecream import ic
+from yarl import URL
 
 F_NUGGETS = "nuggets"
 F_NUGGETCOUNT = "nugget_count"
@@ -17,23 +18,30 @@ F_SEARCH_RESULT = "search_result"
 F_PROMPT = "prompt"
 F_PROCESSING_PROMPT = "processing_prompt"
 
-bean_navigate_path = lambda keyword: "/search/beans/"+quote(keyword)
-nugget_navigate_path = lambda keyword: "/search/nuggets/"+quote(keyword)
-
 nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
 counter_text = lambda counter: str(counter) if counter < 100 else str(99)+'+'
-tag_route = lambda tag: ui.notify(messages.NO_ACTION)
+tag_route = lambda tag: ui.navigate.to(make_url("/search", keyword=tag))
+
+def make_url(target, **kwargs):
+    url_val = URL().with_path(target)    
+    if kwargs:
+        url_val = url_val.with_query(**kwargs)
+    return str(url_val)
+
+def set_tag_route(func):
+    global tag_route
+    tag_route = func
 
 def settings_markdown(settings: dict):
-    return "Topics of Interest: %s\n\nPulling top **%d** %s from last **%d** days." % \
-        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['topn'], ", ".join([f"**{ctype}**" for ctype in settings['content_types']]), settings['last_ndays'])      
+    return "Topics of Interest: %s\n\nPulling top **%d** items from last **%d** days." % \
+        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['topn'], settings['last_ndays'])      
 
 def render_tag(text):
     ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline square')
 
 def render_bean_as_card(bean: Bean):
     if bean:
-        with ui.card() as card:
+        with ui.card().classes("w-full") as card:
             with ui.row(align_items="center").classes('text-caption'): 
                 if bean.created:
                     ui.label(f"📅 {date_to_str(bean.created)}") 
@@ -55,7 +63,7 @@ def render_bean_as_card(bean: Bean):
 def render_nugget_banner(nugget: Nugget):
     with ui.row(align_items="center").classes('text-caption') as view:
         ui.label("📅 "+ date_to_str(nugget.updated))
-        render_tag(nugget.keyphrase)
+        ui.label("🏷️ " + nugget.keyphrase)
     return view
 
 def render_nugget_as_card(nugget: Nugget):
@@ -91,14 +99,29 @@ def render_nuggets_as_bindable_list(viewmodel: dict, nuggets: str = F_NUGGETS):
 def render_items_as_bindable_list(viewmodel: dict, items: str = "items"):
     return BindableList(render_item).bind_items_from(viewmodel, items)
 
-def render_beans_as_list(beans: list[Bean]):    
-    with ui.list() as view:
-        for bean in beans:
-            with ui.item():
-                render_bean_as_card(bean)
-    return view
+def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card):  
+    if beans:  
+        with ui.list().classes("w-full") as view:
+            for bean in beans:
+                with ui.item():
+                    item_render_func(bean)
+        return view
 
-def render_nuggets_as_list(nuggets: list[Nugget]):    
-    with ui.list() as view:
-        [render_nugget_as_item(nugget) for nugget in nuggets]
-    return view
+def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):
+    page_index = {"page_index": 1}
+    page_count = min(MAX_PAGES, -(-count//PAGE_LIMIT))
+
+    @ui.refreshable
+    def render_search_items():
+        render_beans_as_list(beans_iter((page_index['page_index']-1)*PAGE_LIMIT))    
+    if count > PAGE_LIMIT:
+        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index['page_index'], on_change=render_search_items.refresh).bind_value(page_index, 'page_index')
+    render_search_items()
+    if count > PAGE_LIMIT:
+        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index).bind_value(page_index, 'page_index')
+
+def render_nuggets_as_list(nuggets: list[Nugget], item_render_func = render_nugget_as_item):    
+    if nuggets:
+        with ui.list() as view:
+            [item_render_func(nugget) for nugget in nuggets]
+        return view

@@ -3,7 +3,7 @@ from pybeansack.datamodels import *
 from web_ui.custom_ui import *
 from nicegui import ui, run
 from icecream import ic
-from .render import *
+from .renderer import *
 
 def load_trending_nuggets_for_category(category, settings):    
     nuggets = beanops.highlights(category[K_TEXT], settings['last_ndays'], settings['topn']) 

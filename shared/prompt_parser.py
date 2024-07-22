@@ -7,6 +7,8 @@ import argparse
 import shlex
 from pybeansack.datamodels import *
 
+_ALL = [ARTICLE, POST, COMMENT]
+
 class ContentType(str, Enum):    
     POSTS = "posts"
     COMMENTS = "comments"
@@ -15,10 +17,10 @@ class ContentType(str, Enum):
     HIGHLIGHTS = "highlights"
     NEWSLETTER = "newsletter"
 
-class InteractiveInputParser:
-    def __init__(self, settings: dict = None):
-        self.defaults = settings
 
+
+class InteractiveInputParser:
+    def __init__(self):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('task', help='The main task')
         self.parser.add_argument('-q', '--query', help='The search query')
@@ -29,37 +31,26 @@ class InteractiveInputParser:
         self.parser.add_argument('-s', '--source', help='Data source to pull from')
         self.parser.format_help()
         
-    def parse(self, prompt: str):
-        def one_or_list(items):
-            if isinstance(items, list):
-                return tuple(items) if len(items) > 1 else items[0]
-            else:
-                return items            
-            
+    def parse(self, prompt: str, defaults: dict):        
         try:
             args = self.parser.parse_args(shlex.split(prompt.lower()))      
             # parse query/topics            
-            query = [item.strip() for item in args.query.split(",")] if args.query else self.defaults.get('topics', [])
+            query = [item.strip() for item in args.query.split(",")] if args.query else defaults.get('topics', [])
             # parser content_types/kind
-            ctypes = [_translate_ctype(getattr(ContentType, item.strip().upper(), None)) for item in args.type.split(",")] if args.type else self.defaults.get('content_types', [])
-            ndays = int(args.ndays) if args.ndays else self.defaults.get('last_ndays')
-            topn = int(args.topn) if args.topn else self.defaults.get('topn')
-            return (args.task, one_or_list(query), one_or_list(ctypes) , ndays, topn)
+            ctypes = [_translate_ctype(getattr(ContentType, item.strip().upper(), None)) for item in args.type.split(",")] if args.type else _ALL
+            ndays = int(args.ndays) if args.ndays else defaults.get('last_ndays')
+            topn = int(args.topn) if args.topn else defaults.get('topn')
+            return (args.task, _tuplify_if_many(query), _tuplify_if_many(ctypes) , ndays, topn)
         except:
-            return (None, self.defaults.get('topics', []), one_or_list(self.defaults.get('content_types', [])), self.defaults.get('last_ndays'), self.defaults.get('topn'))
+            return (None, defaults.get('topics', []), _tuplify_if_many(_ALL), defaults.get('last_ndays'), defaults.get('topn'))
         
-    def update_defaults(self, topics: str|list[str], content_types, last_ndays: int, topn: int):
-        """Changes/updates application settings settings so that by default all future contents follow the change directive."""
-        if topics:
-            self.defaults['topics']=topics
-        if content_types:
-            self.defaults['content_types']=content_types
-        if last_ndays:
-            self.defaults['last_ndays']=last_ndays    
-        if topn:
-            self.defaults['topn']=topn        
-        return self.defaults
-        
+
+def _tuplify_if_many(items):
+    if isinstance(items, list):
+        return tuple(items) if len(items) > 1 else items[0]
+    else:
+        return items     
+
 def _translate_ctype(ctype: ContentType):
     if ctype == ContentType.POSTS:
         return POST
