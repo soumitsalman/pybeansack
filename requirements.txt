@@ -3,13 +3,16 @@ slack-bolt
 pymongo
 azure-data-tables
 pandas
-retry
 pydantic
-langchain
-langchain-groq
-langchain-community
 nicegui
 fastapi
 cachetools
 tiktoken
+llama-cpp-python
+langchain
+langchain-community
+langchain-groq
+langchain-text-splitters
+retry
+
 
