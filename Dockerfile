@@ -1,10 +1,4 @@
-FROM python:3.11-alpine
-
-RUN apk update && apk add --no-cache \
-    cmake \
-    make \
-    g++ \
-    build-base
+FROM python:3.11-bullseye
 
 WORKDIR /app 
 COPY . . 
