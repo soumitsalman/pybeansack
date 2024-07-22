@@ -1,8 +1,7 @@
-/.deployment
 *.env
-/.vscode
+*.json
 /.venv
-.gitignore
-/.github
-/.git
-
+/.deployment
+*__pycache__
+/data
+.nicegui

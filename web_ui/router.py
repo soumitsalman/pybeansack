@@ -41,7 +41,7 @@ async def render_trending(settings: dict, category: str, last_ndays: int, topn: 
                     render_beans(False)                                
         return view
 
-    ui.label(category).classes("text-h5")
+    render_banner(category)
     nuggets = await run.io_bound(beanops.highlights, category, last_ndays, topn)     
     if nuggets:
         render_nuggets_as_list(nuggets, render_nugget_as_expandable_item)        
@@ -70,7 +70,7 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
     banner = query or keyword    
     if banner:
         # means there can be a search result
-        ui.label(banner).classes("text-h5")
+        render_banner(banner)
         count, beans_iter = await _run_search()
         if count:
             render_beans_as_paginated_list(count, beans_iter)
@@ -100,9 +100,9 @@ def _render_shell(settings):
         with ui.avatar(square=True):
             ui.image("images/cafecito.png")
         with ui.button_group().props("unelevated"):
-            ui.button(text="Home", icon='home', on_click=lambda: ui.navigate.to("/"))
-            ui.button(text="Search", icon="search", on_click=lambda: ui.navigate.to('/search'))
-            with ui.dropdown_button(text="Trending", icon='trending_up').props("unelevated"):
+            ui.button(icon='home', on_click=lambda: ui.navigate.to("/"))
+            ui.button(icon="search", on_click=lambda: ui.navigate.to('/search'))
+            with ui.dropdown_button(icon='trending_up'):
                 BindableList(render_topic).bind_items_from(settings['search'], 'topics')
 
         ui.space()

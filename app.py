@@ -55,7 +55,6 @@ async def trending(category: str=None, days: int=defaults.DEFAULT_WINDOW, topn: 
 
 def start_server():
     tools.initialize(config.get_db_connection_str(), config.get_embedder_model_path(), config.get_llm_api_key())
-    ui.navigate.to("/")
     ui.run(title=config.APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3)
 
 if __name__ in {"__main__", "__mp_main__"}:

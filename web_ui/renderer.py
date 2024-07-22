@@ -39,6 +39,11 @@ def settings_markdown(settings: dict):
 def render_tag(text):
     ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline square')
 
+def render_banner(banner):
+    with ui.label(banner).classes("text-h5") as view:
+        ui.separator().style("margin-top: 5px;")
+    return view
+
 def render_bean_as_card(bean: Bean):
     if bean:
         with ui.card().classes("w-full") as card:
@@ -89,19 +94,10 @@ def render_item(resp: Bean|Nugget|str):
         render_bean_as_card(resp) 
     elif isinstance(resp, Nugget):
         render_nugget_as_item(resp)
-    
-def render_beans_as_bindable_list(viewmodel: dict, beans: str = F_BEANS):    
-    return BindableList(render_bean_as_card).bind_items_from(viewmodel, beans)
-
-def render_nuggets_as_bindable_list(viewmodel: dict, nuggets: str = F_NUGGETS):
-    return BindableList(render_nugget_as_item).bind_items_from(viewmodel, nuggets)
-
-def render_items_as_bindable_list(viewmodel: dict, items: str = "items"):
-    return BindableList(render_item).bind_items_from(viewmodel, items)
 
 def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card):  
     if beans:  
-        with ui.list().classes("w-full") as view:
+        with ui.list() as view:
             for bean in beans:
                 with ui.item():
                     item_render_func(bean)
@@ -125,3 +121,13 @@ def render_nuggets_as_list(nuggets: list[Nugget], item_render_func = render_nugg
         with ui.list() as view:
             [item_render_func(nugget) for nugget in nuggets]
         return view
+
+
+# def render_beans_as_bindable_list(viewmodel: dict, beans: str = F_BEANS):    
+#     return BindableList(render_bean_as_card).bind_items_from(viewmodel, beans)
+
+# def render_nuggets_as_bindable_list(viewmodel: dict, nuggets: str = F_NUGGETS):
+#     return BindableList(render_nugget_as_item).bind_items_from(viewmodel, nuggets)
+
+# def render_items_as_bindable_list(viewmodel: dict, items: str = "items"):
+#     return BindableList(render_item).bind_items_from(viewmodel, items)
