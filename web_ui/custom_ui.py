@@ -109,7 +109,7 @@ class HighlightableItem(ui.item):
         bind_from(self, "highlight", target_object, target_name, backward)
         return self
     
-_page_count = lambda item_count: min(MAX_PAGES, -(-item_count//PAGE_LIMIT)) if item_count else 0
+_page_count = lambda item_count: min(MAX_PAGES, -(-item_count//MAX_ITEMS_PER_PAGE)) if item_count else 0
 
 class BindablePagination(ui.pagination):
     item_count = BindableProperty(on_change=lambda sender, value: cast(Self, sender)._render(value))
@@ -117,7 +117,7 @@ class BindablePagination(ui.pagination):
     def __init__(self, item_count: int, *args, **kwargs):
         self.item_count = item_count
         super().__init__(1, _page_count(item_count), *args, **kwargs)
-        self.bind_visibility_from(self, "item_count", lambda x: (x > PAGE_LIMIT) if isinstance(x, int) else False)
+        self.bind_visibility_from(self, "item_count", lambda x: (x > MAX_ITEMS_PER_PAGE) if isinstance(x, int) else False)
 
     def _render(self, count):  
         self._props['max'] = _page_count(count)
@@ -146,7 +146,7 @@ class BindablePaginatedList(ui.column):
         return self
     
     def _load_new_page(self):
-        self._items = self._get_page((self._page_index-1)*PAGE_LIMIT, PAGE_LIMIT)
+        self._items = self._get_page((self._page_index-1)*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE)
 
     def _render(self, value):
         self.clear()
@@ -156,7 +156,7 @@ class BindablePaginatedList(ui.column):
         if not self._get_page:
             return
         
-        self._page_index, self._items = 1, self._get_page(0, PAGE_LIMIT)
+        self._page_index, self._items = 1, self._get_page(0, MAX_ITEMS_PER_PAGE)
         with self:
             ui.label().bind_text_from(self, '_banner').bind_visibility_from(self, '_banner').classes("text-h5")
             BindablePagination(self._item_count, direction_links=True, on_change=self._load_new_page).bind_value(self, "_page_index").bind_item_count_from(self, '_item_count')

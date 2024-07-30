@@ -44,56 +44,61 @@ def render_banner(banner):
         ui.separator().style("margin-top: 5px;")
     return view
 
+
 def render_bean_as_card(bean: Bean):
     if bean:
         with ui.card().classes("w-full") as card:
-            with ui.row(align_items="center").classes('text-caption'): 
-                if bean.created:
-                    ui.label(f"📅 {date_to_str(bean.created)}") 
-                if bean.source:
-                    ui.markdown(f"🔗 [{bean.source}]({bean.url})")   
-                if bean.author:
-                    ui.label(f"✍️ {bean.author}")
-                if bean.noise and bean.noise.comments:
-                    ui.label(f"💬 {bean.noise.comments}")
-                if bean.noise and bean.noise.likes:
-                    ui.label(f"👍 {bean.noise.likes}")
-            if bean.tags:
-                with ui.row().classes("gap-0"):
-                    [render_tag(word) for word in bean.tags[:3]]
-            ui.label(bean.title).classes("text-bold")
+            render_bean_banner(bean)
             ui.markdown(bean.summary)
         return card
+
+def render_bean_banner(bean: Bean):
+    with ui.row(align_items="center").classes('text-caption'): 
+        if bean.created:
+            ui.label(f"📅 {date_to_str(bean.created)}") 
+        if bean.source:
+            ui.markdown(f"🔗 [{bean.source}]({bean.url})")   
+        if bean.author:
+            ui.label(f"✍️ {bean.author}")
+        if bean.comments:
+            ui.label(f"💬 {bean.comments}")
+        if bean.likes:
+            ui.label(f"👍 {bean.likes}")
+    ic(bean.categories)
+    if bean.tags:
+        with ui.row().classes("gap-0"):
+            [render_tag(word) for word in bean.tags[:4]]
+    ui.label(bean.title).classes("text-bold")
     
-def render_nugget_banner(nugget: Nugget):
-    with ui.row(align_items="center").classes('text-caption') as view:
-        ui.label("📅 "+ date_to_str(nugget.updated))
-        ui.label("🏷️ " + nugget.keyphrase)
-    return view
+# def render_nugget_banner(nugget: Nugget):
+#     with ui.row(align_items="center").classes('text-caption') as view:
+#         ui.label("📅 "+ date_to_str(nugget.updated))
+#         ui.label("🏷️ " + nugget.keyphrase)
+#     return view
 
-def render_nugget_as_card(nugget: Nugget):
-    if nugget:
-        with ui.card().classes('no-shadow border-[1px]') as card:
-            render_nugget_banner(nugget)
-            ui.label(text=nugget.description)
-        return card
+# def render_nugget_as_card(nugget: Nugget):
+#     if nugget:
+#         with ui.card().classes('no-shadow border-[1px]') as card:
+#             render_nugget_banner(nugget)
+#             ui.label(text=nugget.description)
+#         return card
 
-def render_nugget_as_item(nugget: Nugget):
-    with ui.item() as view:
-        with ui.column(wrap=True):   
-            render_nugget_banner(nugget)
-            ui.label(text=nugget.description)
-            ui.separator()
-    return view
+# def render_nugget_as_item(nugget: Nugget):
+#     with ui.item() as view:
+#         with ui.column(wrap=True):   
+#             render_nugget_banner(nugget)
+#             ui.label(text=nugget.description)
+#             ui.separator()
+#     return view
 
-def render_item(resp: Bean|Nugget|str):
+def render_item(resp: Bean|str):
     if isinstance(resp, str):
         with ui.list():
             ui.markdown(resp)
     elif isinstance(resp, Bean):
         render_bean_as_card(resp) 
-    elif isinstance(resp, Nugget):
-        render_nugget_as_item(resp)
+    # elif isinstance(resp, Nugget):
+    #     render_nugget_as_item(resp)
 
 def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card):  
     if beans:  
@@ -105,22 +110,22 @@ def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card
 
 def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):
     page_index = {"page_index": 1}
-    page_count = min(MAX_PAGES, -(-count//PAGE_LIMIT))
+    page_count = min(MAX_PAGES, -(-count//MAX_ITEMS_PER_PAGE))
 
     @ui.refreshable
     def render_search_items():
-        render_beans_as_list(beans_iter((page_index['page_index']-1)*PAGE_LIMIT))    
-    if count > PAGE_LIMIT:
+        render_beans_as_list(beans_iter((page_index['page_index']-1)*MAX_ITEMS_PER_PAGE))    
+    if count > MAX_ITEMS_PER_PAGE:
         ui.pagination(min=1, max=page_count, direction_links=True, value=page_index['page_index'], on_change=render_search_items.refresh).bind_value(page_index, 'page_index')
     render_search_items()
-    if count > PAGE_LIMIT:
+    if count > MAX_ITEMS_PER_PAGE:
         ui.pagination(min=1, max=page_count, direction_links=True, value=page_index).bind_value(page_index, 'page_index')
 
-def render_nuggets_as_list(nuggets: list[Nugget], item_render_func = render_nugget_as_item):    
-    if nuggets:
-        with ui.list() as view:
-            [item_render_func(nugget) for nugget in nuggets]
-        return view
+# def render_nuggets_as_list(nuggets: list[Nugget], item_render_func = render_nugget_as_item):    
+#     if nuggets:
+#         with ui.list() as view:
+#             [item_render_func(nugget) for nugget in nuggets]
+#         return view
 
 
 # def render_beans_as_bindable_list(viewmodel: dict, beans: str = F_BEANS):    

@@ -7,7 +7,7 @@ import argparse
 import shlex
 from pybeansack.datamodels import *
 
-_ALL = [ARTICLE, POST, COMMENT]
+# _ALL = [NEWS, POST, COMMENT]
 
 class ContentType(str, Enum):    
     POSTS = "posts"
@@ -16,8 +16,6 @@ class ContentType(str, Enum):
     BLOGS = "blogs"
     HIGHLIGHTS = "highlights"
     NEWSLETTER = "newsletter"
-
-
 
 class InteractiveInputParser:
     def __init__(self):
@@ -37,12 +35,12 @@ class InteractiveInputParser:
             # parse query/topics            
             query = [item.strip() for item in args.query.split(",")] if args.query else defaults.get('topics', [])
             # parser content_types/kind
-            ctypes = [_translate_ctype(getattr(ContentType, item.strip().upper(), None)) for item in args.type.split(",")] if args.type else _ALL
+            ctypes = [_translate_ctype(getattr(ContentType, item.strip().upper(), None)) for item in args.type.split(",")] if args.type else None
             ndays = int(args.ndays) if args.ndays else defaults.get('last_ndays')
             topn = int(args.topn) if args.topn else defaults.get('topn')
             return (args.task, _tuplify_if_many(query), _tuplify_if_many(ctypes) , ndays, topn)
         except:
-            return (None, defaults.get('topics', []), _tuplify_if_many(_ALL), defaults.get('last_ndays'), defaults.get('topn'))
+            return (None, defaults.get('topics', []), None, defaults.get('last_ndays'), defaults.get('topn'))
         
 
 def _tuplify_if_many(items):

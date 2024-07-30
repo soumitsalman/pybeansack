@@ -21,7 +21,7 @@ def render(viewmodel: dict):
             if task == "trending":
                 items = beanops.trending(query, ctype, ndays, topn) if ctype != "highlights" else beanops.highlights(query, ndays, topn)                        
             elif task in ["lookfor", "search"]:
-                items = beanops.search(query, ctype, ndays, topn)
+                items = beanops.retrieve(query, ctype, ndays, topn)
             elif task == "settings":
                 settings = parser.update_defaults(query, ctype, ndays, topn)
                 items = [settings_markdown(settings)]
@@ -45,7 +45,7 @@ def render(viewmodel: dict):
     BindablePaginatedList(render_item).bind_contents_from(searchmodel, F_SEARCH_RESULT).classes("w-full")
 
 def load_beans_by_keyword(viewmodel, keyword):
-    viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops.get_beans_by_keyword(keyword, start, limit)), beanops.count_beans_by_keyword(keyword, MAX_LIMIT), keyword)
+    viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops._run_query(keyword, start, limit)), beanops.count_beans(keyword, MAX_LIMIT), keyword)
     
 def load_nuggets_by_keyword(viewmodel, keyword):
     viewmodel['console'][F_SEARCH_RESULT] = ((lambda start, limit: beanops.get_nuggets_by_keyword(keyword, start, limit)), beanops.count_nuggets_by_keyword(keyword, MAX_LIMIT), keyword)

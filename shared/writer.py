@@ -2,7 +2,6 @@
 ## ARTICLE WRITER ##
 ####################
 from retry import retry
-from pybeansack.chains import combine_texts
 from pybeansack.utils import create_logger
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -42,7 +41,7 @@ class ArticleWriter:
     def write_section(self, topic: str, drafts: list[str], content_type: str = DEFAULT_CONTENT_TYPE) -> str:        
         while True:         
             # run it once at least   
-            texts = combine_texts(drafts, WRITER_BATCH_SIZE, "\n\n\n")
+            texts = drafts # combine_texts(drafts, WRITER_BATCH_SIZE, "\n\n\n")
             # these are the new drafts
             drafts = [self.chain.invoke({"content_type": content_type, "topic": topic, "drafts": text}) for text in texts]                           
             if len(drafts) <= 1:

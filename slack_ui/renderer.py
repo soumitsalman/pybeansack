@@ -1,7 +1,7 @@
 from datetime import datetime
 from itertools import chain
 import queue
-from shared import userops, config, beanops, messages, llm, fields
+from shared import espressops, config, beanops, messages, llm, fields
 from icecream import ic
 import pandas as pd
 import logging
@@ -99,11 +99,11 @@ class ChannelManager:
 
 
 def get_user_home(username):
-    pref_texts = userops.get_preference_texts(config.SLACK, username)
+    pref_texts = espressops.get_preference_texts(config.SLACK, username)
     interests = _create_interests_blocks(username, pref_texts)
     user_nuggets = None
     if pref_texts:
-        trending_for_user = beanops.trending_nuggets(userops.get_preference_embeddings(source=config.SLACK, username=username), config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
+        trending_for_user = beanops.trending_nuggets(espressops.get_preference_embeddings(source=config.SLACK, username=username), config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
         user_nuggets = _create_nugget_blocks(username, trending_for_user, config.DEFAULT_WINDOW, True, True) if trending_for_user else _create_text_blocks(messages.NOTHING_TRENDING)
 
     trending_globally = beanops.trending_nuggets(None, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
@@ -113,7 +113,7 @@ def get_user_home(username):
 
 def get_trending_items(username: str, params: list[str]):
     # get the user preference and show the type of items the user wants
-    prefs = userops.get_preference_embeddings(source=config.SLACK, username=username)
+    prefs = espressops.get_preference_embeddings(source=config.SLACK, username=username)
     params = [p.strip().lower() for p in params if p.strip()]
     
     if (len(params) == 0) or ("nuggets" in params):
@@ -134,7 +134,7 @@ def get_trending_items(username: str, params: list[str]):
     return items or messages.NOTHING_TRENDING
 
 def get_beans_by_category(username, category):
-    embs = [item["embeddings"] for item in userops.get_selected_preferences(source = config.SLACK, username=username, pref=category)]
+    embs = [item["embeddings"] for item in espressops.get_selected_preferences(source = config.SLACK, username=username, pref=category)]
     # if there is no embedding for this query with the text
     beans = beanops.trending_beans(categories=(embs or category), window=config.DEFAULT_WINDOW, limit=10)
     if not beans:
@@ -142,8 +142,8 @@ def get_beans_by_category(username, category):
     return [_create_text_blocks(f":label: *{category}*:")] + _create_bean_blocks(username, beans)
 
 def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_preference: bool, window: int):
-    user_prefs = userops.get_preference_embeddings(source=config.SLACK, username=username) if show_by_preference else None
-    beans = beanops.search_beans(nugget=keyphrase, categories=user_prefs, window=window, limit=10)    
+    user_prefs = espressops.get_preference_embeddings(source=config.SLACK, username=username) if show_by_preference else None
+    beans = beanops.retrieve(nugget=keyphrase, categories=user_prefs, window=window, limit=10)    
     if not beans:
         # this should NOT return nothing, since it is already showing in the trending list
         logging.warning("get_beans(%s, %s, %d) came empty. Thats not supposed to happen", username, keyphrase, window)
@@ -153,7 +153,7 @@ def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_pref
 
 def get_beans_by_search(username, search_text: str):
     # this should search across the board without window
-    beans = beanops.search_beans(search_text=search_text, limit=10)
+    beans = beanops.retrieve(search_text=search_text, limit=10)
     return _create_bean_blocks(username, beans) if beans else messages.NOTHING_FOUND
 
 def get_digests(username, search_text: str):
@@ -447,5 +447,5 @@ def _create_interests_blocks(user_id, interests):
         return _create_text_blocks(messages.NO_INTERESTS_MESSAGE, update_button)
 
 def update_user_preferences(user_id: str, interests: list[str]):
-    userops.update_topics(source=config.SLACK, username=user_id, items=interests)    
+    espressops.update_topics(source=config.SLACK, username=user_id, items=interests)    
  

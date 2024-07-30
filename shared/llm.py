@@ -4,7 +4,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
 from langchain_community.chat_models import ChatDeepInfra
 from langchain_groq import ChatGroq
-from . import config, fields, beanops, userops
+from . import config, espressops, fields, beanops
 from datetime import datetime as dt
 
 # using deepinfra to get support on rate limits

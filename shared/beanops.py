@@ -1,9 +1,12 @@
 from icecream import ic
 from pybeansack.beansack import *
 from pybeansack.datamodels import *
-from .espressops import *
 from cachetools import TTLCache, cached
 
+EIGHT_HOUR = 28000
+ONE_DAY = 86400
+ONE_WEEK = 604800
+CACHE_SIZE = 100
 
 beansack: Beansack = None
 PROJECTION = {K_EMBEDDING: 0, K_TEXT:0}
@@ -24,93 +27,123 @@ def get_content_types():
     return beansack.beanstore.distinct(K_KIND)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_beans_by_nugget(nugget_id: str, kind: str|tuple[str], last_ndays: int, topn: int):
-    return beansack.get_beans_by_nugget(nugget=nugget_id, filter=_create_filter(kind, last_ndays), limit=topn, projection=PROJECTION) or []
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans_for_nugget(nugget_id: str, kind: str|tuple[str], last_ndays: int, topn: int):
-    return beansack.count_beans_by_nugget(nugget=nugget_id, filter=_create_filter(kind, last_ndays), limit=topn)
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def get_beans_by_keyword(keyword: str, start_index: int, topn: int): 
-    return beansack.get_beans(filter={"tags": {"$in": [keyword]}}, skip=start_index, limit=topn, sort_by=LATEST, projection=PROJECTION)
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans_by_keyword(keyword: str, topn: int):
-    return beansack.beanstore.count_documents(filter={"tags": {"$in": [keyword]}},  limit=topn)
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def trending_keyphrases(last_ndays: int, topn: int):
-    pipeline = [
-        {
-            "$match": timewindow_filter(last_ndays)
-        },
-        {
-            "$sort": LATEST_AND_TRENDING,
-        },
-        {
-            "$group": {
-                "_id": "$keyphrase",
-                "keyphrase": {"$first": "$keyphrase"}
-            }
-        },
-        {
-            "$limit": topn
-        }
-    ]
-    return [item[K_KEYPHRASE] for item in beansack.nuggetstore.aggregate(pipeline)]
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def highlights(query, last_ndays: int, topn: int):
-    """Retrieves the trending news highlights that match user interest, topic or query."""
-    return _search(query, lambda emb: beansack.trending_nuggets(embedding=emb, filter=timewindow_filter(last_ndays), limit=topn, projection=PROJECTION))
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_highlights(query, last_ndays: int, topn: int):
+def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
-    results = _search(query, lambda emb: beansack.count_trending_nuggets(embedding=emb, filter=timewindow_filter(last_ndays), limit=topn))
-    if results:
-        return results[0] if len(results) == 1 else results
+    if query:
+        return _run_search(query, kind, last_ndays, TRENDING_AND_LATEST, topn)
     else:
-        return 0
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def trending(query, content_types: str|tuple[str], last_ndays: int, topn: int):
-    """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
-    return _search(query, lambda emb: beansack.trending_beans(embedding=emb, filter=_create_filter(content_types, last_ndays), limit=topn, projection=PROJECTION))
+        return _run_query(categories, tags, kind, last_ndays, TRENDING_AND_LATEST, 0, topn)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def search(query: str, content_types: str|tuple[str], last_ndays: int, topn: int):
+def retrieve(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
-    return _search(query, lambda emb: beansack.search_beans(embedding=emb, filter=_create_filter(content_types, last_ndays), limit=topn, sort_by=LATEST, projection=PROJECTION))
+    if query:
+        return _run_search(query, kind, last_ndays, LATEST, topn)
+    else:
+        return _run_query(categories, tags, kind, last_ndays, LATEST, start_index, topn)
+    
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def retrieve_related(url: str, cluster_id: str, last_ndays: int, topn: int):
+    filter = _create_filter(None, None, None, last_ndays)
+    filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
+    return beansack.get_beans(filter=filter, limit=topn, sort_by=TRENDING_AND_LATEST, projection=PROJECTION)
+
+
+
+# # TODO: expand this to searching channels and text search
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def search_all(query: str, last_ndays: int, topn: int):
+#     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
+#     filter = timewindow_filter(last_ndays)
+#     return _run_search(query, lambda q: beansack.search_beans(query=q, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def search_all(query: str, last_ndays: int, topn: int):
-    """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
-    filter = timewindow_filter(last_ndays)
-    return _search(query, lambda emb: beansack.search_beans(embedding=emb, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION)) \
-        + _search(query, lambda emb: beansack.search_nuggets(embedding=emb, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
+def count_beans(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int):
+    return beansack.beanstore.count_documents(
+        filter=_create_filter(categories, tags, kind, last_ndays),  
+        limit=topn)
 
-def _search(query_items, retrieval_func):
-    query_items = list(query_items) if isinstance(query_items, tuple) else [query_items]
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def count_related(url: str, cluster_id: str, last_ndays: int, topn: int) -> int:
+    filter = _create_filter(None, None, None, last_ndays)
+    filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
+    return beansack.beanstore.count_documents(filter=filter, limit=topn)
+
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def _run_query(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, sort_by, start_index: int, topn: int): 
+    return beansack.get_beans(
+        filter=_create_filter(categories, tags, kind, last_ndays), 
+        skip=start_index, 
+        limit=topn, 
+        sort_by=sort_by, 
+        projection=PROJECTION)
+
+def _run_search(query, kind: str|tuple[str], last_ndays: int, sort_by, topn: int):
+    query_items = [query_items] if isinstance(query, str) else list(query)
     results = []
     for q in query_items:
-        resp = retrieval_func(get_embedding(q, None))
+        resp = beansack.search_beans(query=q, filter=_create_filter(None, None, kind, last_ndays), sort_by=sort_by, limit=topn, projection=PROJECTION)
         if isinstance(resp, list):
             results.extend(resp)
         else:
             results.append(resp)
     return results
         
-def _create_filter(content_types: str|tuple[str], last_ndays: int):
-    filter = timewindow_filter(last_ndays)
-    if isinstance(content_types, str):
-        filter.update({K_KIND: content_types})
-    elif isinstance(content_types, (tuple, list)):
-        filter.update({K_KIND: { "$in": list(content_types) } })
+def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int):
+    filter = {}
+    if last_ndays:
+        filter.update(timewindow_filter(last_ndays))
+    if categories:
+        filter.update({K_CATEGORIES: {"$in": [categories] if isinstance(categories, str) else list(categories)}})
+    if tags:
+        filter.update({K_TAGS: {"$in": [tags] if isinstance(tags, str) else list(tags)}})
+    if kind:
+        filter.update({K_KIND: {"$in": [kind] if isinstance(kind, str) else list(kind)}})
     return filter
 
 
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def trending_tags(last_ndays: int, topn: int):
+#     pipeline = [
+#         {
+#             "$match": timewindow_filter(last_ndays)
+#         },
+#         {
+#             "$sort": LATEST_AND_TRENDING,
+#         },
+#         {
+#             "$group": {
+#                 "_id": "$tags",
+#                 "tags": {"$first": "$tags"}
+#             }
+#         },
+#         {
+#             "$limit": topn
+#         }
+#     ]
+#     return [item[K_KEYPHRASE] for item in beansack.beanstore.aggregate(pipeline)]
+
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def highlights(query, last_ndays: int, topn: int):
+#     """Retrieves the trending news highlights that match user interest, topic or query."""
+#     return _search(query, lambda emb: beansack.trending_nuggets(embedding=emb, filter=timewindow_filter(last_ndays), limit=topn, projection=PROJECTION))
+
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def count_highlights(query, last_ndays: int, topn: int):
+#     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
+#     results = _search(query, lambda emb: beansack.count_trending_nuggets(embedding=emb, filter=timewindow_filter(last_ndays), limit=topn))
+#     if results:
+#         return results[0] if len(results) == 1 else results
+#     else:
+#         return 0
+
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def get_beans_by_nugget(nugget_id: str, kind: str|tuple[str], last_ndays: int, topn: int):
+#     return beansack.get_beans_by_nugget(nugget=nugget_id, filter=_create_filter(kind, last_ndays), limit=topn, projection=PROJECTION) or []
+
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def count_beans_for_nugget(nugget_id: str, kind: str|tuple[str], last_ndays: int, topn: int):
+#     return beansack.count_beans_by_nugget(nugget=nugget_id, filter=_create_filter(kind, last_ndays), limit=topn)
 
 # import requests
 # from retry import retry

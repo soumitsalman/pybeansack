@@ -1,4 +1,4 @@
-from shared import beanops, userops
+from shared import beanops, espressops
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
 from nicegui import ui, run
@@ -69,7 +69,7 @@ def load_trending(viewmodel: dict):
 def _init_page_viewmodel(viewmodel):
     if 'trending' not in viewmodel:
         if not viewmodel['settings']['search']["topics"]:
-            viewmodel['settings']['search']["topics"] = userops.get_topics(viewmodel.get('userid'), text_only=True) or userops.get_topics(userops.EDITOR, text_only=True)
+            viewmodel['settings']['search']["topics"] = espressops.get_topics(viewmodel.get('userid'), text_only=True) or espressops.get_topics(espressops.SYSTEM, text_only=True)
         viewmodel['trending'] = {
             F_CATEGORIES: {cat: _create_category_viewmodel(cat) for cat in viewmodel['settings']['search']["topics"]},
             F_SELECTED: None

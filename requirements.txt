@@ -14,5 +14,7 @@ langchain-community
 langchain-groq
 langchain-text-splitters
 retry
+chromadb
+pysqlite3-binary
 
 

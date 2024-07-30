@@ -1,5 +1,5 @@
 import json
-from shared import beanops, userops, config
+from shared import beanops, espressops, config
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
 from nicegui import ui, run
@@ -14,39 +14,38 @@ def render_home(settings):
     _render_shell(settings)
 
     ui.markdown(settings_markdown(settings['search']))
-    nuggets = beanops.trending_keyphrases(1, 10)
-    with ui.row().classes("gap-0"):
-        [render_tag(nugget) for nugget in nuggets]
+    # nuggets = beanops.trending_tags(1, 10)
+    # with ui.row().classes("gap-0"):
+    #     [render_tag(nugget) for nugget in nuggets]
 
 async def render_trending(settings: dict, category: str, last_ndays: int, topn: int):  
     _render_shell(settings)
-
-    bean_kinds = (datamodels.ARTICLE, datamodels.POST)       
-    def render_nugget_as_expandable_item(nugget: Nugget):        
-        @ui.refreshable
-        def render_beans(load_items: bool):
-            if load_items:
-                render_beans_as_list(beanops.get_beans_by_nugget(nugget.id, bean_kinds, last_ndays, topn))
-            
-        bean_count = beanops.count_beans_for_nugget(nugget.id, bean_kinds, last_ndays, topn) 
-        with ui.item() as view:
-            with ui.column(align_items="start", wrap=True).classes("w-full"):                        
-                render_nugget_banner(nugget)  
-                with ui.expansion(
-                        group="group", 
-                        text=nugget.description, 
-                        caption=f"{counter_text(bean_count)} items",
-                        on_value_change=lambda: render_beans.refresh(beans_panel.value),
-                        value=False).classes("w-full") as beans_panel:
-                    render_beans(False)                                
-        return view
-
-    render_banner(category)
-    nuggets = await run.io_bound(beanops.highlights, category, last_ndays, topn)     
-    if nuggets:
-        render_nuggets_as_list(nuggets, render_nugget_as_expandable_item)        
+    render_banner("Trending In "+category)
+    beans = await run.io_bound(beanops.trending, None, category, None, (datamodels.NEWS, datamodels.BLOG, datamodels.POST), last_ndays, topn)     
+    if beans:
+        # TODO: create tags panel
+        render_beans_as_list(beans, lambda bean: _render_bean_as_expandable_item(bean, last_ndays, topn))        
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
+
+def _render_bean_as_expandable_item(bean: Bean, last_ndays: int, topn: int):            
+    @ui.refreshable
+    def render_related__beans(load_items: bool):
+        if load_items:
+            render_beans_as_list(beanops.retrieve_related(bean.url, bean.cluster_id, last_ndays, topn))
+        
+    bean_count = beanops.count_related(bean.url, bean.cluster_id, last_ndays, topn) 
+    with ui.item() as view:
+        with ui.column(align_items="start", wrap=True).classes("w-full"):                        
+            render_bean_banner(bean)  
+            with ui.expansion(
+                    group="group", 
+                    text=bean.summary, 
+                    caption=f"{counter_text(bean_count)} items",
+                    on_value_change=lambda: render_related__beans.refresh(beans_panel.value),
+                    value=False).classes("w-full") as beans_panel:
+                render_related__beans(False)                                
+    return view
 
 async def render_search(settings, query: str, keyword: str, kind, last_ndays: int, topn: int):
     _render_shell(settings)  
@@ -57,14 +56,15 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
         ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
     ui.label("Examples: "+", ".join(EXAMPLE_OPTIONS)).classes('text-caption self-center')
     
-    async def _run_search():
+    kind = tuple(kind) if kind else None
+    async def _run_search():        
         if keyword:
-            return (beanops.count_beans_by_keyword(keyword, topn),
-                lambda start: beanops.get_beans_by_keyword(keyword, start, PAGE_LIMIT))
+            return (beanops.count_beans(categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=topn),
+                lambda start: beanops.retrieve(query=None, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
         elif query:
-            items = beanops.search(query, tuple(kind) if kind else None, last_ndays, topn)
+            items = beanops.retrieve(query, None, None, kind, last_ndays, topn)
             return (len(items) if items else 0,
-                lambda start: items[start: start+PAGE_LIMIT] if items else None)
+                lambda start: items[start: start+MAX_ITEMS_PER_PAGE] if items else None)
         return (None, None)
 
     banner = query or keyword    
@@ -93,7 +93,7 @@ def _render_shell(settings):
     
     def render_topic(topic):
         with ui.item(text=topic, on_click=lambda: ui.navigate.to(make_url("/trending", category=topic, days=settings['search']['last_ndays'], topn=settings['search']['topn']))):
-            ui.badge(beanops.count_highlights(topic, last_ndays=settings['search']['last_ndays'], topn=settings['search']['topn'])).props("transparent").style("margin-left: 10px;")
+            ui.badge(beanops.count_beans(categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=settings['search']['topn'])).props("transparent").style("margin-left: 10px;")
 
     # header
     with ui.header().classes(replace="row"):
@@ -123,7 +123,7 @@ def _render_settings(settings):
                 ui.slider(min=MIN_LIMIT, max=MAX_LIMIT, step=1).bind_value(settings['search'], "topn")
         with ui.item():
             with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
-                ui.select(options=userops.get_topics(userops.EDITOR, text_only=True), multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
+                ui.select(options=espressops.get_topics(espressops.SYSTEM), multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
     
     ui.separator()
 
@@ -138,7 +138,7 @@ def create_default_settings():
         "search": {
             "last_ndays": DEFAULT_WINDOW,
             "topn": DEFAULT_LIMIT,
-            "topics": userops.get_topics(userops.EDITOR, text_only=True)
+            "topics": espressops.get_topics(espressops.SYSTEM)
         },
         "connections": {
             config.REDDIT: None,
