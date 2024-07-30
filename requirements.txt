@@ -10,11 +10,11 @@ cachetools
 tiktoken
 llama-cpp-python
 langchain
-langchain-community
-langchain-groq
-langchain-text-splitters
+pymongo
+tiktoken
 retry
-chromadb
+pydantic
+python-dotenv
+icecream
 pysqlite3-binary
-
-
+chromadb
