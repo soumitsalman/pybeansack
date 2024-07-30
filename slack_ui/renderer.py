@@ -143,7 +143,7 @@ def get_beans_by_category(username, category):
 
 def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_preference: bool, window: int):
     user_prefs = espressops.get_preference_embeddings(source=config.SLACK, username=username) if show_by_preference else None
-    beans = beanops.retrieve(nugget=keyphrase, categories=user_prefs, window=window, limit=10)    
+    beans = beanops.search(nugget=keyphrase, categories=user_prefs, window=window, limit=10)    
     if not beans:
         # this should NOT return nothing, since it is already showing in the trending list
         logging.warning("get_beans(%s, %s, %d) came empty. Thats not supposed to happen", username, keyphrase, window)
@@ -153,7 +153,7 @@ def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_pref
 
 def get_beans_by_search(username, search_text: str):
     # this should search across the board without window
-    beans = beanops.retrieve(search_text=search_text, limit=10)
+    beans = beanops.search(search_text=search_text, limit=10)
     return _create_bean_blocks(username, beans) if beans else messages.NOTHING_FOUND
 
 def get_digests(username, search_text: str):

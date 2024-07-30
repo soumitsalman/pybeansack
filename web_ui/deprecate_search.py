@@ -21,7 +21,7 @@ def render(viewmodel: dict):
             if task == "trending":
                 items = beanops.trending(query, ctype, ndays, topn) if ctype != "highlights" else beanops.highlights(query, ndays, topn)                        
             elif task in ["lookfor", "search"]:
-                items = beanops.retrieve(query, ctype, ndays, topn)
+                items = beanops.search(query, ctype, ndays, topn)
             elif task == "settings":
                 settings = parser.update_defaults(query, ctype, ndays, topn)
                 items = [settings_markdown(settings)]

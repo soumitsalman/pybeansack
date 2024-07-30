@@ -52,8 +52,10 @@ def _tuplify_if_many(items):
 def _translate_ctype(ctype: ContentType):
     if ctype == ContentType.POSTS:
         return POST
-    elif ctype in [ContentType.NEWS, ContentType.BLOGS, ContentType.NEWSLETTER]:
-        return ARTICLE
+    elif ctype == ContentType.NEWS:
+        return NEWS
+    elif ctype in [ContentType.BLOGS, ContentType.NEWSLETTER]:
+        return BLOG
     elif ctype == ContentType.COMMENTS:
         return COMMENT  
     else:

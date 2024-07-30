@@ -21,30 +21,48 @@ def render_home(settings):
 async def render_trending(settings: dict, category: str, last_ndays: int, topn: int):  
     _render_shell(settings)
     render_banner("Trending In "+category)
-    beans = await run.io_bound(beanops.trending, None, category, None, (datamodels.NEWS, datamodels.BLOG, datamodels.POST), last_ndays, topn)     
+    beans = await run.io_bound(beanops.trending, None, category, None, None, last_ndays, topn)     
     if beans:
         # TODO: create tags panel
-        render_beans_as_list(beans, lambda bean: _render_bean_as_expandable_item(bean, last_ndays, topn))        
+        render_beans_as_list(beans, lambda bean: _render_bean_as_expandable_item(bean, last_ndays, topn)).props("separator")        
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
+def render_bean_with_highlights(bean: Bean):
+    with ui.card().classes("w-full"):
+        render_bean_banner(bean)
+        ui.label(bean.title).classes("text-bold")
+        ui.markdown("\n\n".join(["- "+highlight for highlight in bean.highlights])) \
+            if bean.highlights else ui.markdown(bean.summary)
+
+def _render_bean_body_with_summary(bean: Bean):
+    with ui.column().classes("w-full"):
+        ui.label(bean.title).classes("text-bold")
+        ui.markdown(bean.summary)
+
 def _render_bean_as_expandable_item(bean: Bean, last_ndays: int, topn: int):            
     @ui.refreshable
-    def render_related__beans(load_items: bool):
+    def render_related_beans(load_items: bool):
         if load_items:
-            render_beans_as_list(beanops.retrieve_related(bean.url, bean.cluster_id, last_ndays, topn))
-        
-    bean_count = beanops.count_related(bean.url, bean.cluster_id, last_ndays, topn) 
-    with ui.item() as view:
-        with ui.column(align_items="start", wrap=True).classes("w-full"):                        
-            render_bean_banner(bean)  
+            render_beans_as_list(
+                beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=last_ndays, topn=topn),
+                render_bean_with_highlights)
+
+    bean_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=last_ndays, topn=topn)      
+    with ui.column(align_items="start", wrap=True).classes("w-full") as view:                        
+        render_bean_banner(bean)  
+        if bean_count:
             with ui.expansion(
-                    group="group", 
-                    text=bean.summary, 
-                    caption=f"{counter_text(bean_count)} items",
-                    on_value_change=lambda: render_related__beans.refresh(beans_panel.value),
-                    value=False).classes("w-full") as beans_panel:
-                render_related__beans(False)                                
+                group="group", 
+                value=False, 
+                on_value_change=lambda: render_related_beans.refresh(beans_panel.value)
+                ).classes("w-full") as beans_panel:
+                with beans_panel.add_slot('header'): 
+                    _render_bean_body_with_summary(bean)                        
+                render_related_beans(False)      
+        else:                
+            _render_bean_body_with_summary(bean)  
+                       
     return view
 
 async def render_search(settings, query: str, keyword: str, kind, last_ndays: int, topn: int):
@@ -58,13 +76,13 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
     
     kind = tuple(kind) if kind else None
     async def _run_search():        
-        if keyword:
-            return (beanops.count_beans(categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=topn),
-                lambda start: beanops.retrieve(query=None, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
-        elif query:
-            items = beanops.retrieve(query, None, None, kind, last_ndays, topn)
-            return (len(items) if items else 0,
-                lambda start: items[start: start+MAX_ITEMS_PER_PAGE] if items else None)
+        if keyword or query:
+            return (beanops.count_beans(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=topn),
+                lambda start: beanops.search(query=None, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
+        # elif query:
+        #     items = beanops.search(query, None, None, kind, last_ndays, topn)
+        #     return (len(items) if items else 0,
+        #         lambda start: items[start: start+MAX_ITEMS_PER_PAGE] if items else None)
         return (None, None)
 
     banner = query or keyword    
@@ -80,7 +98,7 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
 def _trigger_search(settings, prompt):   
     task, query, ctype, ndays, limit = parser.parse(prompt, settings['search'])
     if task in ["lookfor", "search"]:
-        ui.navigate.to(make_url("/search", q=query, kind=ctype, days=ndays, topn=limit))
+        ui.navigate.to(make_url("/search", q=query, days=ndays, topn=limit))
     elif task == "trending":
         ui.navigate.to(make_url("/trending", category=query, days=ndays, topn=limit))
     else:
@@ -93,7 +111,7 @@ def _render_shell(settings):
     
     def render_topic(topic):
         with ui.item(text=topic, on_click=lambda: ui.navigate.to(make_url("/trending", category=topic, days=settings['search']['last_ndays'], topn=settings['search']['topn']))):
-            ui.badge(beanops.count_beans(categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=settings['search']['topn'])).props("transparent").style("margin-left: 10px;")
+            ui.badge(beanops.count_beans(query=None, categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=settings['search']['topn'])).props("transparent").style("margin-left: 10px;")
 
     # header
     with ui.header().classes(replace="row"):

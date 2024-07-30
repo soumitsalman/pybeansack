@@ -15,7 +15,6 @@ latest = lambda item: -item.updated
 
 def initiatize(db_conn, embedder):
     global beansack
-    # this is content retrieval (not processing). This does not need an llm in the beansack
     beansack=Beansack(db_conn, embedder)
 
 @cached(TTLCache(maxsize=1, ttl=ONE_WEEK))
@@ -29,66 +28,42 @@ def get_content_types():
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
+    filter=_create_filter(categories, tags, kind, last_ndays)
     if query:
-        return _run_search(query, kind, last_ndays, TRENDING_AND_LATEST, topn)
+        return beansack.vector_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
     else:
-        return _run_query(categories, tags, kind, last_ndays, TRENDING_AND_LATEST, 0, topn)
+        return beansack.query_unique_beans(filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def retrieve(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
+def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
+    filter=_create_filter(categories, tags, kind, last_ndays)
     if query:
-        return _run_search(query, kind, last_ndays, LATEST, topn)
+        return beansack.vector_search_beans(query=query, filter=filter, sort_by=LATEST, limit=topn)
     else:
-        return _run_query(categories, tags, kind, last_ndays, LATEST, start_index, topn)
+        return beansack.query_unique_beans(filter=filter, sort_by=LATEST, skip=start_index, limit=topn)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def retrieve_related(url: str, cluster_id: str, last_ndays: int, topn: int):
+def related(cluster_id: str, url: str, last_ndays: int, topn: int):
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
     return beansack.get_beans(filter=filter, limit=topn, sort_by=TRENDING_AND_LATEST, projection=PROJECTION)
 
-
-
-# # TODO: expand this to searching channels and text search
-# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-# def search_all(query: str, last_ndays: int, topn: int):
-#     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
-#     filter = timewindow_filter(last_ndays)
-#     return _run_search(query, lambda q: beansack.search_beans(query=q, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+def count_beans(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> int:
+    filter = _create_filter(categories, tags, kind, last_ndays)
+    if query:
+        return beansack.count_vector_search_beans(query=query, filter=filter, limit=topn)
+    else:
+        return beansack.count_unique_beans(filter=filter, limit=topn)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_beans(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int):
-    return beansack.beanstore.count_documents(
-        filter=_create_filter(categories, tags, kind, last_ndays),  
-        limit=topn)
-
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def count_related(url: str, cluster_id: str, last_ndays: int, topn: int) -> int:
+def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
     return beansack.beanstore.count_documents(filter=filter, limit=topn)
 
-# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
-def _run_query(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, sort_by, start_index: int, topn: int): 
-    return beansack.get_beans(
-        filter=_create_filter(categories, tags, kind, last_ndays), 
-        skip=start_index, 
-        limit=topn, 
-        sort_by=sort_by, 
-        projection=PROJECTION)
-
-def _run_search(query, kind: str|tuple[str], last_ndays: int, sort_by, topn: int):
-    query_items = [query_items] if isinstance(query, str) else list(query)
-    results = []
-    for q in query_items:
-        resp = beansack.search_beans(query=q, filter=_create_filter(None, None, kind, last_ndays), sort_by=sort_by, limit=topn, projection=PROJECTION)
-        if isinstance(resp, list):
-            results.extend(resp)
-        else:
-            results.append(resp)
-    return results
-        
+    
 def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int):
     filter = {}
     if last_ndays:
@@ -101,6 +76,29 @@ def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kind: str|t
         filter.update({K_KIND: {"$in": [kind] if isinstance(kind, str) else list(kind)}})
     return filter
 
+# def _run_search(query, filter, sort_by, topn: int):
+#     query_items = [query_items] if isinstance(query, str) else list(query)
+#     results = []
+#     for q in query_items:
+#         resp = beansack.vector_search_beans(query=q, filter=filter, sort_by=sort_by, limit=topn, projection=PROJECTION)
+#         if isinstance(resp, list):
+#             results.extend(resp)
+#         else:
+#             results.append(resp)
+#     return results
+
+# # TODO: expand this to searching channels and text search
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def search_all(query: str, last_ndays: int, topn: int):
+#     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
+#     filter = timewindow_filter(last_ndays)
+#     return _run_search(query, lambda q: beansack.search_beans(query=q, filter=filter, limit=topn, sort_by=LATEST, projection=PROJECTION))
+
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
+# def count_beans(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int):
+#     return beansack.beanstore.count_documents(
+#         filter=_create_filter(categories, tags, kind, last_ndays),  
+#         limit=topn)
 
 # @cached(TTLCache(maxsize=CACHE_SIZE, ttl=EIGHT_HOUR))
 # def trending_tags(last_ndays: int, topn: int):

@@ -53,22 +53,30 @@ def render_bean_as_card(bean: Bean):
         return card
 
 def render_bean_banner(bean: Bean):
-    with ui.row(align_items="center").classes('text-caption'): 
-        if bean.created:
-            ui.label(f"📅 {date_to_str(bean.created)}") 
-        if bean.source:
-            ui.markdown(f"🔗 [{bean.source}]({bean.url})")   
-        if bean.author:
-            ui.label(f"✍️ {bean.author}")
-        if bean.comments:
-            ui.label(f"💬 {bean.comments}")
-        if bean.likes:
-            ui.label(f"👍 {bean.likes}")
-    ic(bean.categories)
-    if bean.tags:
-        with ui.row().classes("gap-0"):
-            [render_tag(word) for word in bean.tags[:4]]
-    ui.label(bean.title).classes("text-bold")
+    with ui.column() as view:
+        with ui.row(align_items="center").classes('text-caption'): 
+            if bean.created:
+                ui.label(f"📅 {date_to_str(bean.created)}") 
+            if bean.source:
+                ui.markdown(f"🔗 [{bean.source}]({bean.url})")   
+            if bean.author:
+                ui.label(f"✍️ {bean.author}")
+            if bean.comments:
+                ui.label(f"💬 {bean.comments}")
+            if bean.likes:
+                ui.label(f"👍 {bean.likes}")
+        if bean.tags:
+            with ui.row().classes("gap-0"):
+                [render_tag(word) for word in bean.tags[:4]]
+    return view
+
+
+def render_bean_highlights(bean: Bean):
+    if bean.highlights:
+        return ui.markdown("\n\n".join("- "+highlight for highlight in bean.highlights))
+    else:
+        return ui.markdown(bean.summary)
+    
     
 # def render_nugget_banner(nugget: Nugget):
 #     with ui.row(align_items="center").classes('text-caption') as view:
