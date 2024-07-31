@@ -44,11 +44,18 @@ def render_banner(banner):
         ui.separator().style("margin-top: 5px;")
     return view
 
+def render_bean_with_highlights(bean: Bean):
+    with ui.card().classes("w-full"):
+        render_bean_banner(bean)
+        ui.label(bean.title).classes("text-bold")
+        ui.markdown("\n\n".join(["- "+highlight for highlight in bean.highlights])) \
+            if bean.highlights else ui.markdown(bean.summary)
 
-def render_bean_as_card(bean: Bean):
+def render_bean_with_summary(bean: Bean):
     if bean:
         with ui.card().classes("w-full") as card:
             render_bean_banner(bean)
+            ui.label(bean.title).classes("text-bold")
             ui.markdown(bean.summary)
         return card
 
@@ -104,11 +111,11 @@ def render_item(resp: Bean|str):
         with ui.list():
             ui.markdown(resp)
     elif isinstance(resp, Bean):
-        render_bean_as_card(resp) 
+        render_bean_with_summary(resp) 
     # elif isinstance(resp, Nugget):
     #     render_nugget_as_item(resp)
 
-def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card):  
+def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_with_summary):  
     if beans:  
         with ui.list() as view:
             for bean in beans:

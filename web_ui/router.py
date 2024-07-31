@@ -28,13 +28,6 @@ async def render_trending(settings: dict, category: str, last_ndays: int, topn: 
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
-def render_bean_with_highlights(bean: Bean):
-    with ui.card().classes("w-full"):
-        render_bean_banner(bean)
-        ui.label(bean.title).classes("text-bold")
-        ui.markdown("\n\n".join(["- "+highlight for highlight in bean.highlights])) \
-            if bean.highlights else ui.markdown(bean.summary)
-
 def _render_bean_body_with_summary(bean: Bean):
     with ui.column().classes("w-full"):
         ui.label(bean.title).classes("text-bold")
