@@ -41,7 +41,7 @@ def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[st
     filter=_create_filter(categories, tags, kind, last_ndays)
     if query:
         # return beansack.vector_search_beans(query=query, filter=filter, sort_by=LATEST, limit=topn)
-        return beansack.text_search_beans(query=query, filter=filter, sort_by=LATEST, skip=start_index, limit=topn, projection=PROJECTION)
+        return beansack.text_search_beans(query=ic(query), filter=filter, sort_by=LATEST, skip=start_index, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=LATEST, skip=start_index, limit=topn)
     

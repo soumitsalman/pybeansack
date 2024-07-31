@@ -78,7 +78,7 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
     async def _run_search():        
         if keyword or query:
             return (beanops.count_beans(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=topn),
-                lambda start: beanops.search(query=None, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
+                lambda start: beanops.search(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
         return (None, None)
 
     banner = query or keyword    
@@ -114,9 +114,9 @@ def _render_shell(settings):
         with ui.avatar(square=True):
             ui.image("images/cafecito.png")
         with ui.button_group().props("unelevated"):
-            ui.button(icon='home', on_click=lambda: ui.navigate.to("/"))
-            ui.button(icon="search", on_click=lambda: ui.navigate.to('/search'))
-            with ui.dropdown_button(icon='trending_up'):
+            ui.button(icon='home', on_click=lambda: ui.navigate.to("/")).tooltip("Home")
+            ui.button(icon="search", on_click=lambda: ui.navigate.to('/search')).tooltip("Search")
+            with ui.dropdown_button(icon='trending_up').tooltip("Trending News"):
                 BindableList(render_topic).bind_items_from(settings['search'], 'topics')
                 ui.separator()
                 ui.item(text=beanops.UNCATEGORIZED, on_click=lambda: ui.navigate.to(make_url("/trending", category=beanops.UNCATEGORIZED, days=settings['search']['last_ndays'], topn=settings['search']['topn'])))
