@@ -79,10 +79,6 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
         if keyword or query:
             return (beanops.count_beans(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=topn),
                 lambda start: beanops.search(query=None, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
-        # elif query:
-        #     items = beanops.search(query, None, None, kind, last_ndays, topn)
-        #     return (len(items) if items else 0,
-        #         lambda start: items[start: start+MAX_ITEMS_PER_PAGE] if items else None)
         return (None, None)
 
     banner = query or keyword    
@@ -122,6 +118,8 @@ def _render_shell(settings):
             ui.button(icon="search", on_click=lambda: ui.navigate.to('/search'))
             with ui.dropdown_button(icon='trending_up'):
                 BindableList(render_topic).bind_items_from(settings['search'], 'topics')
+                ui.separator()
+                ui.item(text=beanops.UNCATEGORIZED, on_click=lambda: ui.navigate.to(make_url("/trending", category=beanops.UNCATEGORIZED, days=settings['search']['last_ndays'], topn=settings['search']['topn'])))
 
         ui.space()
         ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")

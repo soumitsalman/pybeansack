@@ -8,10 +8,10 @@ ONE_DAY = 86400
 ONE_WEEK = 604800
 CACHE_SIZE = 100
 
+UNCATEGORIZED = "Yo Momma"
+
 beansack: Beansack = None
 PROJECTION = {K_EMBEDDING: 0, K_TEXT:0}
-
-latest = lambda item: -item.updated
 
 def initiatize(db_conn, embedder):
     global beansack
@@ -30,7 +30,8 @@ def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
     filter=_create_filter(categories, tags, kind, last_ndays)
     if query:
-        return beansack.vector_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
+        # return beansack.vector_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
+        return beansack.text_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
     
@@ -39,7 +40,8 @@ def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[st
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(categories, tags, kind, last_ndays)
     if query:
-        return beansack.vector_search_beans(query=query, filter=filter, sort_by=LATEST, limit=topn)
+        # return beansack.vector_search_beans(query=query, filter=filter, sort_by=LATEST, limit=topn)
+        return beansack.text_search_beans(query=query, filter=filter, sort_by=LATEST, skip=start_index, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=LATEST, skip=start_index, limit=topn)
     
@@ -53,7 +55,8 @@ def related(cluster_id: str, url: str, last_ndays: int, topn: int):
 def count_beans(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> int:
     filter = _create_filter(categories, tags, kind, last_ndays)
     if query:
-        return beansack.count_vector_search_beans(query=query, filter=filter, limit=topn)
+        # return beansack.count_vector_search_beans(query=query, filter=filter, limit=topn)
+        return beansack.count_text_search_beans(query=query, filter=filter, limit=topn)
     else:
         return beansack.count_unique_beans(filter=filter, limit=topn)
 
@@ -62,18 +65,19 @@ def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
     return beansack.beanstore.count_documents(filter=filter, limit=topn)
-
     
 def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int):
     filter = {}
     if last_ndays:
         filter.update(timewindow_filter(last_ndays))
-    if categories:
-        filter.update({K_CATEGORIES: {"$in": [categories] if isinstance(categories, str) else list(categories)}})
     if tags:
         filter.update({K_TAGS: {"$in": [tags] if isinstance(tags, str) else list(tags)}})
     if kind:
         filter.update({K_KIND: {"$in": [kind] if isinstance(kind, str) else list(kind)}})
+    if categories == UNCATEGORIZED:
+        filter.update({K_CATEGORIES: {"$exists": False}})
+    elif categories:
+        filter.update({K_CATEGORIES: {"$in": [categories] if isinstance(categories, str) else list(categories)}})
     return filter
 
 # def _run_search(query, filter, sort_by, topn: int):

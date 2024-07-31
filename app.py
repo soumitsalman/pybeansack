@@ -3,11 +3,8 @@ from pybeansack import utils
 from dotenv import load_dotenv
 
 load_dotenv()
-QUERY_EMBEDDER = ".models/snowflake-arctic-Q4.GGUF"
 logger = utils.create_logger("Espresso")
 
-
-from pybeansack.embedding import BeansackEmbeddings
 from shared import beanops, config, espressops
 import web_ui.router
 import web_ui.defaults
@@ -48,16 +45,8 @@ async def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW,
     await web_ui.router.render_trending(_get_session_settings(), category, days, topn)
 
 def start_server():
-    # tools.initialize(config.get_db_connection_str(), QUERY_EMBEDDER, config.get_llm_api_key())
-    # def initialize(db_conn_str, embedder_path, llm_api_key):
-    # embedder = BeansackEmbeddings(QUERY_EMBEDDER, 2000)
-    
-    beanops.initiatize(config.get_db_connection_str(), BeansackEmbeddings(QUERY_EMBEDDER, 2000))
+    beanops.initiatize(config.get_db_connection_str(), None)
     espressops.initialize(config.get_db_connection_str())
-    # writer.initiatize(
-    #   ChatGroq(api_key=llm_api_key, model="llama3-8b-8192", temperature=0.1, verbose=False, streaming=False), 
-    #   lambda topic, last_ndays, limit: beanops.search_all(topic, last_ndays, limit))
-
     ui.run(title=config.APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3)
 
 if __name__ in {"__main__", "__mp_main__"}:

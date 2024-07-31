@@ -1,10 +1,10 @@
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
-RUN apk update && apk add --no-cache \
+RUN apt update && apt install -y \
     cmake \
     make \
     g++ \
-    build-base
+    build-essential
 
 WORKDIR /app 
 COPY . . 
