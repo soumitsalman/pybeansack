@@ -25,6 +25,10 @@ def get_sources():
 def get_content_types():
     return beansack.beanstore.distinct(K_KIND)
 
+@cached(TTLCache(maxsize=1, ttl=ONE_DAY))
+def get_categories():
+    return beansack.beanstore.distinct(K_CATEGORIES)
+
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
 def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
