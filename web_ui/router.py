@@ -18,34 +18,39 @@ def render_home(settings):
     # with ui.row().classes("gap-0"):
     #     [render_tag(nugget) for nugget in nuggets]
 
-async def render_trending(settings: dict, category: str, last_ndays: int, topn: int):  
+async def render_trending_news(settings: dict, category: str, last_ndays: int, topn: int):  
     _render_shell(settings)
     render_banner("Trending In "+category)
     
     kind = (NEWS, BLOG)
-    total_beans = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)            
-    # check if there is any item here
-    if not total_beans: 
-        ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
-        return
+    total_beans = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)        
     
-    # TODO: create tags panel
-    current_page = 0
+    beans = []
+    @ui.refreshable
     async def add_page():
-        nonlocal current_page
+        # nonlocal current_page
+        current_page, next_page = ui.state(0)
         if current_page < total_beans:
-            beans = beanops.trending(None, category, None, kind, last_ndays, current_page, current_page+MAX_ITEMS_PER_PAGE)    
-            for bean in beans:
-                _render_bean_as_expandable_item(bean, last_ndays, topn).move(beans_holder)
-                
-            current_page += MAX_ITEMS_PER_PAGE
-            if current_page >= total_beans:
-                more_items.set_visibility(False)
+            beans.extend(beanops.trending(None, category, None, kind, last_ndays, current_page, current_page+MAX_ITEMS_PER_PAGE))
+            with ui.list().classes("w-full"):
+                for bean in beans:
+                    _render_bean_as_expandable_item(bean, last_ndays, topn)
 
-    beans_holder = ui.list().props("dense").classes("w-full")
-    more_items = ui.button("More News", icon="chevron_right", on_click=add_page).props("outline")
-    await add_page()
+            if len(beans) < total_beans:       
+                ui.button("More News", icon="chevron_right", on_click=lambda: next_page(current_page+MAX_ITEMS_PER_PAGE)).props("unelevated")
 
+    if total_beans: 
+        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kind, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+        # top tags
+        with ui.row().classes("gap-0"):
+            [render_tag(item.tags) for item in tags_and_highlights]
+        ui.separator()          
+        ui.markdown("\n\n".join(["- "+item.highlights[0] for item in tags_and_highlights]))
+        ui.separator()
+        await add_page()
+    else:
+        ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
+    
 def _render_bean_body_with_summary(bean: Bean):
     with ui.column().classes("w-full"):
         ui.label(bean.title).classes("text-bold")
@@ -60,7 +65,7 @@ def _render_bean_as_expandable_item(bean: Bean, last_ndays: int, topn: int):
                 render_bean_with_highlights)
 
     bean_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=last_ndays, topn=topn)      
-    with ui.column(wrap=False).classes("w-full") as view:                        
+    with ui.card().classes("no-shadow border-[1px] w-full") as view:                        
         render_bean_banner(bean)  
         if bean_count:
             with ui.expansion(
@@ -73,7 +78,6 @@ def _render_bean_as_expandable_item(bean: Bean, last_ndays: int, topn: int):
                 render_related_beans(False)      
         else:                
             _render_bean_body_with_summary(bean)  
-        ui.separator()
                        
     return view
 
@@ -84,7 +88,7 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
     with ui.input(placeholder=PLACEHOLDER, autocomplete=EXAMPLE_OPTIONS).on('keydown.enter', process_prompt) \
         .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
         ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
-    ui.label("Examples: "+", ".join(EXAMPLE_OPTIONS)).classes('text-caption self-center')
+    # ui.label("Examples: "+", ".join(EXAMPLE_OPTIONS)).classes('text-caption self-center')
     
     kind = tuple(kind) if kind else None
     async def _run_search():        

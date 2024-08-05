@@ -42,7 +42,7 @@ async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days:
 async def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW, topn: int=web_ui.defaults.DEFAULT_LIMIT):  
     days = min(days, web_ui.defaults.MAX_WINDOW)
     topn = min(topn, web_ui.defaults.MAX_LIMIT)    
-    await web_ui.router.render_trending(_get_session_settings(), category, days, topn)
+    await web_ui.router.render_trending_news(_get_session_settings(), category, days, topn)
 
 def start_server():
     beanops.initiatize(config.get_db_connection_str(), None)

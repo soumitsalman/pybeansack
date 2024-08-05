@@ -74,7 +74,7 @@ def render_bean_banner(bean: Bean):
                 ui.label(f"👍 {bean.likes}")
         if bean.tags:
             with ui.row().classes("gap-0"):
-                [render_tag(word) for word in bean.tags[:4]]
+                [render_tag(word) for word in bean.tags[:3]]
     return view
 
 

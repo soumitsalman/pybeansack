@@ -36,6 +36,10 @@ def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[
         return beansack.query_unique_beans(filter=filter, sort_by=TRENDING_AND_LATEST, skip=start_index, limit=topn, projection=PROJECTION)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
+def trending_tags_and_highlights(categories: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> list[Bean]:
+    return beansack.query_unique_tags_and_highlights(filter=_create_filter(categories, None, kind, last_ndays), sort_by=TRENDING_AND_LATEST, limit=topn)
+    
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
 def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(categories, tags, kind, last_ndays)
