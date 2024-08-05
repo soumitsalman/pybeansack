@@ -19,7 +19,7 @@ F_PROMPT = "prompt"
 F_PROCESSING_PROMPT = "processing_prompt"
 
 nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
-counter_text = lambda counter: str(counter) if counter < 100 else str(99)+'+'
+bean_count_text = lambda counter: str(counter) if counter < 100 else str(99)+'+'
 tag_route = lambda tag: ui.navigate.to(make_url("/search", keyword=tag))
 
 def make_url(target, **kwargs):

@@ -7,7 +7,7 @@ MAX_WINDOW = 30
 DEFAULT_LIMIT = 10
 MIN_LIMIT = 1
 MAX_LIMIT = 100
-MAX_ITEMS_PER_PAGE = 10
+MAX_ITEMS_PER_PAGE = 5
 MAX_PAGES = 10
 
 EXAMPLE_OPTIONS = ["trending -t posts -q \"cyber security breches\"", "search -q \"GPU vs LPU\"", "settings -d 7 -n 20"]   

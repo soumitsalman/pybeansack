@@ -21,12 +21,30 @@ def render_home(settings):
 async def render_trending(settings: dict, category: str, last_ndays: int, topn: int):  
     _render_shell(settings)
     render_banner("Trending In "+category)
-    beans = await run.io_bound(beanops.trending, None, category, None, None, last_ndays, topn)     
-    if beans:
-        # TODO: create tags panel
-        render_beans_as_list(beans, lambda bean: _render_bean_as_expandable_item(bean, last_ndays, topn)).props("separator")        
-    else:
+    
+    kind = (NEWS, BLOG)
+    total_beans = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)            
+    # check if there is any item here
+    if not total_beans: 
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
+        return
+    
+    # TODO: create tags panel
+    current_page = 0
+    async def add_page():
+        nonlocal current_page
+        if current_page < total_beans:
+            beans = beanops.trending(None, category, None, kind, last_ndays, current_page, current_page+MAX_ITEMS_PER_PAGE)    
+            for bean in beans:
+                _render_bean_as_expandable_item(bean, last_ndays, topn).move(beans_holder)
+                
+            current_page += MAX_ITEMS_PER_PAGE
+            if current_page >= total_beans:
+                more_items.set_visibility(False)
+
+    beans_holder = ui.list().props("dense").classes("w-full")
+    more_items = ui.button("More News", icon="chevron_right", on_click=add_page).props("outline")
+    await add_page()
 
 def _render_bean_body_with_summary(bean: Bean):
     with ui.column().classes("w-full"):
@@ -42,7 +60,7 @@ def _render_bean_as_expandable_item(bean: Bean, last_ndays: int, topn: int):
                 render_bean_with_highlights)
 
     bean_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=last_ndays, topn=topn)      
-    with ui.column(align_items="start", wrap=True).classes("w-full") as view:                        
+    with ui.column(wrap=False).classes("w-full") as view:                        
         render_bean_banner(bean)  
         if bean_count:
             with ui.expansion(
@@ -55,6 +73,7 @@ def _render_bean_as_expandable_item(bean: Bean, last_ndays: int, topn: int):
                 render_related_beans(False)      
         else:                
             _render_bean_body_with_summary(bean)  
+        ui.separator()
                        
     return view
 
@@ -100,7 +119,8 @@ def _render_shell(settings):
     
     def render_topic(topic):
         with ui.item(text=topic, on_click=lambda: ui.navigate.to(make_url("/trending", category=topic, days=settings['search']['last_ndays'], topn=settings['search']['topn']))):
-            ui.badge(beanops.count_beans(query=None, categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=settings['search']['topn'])).props("transparent").style("margin-left: 10px;")
+            bean_count = beanops.count_beans(query=None, categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT)
+            ui.badge(bean_count_text(bean_count)).props("transparent").style("margin-left: 10px;")
 
     # header
     with ui.header().classes(replace="row"):

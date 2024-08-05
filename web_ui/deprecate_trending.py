@@ -22,7 +22,7 @@ def render_nuggets_as_expandable_list(viewmodel: dict, settings: dict):
                 with ui.expansion(
                         group="group", 
                         text=nugget['data'].description, 
-                        caption=f"{counter_text(bean_count)} items",
+                        caption=f"{bean_count_text(bean_count)} items",
                         on_value_change=lambda nugget=nugget: load_beans(nugget), 
                         value=False
                     ).bind_value(nugget, F_SELECTED):
