@@ -31,7 +31,7 @@ async def render_trending_news(settings: dict, category: str, last_ndays: int, t
         # nonlocal current_page
         current_page, next_page = ui.state(0)
         if current_page < total_beans:
-            beans.extend(beanops.trending(None, category, None, kind, last_ndays, current_page, current_page+MAX_ITEMS_PER_PAGE))
+            beans.extend(beanops.trending(None, category, None, kind, last_ndays, current_page, MAX_ITEMS_PER_PAGE))
             with ui.list().classes("w-full"):
                 for bean in beans:
                     _render_bean_as_expandable_item(bean, last_ndays, topn)
