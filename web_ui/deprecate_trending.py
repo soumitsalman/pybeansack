@@ -22,7 +22,7 @@ def render_nuggets_as_expandable_list(viewmodel: dict, settings: dict):
                 with ui.expansion(
                         group="group", 
                         text=nugget['data'].description, 
-                        caption=f"{bean_count_text(bean_count)} items",
+                        caption=f"{rounded_number(bean_count)} items",
                         on_value_change=lambda nugget=nugget: load_beans(nugget), 
                         value=False
                     ).bind_value(nugget, F_SELECTED):
@@ -33,7 +33,7 @@ def render_nuggets_as_expandable_list(viewmodel: dict, settings: dict):
     # ui.label(messages.NOTHING_TRENDING).bind_visibility_from(viewmodel, F_NUGGETS, lambda x: not x)
     return BindableList(render_nugget_as_expandable_item).bind_items_from(viewmodel, F_NUGGETS)
 
-def render(viewmodel: dict):  
+def render_bean_body(viewmodel: dict):  
     viewmodel = _init_page_viewmodel(viewmodel)
     trendingmodel = viewmodel['trending']
     settings = viewmodel['settings']['search']  

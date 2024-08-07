@@ -7,7 +7,7 @@ from nicegui import ui, run
 EXAMPLE_OPTIONS = ["trending -t posts -q \"cyber security breches\"", "search -q \"GPU vs LPU\"", "settings -d 7 -n 20"]   
 PLACEHOLDER = "Tell me lies, sweet little lies"
    
-def render(viewmodel: dict):
+def render_bean_body(viewmodel: dict):
     viewmodel = _init_page_viewmodel(viewmodel)
     searchmodel = viewmodel['console']
     parser = prompt_parser.InteractiveInputParser( viewmodel['settings']['search'])

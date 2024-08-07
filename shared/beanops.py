@@ -33,11 +33,12 @@ def get_categories():
 def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
     filter=_create_filter(categories, tags, kind, last_ndays)
+    sort_by = TRENDING if (POST in kind) else NEWEST_AND_TRENDING
     if query:
         # return beansack.vector_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
-        return beansack.text_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, skip=start_index, limit=topn, projection=PROJECTION)
+        return beansack.text_search_beans(query=query, filter=filter, sort_by=sort_by, skip=start_index, limit=topn, projection=PROJECTION)
     else:
-        return beansack.query_unique_beans(filter=filter, sort_by=TRENDING_AND_LATEST, skip=start_index, limit=topn)
+        return beansack.query_unique_beans(filter=filter, sort_by=sort_by, skip=start_index, limit=topn)
     
 # @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
 def trending_tags_and_highlights(categories: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> list[Bean]:
@@ -57,7 +58,7 @@ def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[st
 def related(cluster_id: str, url: str, last_ndays: int, topn: int):
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
-    return beansack.get_beans(filter=filter, limit=topn, sort_by=TRENDING_AND_LATEST, projection=PROJECTION)
+    return beansack.get_beans(filter=filter, limit=topn, sort_by=NEWEST_AND_TRENDING, projection=PROJECTION)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
 def count_beans(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> int:

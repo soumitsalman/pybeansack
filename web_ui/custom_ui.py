@@ -9,6 +9,8 @@ from icecream import ic
 from .defaults import *
 
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
+rounded_number = lambda counter: str(counter) if counter < 100 else str(99)+'+'
+rounded_number_with_max = lambda counter, top: str(counter) if counter < top else str(top-1)+'+'
 
 def groupby_date(items: list, date_field):
     flatten_date = lambda item: dt.fromtimestamp(date_field(item)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -68,6 +70,28 @@ class BindableList(ui.list):
         bind_from(self, "items", target_object, target_name, backward)
         return self
     
+class BindableNavigationMenu(ui.menu):
+    items = BindableProperty(on_change=lambda sender, value: cast(Self, sender)._render(value))
+
+    def __init__(self, data_extraction_func, items: list = None):
+        super().__init__()
+        self.items = items or []
+        self.extract = data_extraction_func
+        self._render(self.items)
+    
+    def _render(self, value):    
+        self.clear()    
+        with self:
+            for item in (value or []): 
+                text, target, counter_badge = self.extract(item)
+                with ui.menu_item(text = text, on_click=lambda target=target: ui.navigate.to(target)):
+                    if counter_badge:
+                        ui.badge(rounded_number(counter_badge)).props("transparent").style("margin-left: 10px;")
+
+    def bind_items_from(self, target_object, target_name: str = 'items', backward = lambda x: x) -> Self:
+        bind_from(self, "items", target_object, target_name, backward)
+        return self
+
 class BindableGrid(ui.grid):
     items = BindableProperty(
         on_change=lambda sender, value: cast(Self, sender)._render(value)
