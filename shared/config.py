@@ -1,8 +1,13 @@
 import os
 
+FOUR_HOURS = 14400
+ONE_DAY = 86400
+ONE_WEEK = 604800
+CACHE_SIZE = 100
+UNCATEGORIZED = "Yo Momma"
+
 APP_NAME="Espresso by Cafecit.io"
 
-# sources
 SLACK = "SLACK"
 REDDIT = "REDDIT"
 

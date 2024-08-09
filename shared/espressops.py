@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from pymongo.collection import Collection
-# from .espressops import get_embedding
+from .config import *
+from cachetools import TTLCache, cached
 
 DB = "espresso"
 userdata: Collection = None
@@ -15,8 +16,6 @@ K_DESCRIPTION = "description"
 K_EMBEDDING = "embedding"
 K_CONNECTIONS = "connections"
 
-
-
 def initialize(conn_str: str):
     client = MongoClient(conn_str)
     global userdata, categories
@@ -25,14 +24,14 @@ def initialize(conn_str: str):
 
 userid_filter = lambda userid: {K_ID: userid} if isinstance(userid, str) else {f"{K_CONNECTIONS}.{userid[0]}": userid[1]}
 
+@cached(TTLCache(maxsize=100, ttl=ONE_WEEK))
 def get_userid(idval: str|tuple[str, str]):
     # TODO: implement it for tuples later
     return idval
 
+@cached(TTLCache(maxsize=100, ttl=ONE_DAY))
 def get_topics(userid: str|tuple[str, str]):
-    result = categories.find(filter={K_SOURCE: get_userid(userid)}, projection={K_TEXT: 1})
-    if result:
-        return [item[K_TEXT] for item in result]
+    return categories.distinct("text", {K_SOURCE:userid})+[UNCATEGORIZED]
     
 def update_topics(userid: str|tuple[str, str], topics: list[str]|dict[str, str]):
     userid = get_userid(userid)
@@ -42,7 +41,6 @@ def update_topics(userid: str|tuple[str, str], topics: list[str]|dict[str, str])
     elif isinstance(topics, list) and isinstance(topics[0], str):
         categories.insert_many([{K_TEXT: topic, K_SOURCE: userid} for topic in topics], ordered=False)
     
-
 def add_connection(userid: str|tuple[str, str], connection: tuple[str, str]):
     _upsert_user_metadata(userid, {K_CONNECTIONS: {connection[0]: connection[1]}})
 

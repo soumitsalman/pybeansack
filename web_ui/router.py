@@ -11,11 +11,7 @@ parser = prompt_parser.InteractiveInputParser()
 
 def render_home(settings):
     _render_shell(settings, "Home")
-
     ui.markdown(settings_markdown(settings['search']))
-    # nuggets = beanops.trending_tags(1, 10)
-    # with ui.row().classes("gap-0"):
-    #     [render_tag(nugget) for nugget in nuggets]
 
 async def render_trending_news(settings: dict, category: str, last_ndays: int):  
     _render_shell(settings,"Trending News")
@@ -167,7 +163,7 @@ def _render_settings(settings):
                 ui.slider(min=MIN_LIMIT, max=MAX_LIMIT, step=1).bind_value(settings['search'], "topn")
         with ui.item():
             with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
-                ui.select(options=beanops.get_categories(), multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
+                ui.select(options=espressops.get_topics(espressops.SYSTEM), multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
     
     ui.separator()
 
@@ -182,7 +178,7 @@ def create_default_settings():
         "search": {
             "last_ndays": DEFAULT_WINDOW,
             "topn": DEFAULT_LIMIT,
-            "topics": beanops.get_categories()
+            "topics": espressops.get_topics(espressops.SYSTEM)
         },
         "connections": {
             config.REDDIT: None,
