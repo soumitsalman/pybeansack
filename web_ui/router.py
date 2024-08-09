@@ -10,29 +10,28 @@ from shared import prompt_parser
 parser = prompt_parser.InteractiveInputParser()
 
 def render_home(settings):
-    _render_shell(settings, "Home")
+    render_shell(settings, "Home")
     ui.markdown(settings_markdown(settings['search']))
 
 async def render_trending_news(settings: dict, category: str, last_ndays: int):  
-    _render_shell(settings,"Trending News")
+    render_shell(settings,"Trending News")
     render_text_banner(category)
     
     kind = (NEWS, BLOG)
-    total_beans = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)        
-    
-    if total_beans: 
+    total = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)        
+    if total: 
         tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kind, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
         # top tags        
         render_tags([tag.tags for tag in tags_and_highlights])
         ui.separator()          
         ui.markdown("\n\n".join(["- "+item.highlights[0] for item in tags_and_highlights]))
         ui.separator()
-        await _render_beans_page(total_beans, category, kind, last_ndays)
+        await render_beans_page(category, kind, last_ndays, total)
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
 async def render_hot_posts(settings: dict, category: str, last_ndays: int):  
-    _render_shell(settings, "Hot Posts")
+    render_shell(settings, "Hot Posts")
     render_text_banner(category)
     
     kind = (POST, COMMENT)
@@ -42,20 +41,20 @@ async def render_hot_posts(settings: dict, category: str, last_ndays: int):
         # top tags        
         render_tags([tag.tags for tag in tags_and_highlights])
         ui.separator()          
-        await _render_beans_page(total_beans, category, kind, last_ndays)
+        await render_beans_page(category, kind, last_ndays, total_beans)
     else:
         ui.label(messages.NOTHING_HOT_IN%last_ndays)
 
-@ui.refreshable
-async def _render_beans_page(total_beans, category, kind, last_ndays):
-    # nonlocal current_page
-    beans, next_page = ui.state(beanops.trending(None, category, None, kind, last_ndays, 0, MAX_ITEMS_PER_PAGE))
-    with ui.list().classes("w-full"):
-        [_render_bean_with_related_items(bean) for bean in beans]                
-    if len(beans) < total_beans:   
-        ui.button("More", 
-            on_click=lambda: next_page(beans+beanops.trending(None, category, None, kind, last_ndays, len(beans)+MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE))) \
-            .props("unelevated icon-right=chevron_right")
+async def render_beans_page(category, kind, last_ndays, total):
+    beans = [] 
+    @ui.refreshable
+    def add_page():
+        nonlocal beans
+        beans += beanops.trending(None, category, None, kind, last_ndays, len(beans), MAX_ITEMS_PER_PAGE)
+        render_beans_as_list(beans, _render_bean_with_related_items).classes("w-full")
+        if len(beans) < total:   
+            ui.button("More Stories", on_click=add_page.refresh).props("unelevated icon-right=chevron_right")
+    add_page()
     
 def _render_bean_with_related_items(bean: Bean):            
     @ui.refreshable
@@ -79,8 +78,8 @@ def _render_bean_with_related_items(bean: Bean):
                 render_related_beans(False)                       
     return view
 
-async def render_search(settings, query: str, keyword: str, kind, last_ndays: int, topn: int):
-    _render_shell(settings, "Search") 
+async def render_search(settings, query: str, keyword: str, kind, last_ndays: int):
+    render_shell(settings, "Search") 
     process_prompt = lambda: _trigger_search(settings, prompt_input.value)   
     with ui.input(placeholder=PLACEHOLDER, autocomplete=EXAMPLE_OPTIONS).on('keydown.enter', process_prompt) \
         .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
@@ -89,7 +88,7 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
     kind = tuple(kind) if kind else None
     async def _run_search():        
         if keyword or query:
-            return (beanops.count_beans(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=topn),
+            return (beanops.count_beans(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=MAX_LIMIT),
                 lambda start: beanops.search(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
         return (None, None)
 
@@ -106,13 +105,13 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
 def _trigger_search(settings, prompt):   
     task, query, ctype, ndays, limit = parser.parse(prompt, settings['search'])
     if task in ["lookfor", "search"]:
-        ui.navigate.to(make_url("/search", q=query, days=ndays, topn=limit))
+        ui.navigate.to(make_url("/search", q=query, days=ndays))
     elif task == "trending":
-        ui.navigate.to(make_url("/trending", category=query, days=ndays, topn=limit))
+        ui.navigate.to(make_url("/trending", category=query, days=ndays))
     else:
-        ui.navigate.to(make_url("/search", q=prompt, days=ndays, topn=limit))
+        ui.navigate.to(make_url("/search", q=prompt, days=ndays))
 
-def _render_shell(settings, current_tab="Home"):
+def render_shell(settings, current_tab="Home"):
     # set themes  
     ui.colors(secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
@@ -140,6 +139,7 @@ def _render_shell(settings, current_tab="Home"):
         with ui.tabs(on_change=lambda: navigate(tab_selector.value), value=current_tab) as tab_selector:
             ui.tab(name="Home", label="", icon="home").tooltip("Home")
             ui.tab(name="Search", label="", icon="search").tooltip("Search")
+            settings['search']['topics'] = sorted(settings['search']['topics'])
             with ui.tab(name="Trending News", label="", icon='trending_up').tooltip("Trending News"):
                 BindableNavigationMenu(render_news_topic).bind_items_from(settings['search'], 'topics')            
             with ui.tab(name="Hot Posts", label="", icon="local_fire_department").tooltip("Hot Posts"):
@@ -159,9 +159,6 @@ def _render_settings(settings):
             with ui.item_section().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days"):
                 ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays")
         with ui.item():
-            with ui.item_section().bind_text_from(settings['search'], "topn", lambda x: f"Top {x} results"):
-                ui.slider(min=MIN_LIMIT, max=MAX_LIMIT, step=1).bind_value(settings['search'], "topn")
-        with ui.item():
             with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
                 ui.select(options=espressops.get_topics(espressops.SYSTEM), multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
     
@@ -176,8 +173,7 @@ def _render_settings(settings):
 def create_default_settings():
     return {
         "search": {
-            "last_ndays": DEFAULT_WINDOW,
-            "topn": DEFAULT_LIMIT,
+            "last_ndays": DEFAULT_WINDOW,            
             "topics": espressops.get_topics(espressops.SYSTEM)
         },
         "connections": {

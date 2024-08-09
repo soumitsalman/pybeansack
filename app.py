@@ -33,10 +33,9 @@ def home():
     web_ui.router.render_home(_get_session_settings())
 
 @ui.page("/search")
-async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW, topn: int=web_ui.defaults.DEFAULT_LIMIT):  
+async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW)
-    topn = min(topn, web_ui.defaults.MAX_LIMIT)    
-    await web_ui.router.render_search(_get_session_settings(), q, keyword, kind, days, topn)
+    await web_ui.router.render_search(_get_session_settings(), q, keyword, kind, days)
 
 @ui.page("/trending")
 async def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  

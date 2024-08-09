@@ -40,7 +40,7 @@ def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[st
     filter=_create_filter(categories, tags, kind, last_ndays)
     if query:
         # return beansack.vector_search_beans(query=query, filter=filter, sort_by=LATEST, limit=topn)
-        return beansack.text_search_beans(query=ic(query), filter=filter, sort_by=LATEST, skip=start_index, limit=topn, projection=PROJECTION)
+        return beansack.text_search_beans(query=query, filter=filter, sort_by=LATEST, skip=start_index, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=LATEST, skip=start_index, limit=topn)
     
@@ -58,8 +58,6 @@ def related(cluster_id: str, url: str, last_ndays: int, topn: int):
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
     return beansack.get_beans(filter=filter, limit=topn, sort_by=NEWEST_AND_TRENDING, projection=PROJECTION)
-
-
 
 # @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
 def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
