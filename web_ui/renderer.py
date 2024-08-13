@@ -30,8 +30,8 @@ def set_tag_route(func):
     tag_route = func
 
 def settings_markdown(settings: dict):
-    return "Topics of Interest: %s\n\nPulling top **%d** items from last **%d** days." % \
-        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['topn'], settings['last_ndays'])      
+    return "Topics of Interest: %s\n\nPulling stories from last **%d** days." % \
+        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['last_ndays'])      
 
 def render_tags(tags: list[str]):
     with ui.row().classes("gap-0") as view:
