@@ -23,7 +23,7 @@ def get_content_types():
 def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
     filter=_create_filter(categories, tags, kind, last_ndays)
-    sort_by = TRENDING if (POST in kind) else NEWEST_AND_TRENDING
+    sort_by = TRENDING if kind and (POST in kind) else NEWEST_AND_TRENDING
     if query:
         # return beansack.vector_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
         return beansack.text_search_beans(query=query, filter=filter, sort_by=sort_by, skip=start_index, limit=topn, projection=PROJECTION)
@@ -59,7 +59,7 @@ def related(cluster_id: str, url: str, last_ndays: int, topn: int):
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
     return beansack.get_beans(filter=filter, limit=topn, sort_by=NEWEST_AND_TRENDING, projection=PROJECTION)
 
-# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})

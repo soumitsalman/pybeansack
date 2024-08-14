@@ -30,7 +30,7 @@ def set_tag_route(func):
     tag_route = func
 
 def settings_markdown(settings: dict):
-    return "Topics of Interest: %s\n\nPulling stories from last **%d** days." % \
+    return "Currently showing news, blogs and social media posts on %s trending in the last **%d** days." % \
         (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['last_ndays'])      
 
 def render_tags(tags: list[str]):
@@ -42,6 +42,8 @@ def render_text_banner(banner: str):
     with ui.label(banner).classes("text-h5") as view:
         ui.separator().style("margin-top: 5px;")
     return view
+
+render_separator = lambda: ui.separator().style("height: 5px; margin-left: 0px; margin-right: 0px;") 
 
 def _shortened_markdown(text, emoji = None, url = None):
     text = ellipsis_text(str(text))
@@ -60,42 +62,25 @@ def render_bean_body(bean: Bean, show_highlights: bool):
         contents = bean.summary
     ui.markdown(contents)
 
-# def render_bean_stats(bean: Bean, vertical: bool=True):
-#     with (ui.column(align_items="start").classes("gap-0 text-caption") \
-#         if vertical else ui.row(align_items="start").classes('text-caption'))  as view:
-#         if bean.created:
-#             _shortened_markdown(date_to_str(bean.created), "📅") 
-#         if bean.source:
-#             _shortened_markdown(bean.source, "🔗", bean.url)   
-#         if bean.author:
-#             _shortened_markdown(bean.author, "✍️")
-#         if bean.comments:
-#             _shortened_markdown(bean.comments, "💬")
-#         if bean.likes:
-#             _shortened_markdown(bean.likes, "👍")
-#         if bean.trend_score:
-#             _shortened_markdown(bean.trend_score)
-#     return view
-
-
 def _render_tags_as_hashtag(bean: Bean):
     format_tag = lambda tag: "#"+"".join(item for item in tag.split())
     if bean.tags:
         return [ui.link(ellipsis_text(format_tag(tag)), target=make_url("/search", keyword=tag)).classes('text-caption') for tag in bean.tags[:3]]
 
-def render_bean_banner(bean: Bean):
+def render_bean_banner(bean: Bean, display_media_stats=True):
     with ui.column().classes('text-caption') as view:
         with ui.row(align_items="center"): 
             if bean.created:
                 ui.label(f"📅 {date_to_str(bean.created)}") 
             if bean.source:
                 ui.markdown(f"🔗 [{bean.source}]({bean.url})")
-            if bean.author:
-                ui.label(f"✍️ {ellipsis_text(bean.author)}")
-            if bean.comments:
-                ui.label(f"💬 {bean.comments}")
-            if bean.likes:
-                ui.label(f"👍 {bean.likes}")
+            if display_media_stats:
+                if bean.author:
+                    ui.label(f"✍️ {ellipsis_text(bean.author)}")
+                if bean.comments:
+                    ui.label(f"💬 {bean.comments}")
+                if bean.likes:
+                    ui.label(f"👍 {bean.likes}")
         with ui.row():
             _render_tags_as_hashtag(bean)
     return view

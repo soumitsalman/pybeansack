@@ -9,9 +9,26 @@ from shared import prompt_parser
 
 parser = prompt_parser.InteractiveInputParser()
 
-def render_home(settings):
+async def render_home(settings):
     render_shell(settings, "Home")
-    ui.markdown(settings_markdown(settings['search']))
+
+    tags = beanops.trending_tags_and_highlights(None, None, settings['search']['last_ndays'], DEFAULT_LIMIT)
+    render_tags([tag.tags for tag in tags])
+    render_separator()   
+
+    ui.label("📰 News").classes('text-h5 w-full')
+    news = beanops.trending(None, None, None, (NEWS), settings['search']['last_ndays'], None, DEFAULT_LIMIT)    
+    render_beans_as_list(news, _render_bean_with_image).classes("w-full")
+    render_separator()
+
+    ui.label("📱 Social Media").classes('text-h5 w-full')
+    posts = beanops.trending(None, None, None, (POST), settings['search']['last_ndays'], None, DEFAULT_LIMIT)    
+    render_beans_as_list(posts, _render_bean_with_image).props("separator").classes("w-full")
+    render_separator()
+
+    ui.markdown(settings_markdown(settings['search']))    
+    ui.label("Click on 📈 and 🔥 buttons for more trending stories by topics. \n\nClick on ⚙️ button to change topics and time window.").classes('text-caption')
+
 
 async def render_trending_news(settings: dict, category: str, last_ndays: int):  
     render_shell(settings,"Trending News")
@@ -23,9 +40,9 @@ async def render_trending_news(settings: dict, category: str, last_ndays: int):
         tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kind, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
         # top tags        
         render_tags([tag.tags for tag in tags_and_highlights])
-        ui.separator()          
+        render_separator()          
         ui.markdown("\n\n".join(["- "+item.highlights[0] for item in tags_and_highlights]))
-        ui.separator()
+        render_separator()
         await render_beans_page(category, kind, last_ndays, total)
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
@@ -40,7 +57,7 @@ async def render_hot_posts(settings: dict, category: str, last_ndays: int):
         tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kind, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
         # top tags        
         render_tags([tag.tags for tag in tags_and_highlights])
-        ui.separator()          
+        render_separator()         
         await render_beans_page(category, kind, last_ndays, total_beans)
     else:
         ui.label(messages.NOTHING_HOT_IN%last_ndays)
@@ -55,6 +72,17 @@ async def render_beans_page(category, kind, last_ndays, total):
         if len(beans) < total:   
             ui.button("More Stories", on_click=add_page.refresh).props("unelevated icon-right=chevron_right")
     add_page()
+
+def _render_bean_with_image(bean: Bean):
+    style = "w-full border-[1px]" if bean.kind in (NEWS, BLOG) else "w-full"
+    with ui.item().classes(style) as view:  
+        if bean.image_url:
+            with ui.item_section().props("side"):
+                ui.image(bean.image_url).classes("w-36 h-36")
+        with ui.item_section():
+            ui.label(bean.title).classes("text-bold")              
+            render_bean_banner(bean, display_media_stats = (bean.kind in (POST, COMMENT)))
+    return view
     
 def _render_bean_with_related_items(bean: Bean):            
     @ui.refreshable
@@ -137,13 +165,13 @@ def render_shell(settings, current_tab="Home"):
         with ui.avatar(square=True):
             ui.image("images/cafecito.png")
         with ui.tabs(on_change=lambda: navigate(tab_selector.value), value=current_tab) as tab_selector:
-            ui.tab(name="Home", label="", icon="home").tooltip("Home")
-            ui.tab(name="Search", label="", icon="search").tooltip("Search")
+            ui.tab(name="Home", label="", icon="home").tooltip("Home")           
             settings['search']['topics'] = sorted(settings['search']['topics'])
             with ui.tab(name="Trending News", label="", icon='trending_up').tooltip("Trending News"):
                 BindableNavigationMenu(render_news_topic).bind_items_from(settings['search'], 'topics')            
             with ui.tab(name="Hot Posts", label="", icon="local_fire_department").tooltip("Hot Posts"):
                 BindableNavigationMenu(render_post_topic).bind_items_from(settings['search'], 'topics')
+            ui.tab(name="Search", label="", icon="search").tooltip("Search")
 
         ui.space()
         ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")

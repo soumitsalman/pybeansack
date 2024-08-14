@@ -29,8 +29,8 @@ def _get_session_settings():
     return app.storage.user['settings']
 
 @ui.page("/")
-def home():   
-    web_ui.router.render_home(_get_session_settings())
+async def home():   
+    await web_ui.router.render_home(_get_session_settings())
 
 @ui.page("/search")
 async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  

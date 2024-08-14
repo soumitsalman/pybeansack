@@ -4,10 +4,10 @@ from pybeansack import datamodels
 DEFAULT_WINDOW = 7
 MIN_WINDOW = 1
 MAX_WINDOW = 30
-DEFAULT_LIMIT = 10
+DEFAULT_LIMIT = 7
 MIN_LIMIT = 1
 MAX_LIMIT = 100
-MAX_ITEMS_PER_PAGE = 5
+MAX_ITEMS_PER_PAGE = 7
 MAX_PAGES = 10
 
 EXAMPLE_OPTIONS = ["trending -t posts -q \"cyber security breches\"", "search -q \"GPU vs LPU\"", "settings -d 7 -n 20"]   
