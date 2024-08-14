@@ -5,6 +5,7 @@ ONE_DAY = 86400
 ONE_WEEK = 604800
 CACHE_SIZE = 100
 UNCATEGORIZED = "Yo Momma"
+DEFAULT_CATEGORIES = ["AI", "Aviation & Aerospace", "Business & Finance", "Career & Leadership", "Computer Technology & Datacenters", "Cryptocurrency & Blockchain", "Cybersecurity", "Entrepreneurship & Start-ups", "Environment & Clean Energy", "Food & Health", "Gadgets & Gaming", "Government & Politics", "Robotics & Manufacturing", "Science & Mathematics", "Software Engineering", UNCATEGORIZED]
 
 APP_NAME="Espresso by Cafecit.io"
 

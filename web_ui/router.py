@@ -160,7 +160,7 @@ def _render_settings(settings):
                 ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays")
         with ui.item():
             with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
-                ui.select(options=espressops.get_topics(espressops.SYSTEM), multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
+                ui.select(options=espressops.DEFAULT_CATEGORIES, multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
     
     ui.separator()
 
@@ -174,7 +174,7 @@ def create_default_settings():
     return {
         "search": {
             "last_ndays": DEFAULT_WINDOW,            
-            "topics": espressops.get_topics(espressops.SYSTEM)
+            "topics": espressops.DEFAULT_CATEGORIES
         },
         "connections": {
             config.REDDIT: None,
