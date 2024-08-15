@@ -43,7 +43,7 @@ def render_text_banner(banner: str):
         ui.separator().style("margin-top: 5px;")
     return view
 
-render_separator = lambda: ui.separator().style("height: 5px; margin-left: 0px; margin-right: 0px;") 
+render_separator = lambda: ui.separator().style("height: 5px; margin: 0px; padding: 0px;") 
 
 def _shortened_markdown(text, emoji = None, url = None):
     text = ellipsis_text(str(text))
@@ -54,7 +54,7 @@ def _shortened_markdown(text, emoji = None, url = None):
     return ui.markdown(text)
 
 def render_bean_body(bean: Bean, show_highlights: bool):    
-    ui.label(bean.title).classes("text-bold")
+    ui.label(bean.highlights[0] if bean.highlights else bean.title).classes("text-bold")
     if show_highlights:
         contents = "\n\n".join(["- "+highlight for highlight in bean.highlights]) \
                 if bean.highlights else bean.summary
@@ -95,7 +95,7 @@ def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card
     if beans:  
         with ui.list() as view:
             for bean in beans:
-                with ui.item():
+                with ui.item().props("dense"):
                     item_render_func(bean)
         return view
 

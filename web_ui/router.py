@@ -12,38 +12,43 @@ parser = prompt_parser.InteractiveInputParser()
 async def render_home(settings):
     render_shell(settings, "Home")
 
-    tags = beanops.trending_tags_and_highlights(None, None, settings['search']['last_ndays'], DEFAULT_LIMIT)
-    render_tags([tag.tags for tag in tags])
+    tags = beanops.trending_tags_and_highlights(None, None, DEFAULT_WINDOW, DEFAULT_LIMIT)
+    if tags:
+        render_tags([tag.tags for tag in tags])
     render_separator()   
-
+    
     ui.label("📰 News").classes('text-h5 w-full')
-    news = beanops.trending(None, None, None, (NEWS), settings['search']['last_ndays'], None, DEFAULT_LIMIT)    
-    render_beans_as_list(news, _render_bean_with_image).classes("w-full")
+    news = beanops.trending(None, None, None, (NEWS), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE) 
+    if news:           
+        render_beans_as_list(news, _render_bean_with_image).props("dense").classes("w-full")
+    else:
+        ui.label(messages.NOTHING_TRENDING)
     render_separator()
 
     ui.label("📱 Social Media").classes('text-h5 w-full')
-    posts = beanops.trending(None, None, None, (POST), settings['search']['last_ndays'], None, DEFAULT_LIMIT)    
-    render_beans_as_list(posts, _render_bean_with_image).props("separator").classes("w-full")
+    posts = beanops.trending(None, None, None, (POST), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE)    
+    if posts:
+        render_beans_as_list(posts, _render_bean_with_image).props("separator").classes("w-full")
+    else:
+        ui.label(messages.NOTHING_TRENDING)
     render_separator()
 
     ui.markdown(settings_markdown(settings['search']))    
     ui.label("Click on 📈 and 🔥 buttons for more trending stories by topics. \n\nClick on ⚙️ button to change topics and time window.").classes('text-caption')
 
-
 async def render_trending_news(settings: dict, category: str, last_ndays: int):  
     render_shell(settings,"Trending News")
     render_text_banner(category)
     
-    kind = (NEWS, BLOG)
-    total = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)        
+    kinds = (NEWS, BLOG)
+    total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)        
     if total: 
-        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kind, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
-        # top tags        
+        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
         render_tags([tag.tags for tag in tags_and_highlights])
         render_separator()          
         ui.markdown("\n\n".join(["- "+item.highlights[0] for item in tags_and_highlights]))
         render_separator()
-        await render_beans_page(category, kind, last_ndays, total)
+        await render_beans_page(category, kinds, last_ndays, total)
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
@@ -51,49 +56,64 @@ async def render_hot_posts(settings: dict, category: str, last_ndays: int):
     render_shell(settings, "Hot Posts")
     render_text_banner(category)
     
-    kind = (POST, COMMENT)
-    total_beans = beanops.count_beans(None, category, None, kind, last_ndays, MAX_LIMIT)     
+    kinds = (POST, COMMENT)
+    total_beans = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
     if total_beans: 
-        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kind, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
         # top tags        
         render_tags([tag.tags for tag in tags_and_highlights])
         render_separator()         
-        await render_beans_page(category, kind, last_ndays, total_beans)
+        await render_beans_page(category, kinds, last_ndays, total_beans)
     else:
         ui.label(messages.NOTHING_HOT_IN%last_ndays)
 
-async def render_beans_page(category, kind, last_ndays, total):
+async def render_beans_page(category, kinds, last_ndays, total):
+    is_article = (NEWS in kinds) or (BLOG in kinds)
     beans = [] 
     @ui.refreshable
     def add_page():
         nonlocal beans
-        beans += beanops.trending(None, category, None, kind, last_ndays, len(beans), MAX_ITEMS_PER_PAGE)
-        render_beans_as_list(beans, _render_bean_with_related_items).classes("w-full")
+        beans += beanops.trending(None, category, None, kinds, last_ndays, len(beans), MAX_ITEMS_PER_PAGE)
+        render_beans_as_list(beans, _render_bean_with_related_items).classes("w-full").props("dense" if is_article else "separator")
         if len(beans) < total:   
             ui.button("More Stories", on_click=add_page.refresh).props("unelevated icon-right=chevron_right")
     add_page()
 
 def _render_bean_with_image(bean: Bean):
-    style = "w-full border-[1px]" if bean.kind in (NEWS, BLOG) else "w-full"
-    with ui.item().classes(style) as view:  
-        if bean.image_url:
-            with ui.item_section().props("side"):
-                ui.image(bean.image_url).classes("w-36 h-36")
-        with ui.item_section():
-            ui.label(bean.title).classes("text-bold")              
-            render_bean_banner(bean, display_media_stats = (bean.kind in (POST, COMMENT)))
+    is_article = bean.kind in (NEWS, BLOG)
+    with ui.item(on_click=lambda: body_panel.set_visibility(not body_panel.visible)).classes("w-full" + (" border-[1px]" if is_article else "")) as view:  
+        with ui.column():
+            with ui.item().style("padding: 0px; margin: 0px"):
+                if bean.image_url:
+                    with ui.item_section().props("side"):
+                        ui.image(bean.image_url).classes("w-36 h-36")
+                with ui.item_section().props("top"):
+                    ui.label(bean.highlights[0] if bean.highlights else (bean.title or bean.summary)).classes('text-bold')              
+                    with ui.row(align_items="center").classes('text-caption'): 
+                        if bean.source:
+                            ui.markdown(f"🔗 [{bean.source}]({bean.url})")
+                        if is_article and bean.created:
+                            ui.label(f"📅 {date_to_str(bean.created)}") 
+                        if not is_article and bean.comments:
+                            ui.label(f"💬 {bean.comments}")
+                        if not is_article and bean.likes:
+                            ui.label(f"👍 {bean.likes}")   
+            body_panel=ui.markdown(bean.summary)
+            body_panel.set_visibility(False)
+                
     return view
     
-def _render_bean_with_related_items(bean: Bean):            
+def _render_bean_with_related_items(bean: Bean): 
+    is_article = bean.kind in (NEWS, BLOG)           
     @ui.refreshable
     def render_related_beans(load_items: bool):
         if load_items:
             render_beans_as_list(
                 beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT),
-                lambda bean: render_bean_as_card(bean, show_highlight=True).style("text-align: left;"))
+                lambda bean: render_bean_as_card(bean, show_highlight=True).classes("w-full")).style("text-align: left; margin-left: 0px; padding-left: 0px;")
 
     bean_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT)      
-    with ui.card().classes("no-shadow border-[1px] w-full") as view:         
+    with ui.card().props("flat " + (" bordered" if is_article else "")).classes("w-full") as view:         
         render_bean_banner(bean)  
         render_bean_body(bean, False)
         if bean_count:                     
@@ -102,7 +122,7 @@ def _render_bean_with_related_items(bean: Bean):
                 group="group", 
                 value=False, 
                 on_value_change=lambda: render_related_beans.refresh(beans_panel.value)
-                ).classes("w-full").style("text-align: right") as beans_panel:                      
+                ).classes("w-full").style("text-align: right; padding: 2px; margin: 0px;") as beans_panel:                      
                 render_related_beans(False)                       
     return view
 
