@@ -32,7 +32,7 @@ def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def trending_tags(categories: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> list[Bean]:
-    return beansack.query_top_tags_and_highlights(filter=_create_filter(categories, None, kind, last_ndays), limit=topn)
+    return beansack.query_top_tags(filter=_create_filter(categories, None, kind, last_ndays), limit=topn)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
@@ -53,16 +53,22 @@ def count_beans(query: str|tuple[str], categories: str|tuple[str], tags: str|tup
     else:
         return beansack.count_unique_beans(filter=filter, limit=topn)
 
-# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOUR))
+@cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def related(cluster_id: str, url: str, last_ndays: int, topn: int):
     filter = _create_filter(None, None, None, last_ndays)
-    filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
+    filter.update({
+        K_URL: {"$ne": url}, 
+        K_CLUSTER_ID: cluster_id
+    })
     return beansack.get_beans(filter=filter, limit=topn, sort_by=NEWEST_AND_TRENDING, projection=PROJECTION)
 
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     filter = _create_filter(None, None, None, last_ndays)
-    filter.update({K_URL: {"$ne": url}, K_CLUSTER_ID: cluster_id})
+    filter.update({
+        K_URL: {"$ne": url}, 
+        K_CLUSTER_ID: cluster_id
+    })
     return beansack.beanstore.count_documents(filter=filter, limit=topn)
     
 def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int):
