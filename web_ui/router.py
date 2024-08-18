@@ -12,7 +12,7 @@ parser = prompt_parser.InteractiveInputParser()
 async def render_home(settings):
     render_shell(settings, "Home")
 
-    tags = beanops.trending_tags_and_highlights(None, None, DEFAULT_WINDOW, DEFAULT_LIMIT)
+    tags = beanops.trending_tags(None, None, DEFAULT_WINDOW, DEFAULT_LIMIT)
     if tags:
         render_tags([tag.tags for tag in tags])
     render_separator()   
@@ -20,7 +20,7 @@ async def render_home(settings):
     ui.label("📰 News").classes('text-h5 w-full')
     news = beanops.trending(None, None, None, (NEWS), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE) 
     if news:           
-        render_beans_as_list(news, _render_bean_with_image).props("dense").classes("w-full")
+        render_beans_as_list(news, True, render_expandable_bean).props("dense").classes("w-full")
     else:
         ui.label(messages.NOTHING_TRENDING)
     render_separator()
@@ -28,13 +28,13 @@ async def render_home(settings):
     ui.label("📱 Social Media").classes('text-h5 w-full')
     posts = beanops.trending(None, None, None, (POST), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE)    
     if posts:
-        render_beans_as_list(posts, _render_bean_with_image).props("separator").classes("w-full")
+        render_beans_as_list(posts, False, render_expandable_bean).props("separator").classes("w-full")
     else:
         ui.label(messages.NOTHING_TRENDING)
     render_separator()
 
-    ui.markdown(settings_markdown(settings['search']))    
-    ui.label("Click on 📈 and 🔥 buttons for more trending stories by topics. \n\nClick on ⚙️ button to change topics and time window.").classes('text-caption')
+    render_settings_as_text(settings['search']) 
+    ui.label(NAVIGATION_HELP).classes('text-caption')
 
 async def render_trending_news(settings: dict, category: str, last_ndays: int):  
     render_shell(settings,"Trending News")
@@ -43,10 +43,8 @@ async def render_trending_news(settings: dict, category: str, last_ndays: int):
     kinds = (NEWS, BLOG)
     total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)        
     if total: 
-        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
-        render_tags([tag.tags for tag in tags_and_highlights])
-        render_separator()          
-        ui.markdown("\n\n".join(["- "+item.highlights[0] for item in tags_and_highlights]))
+        tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+        render_tags([tag.tags for tag in tags])
         render_separator()
         await render_beans_page(category, kinds, last_ndays, total)
     else:
@@ -59,9 +57,8 @@ async def render_hot_posts(settings: dict, category: str, last_ndays: int):
     kinds = (POST, COMMENT)
     total_beans = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
     if total_beans: 
-        tags_and_highlights = beanops.trending_tags_and_highlights(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
-        # top tags        
-        render_tags([tag.tags for tag in tags_and_highlights])
+        tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)     
+        render_tags([tag.tags for tag in tags])
         render_separator()         
         await render_beans_page(category, kinds, last_ndays, total_beans)
     else:
@@ -74,57 +71,11 @@ async def render_beans_page(category, kinds, last_ndays, total):
     def add_page():
         nonlocal beans
         beans += beanops.trending(None, category, None, kinds, last_ndays, len(beans), MAX_ITEMS_PER_PAGE)
-        render_beans_as_list(beans, _render_bean_with_related_items).classes("w-full").props("dense" if is_article else "separator")
+        render_beans_as_list(beans, is_article, render_expandable_bean)
         if len(beans) < total:   
             ui.button("More Stories", on_click=add_page.refresh).props("unelevated icon-right=chevron_right")
     add_page()
 
-def _render_bean_with_image(bean: Bean):
-    is_article = bean.kind in (NEWS, BLOG)
-    with ui.item(on_click=lambda: body_panel.set_visibility(not body_panel.visible)).classes("w-full" + (" border-[1px]" if is_article else "")) as view:  
-        with ui.column():
-            with ui.item().style("padding: 0px; margin: 0px"):
-                if bean.image_url:
-                    with ui.item_section().props("side"):
-                        ui.image(bean.image_url).classes("w-36 h-36")
-                with ui.item_section().props("top"):
-                    ui.label(bean.highlights[0] if bean.highlights else (bean.title or bean.summary)).classes('text-bold')              
-                    with ui.row(align_items="center").classes('text-caption'): 
-                        if bean.source:
-                            ui.markdown(f"🔗 [{bean.source}]({bean.url})")
-                        if is_article and bean.created:
-                            ui.label(f"📅 {date_to_str(bean.created)}") 
-                        if not is_article and bean.comments:
-                            ui.label(f"💬 {bean.comments}")
-                        if not is_article and bean.likes:
-                            ui.label(f"👍 {bean.likes}")   
-            body_panel=ui.markdown(bean.summary)
-            body_panel.set_visibility(False)
-                
-    return view
-    
-def _render_bean_with_related_items(bean: Bean): 
-    is_article = bean.kind in (NEWS, BLOG)           
-    @ui.refreshable
-    def render_related_beans(load_items: bool):
-        if load_items:
-            render_beans_as_list(
-                beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT),
-                lambda bean: render_bean_as_card(bean, show_highlight=True).classes("w-full")).style("text-align: left; margin-left: 0px; padding-left: 0px;")
-
-    bean_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT)      
-    with ui.card().props("flat " + (" bordered" if is_article else "")).classes("w-full") as view:         
-        render_bean_banner(bean)  
-        render_bean_body(bean, False)
-        if bean_count:                     
-            with ui.expansion(
-                caption=f"{rounded_number_with_max(bean_count, DEFAULT_LIMIT)} related item(s)",
-                group="group", 
-                value=False, 
-                on_value_change=lambda: render_related_beans.refresh(beans_panel.value)
-                ).classes("w-full").style("text-align: right; padding: 2px; margin: 0px;") as beans_panel:                      
-                render_related_beans(False)                       
-    return view
 
 async def render_search(settings, query: str, keyword: str, kind, last_ndays: int):
     render_shell(settings, "Search") 
@@ -153,11 +104,11 @@ async def render_search(settings, query: str, keyword: str, kind, last_ndays: in
 def _trigger_search(settings, prompt):   
     task, query, ctype, ndays, limit = parser.parse(prompt, settings['search'])
     if task in ["lookfor", "search"]:
-        ui.navigate.to(make_url("/search", q=query, days=ndays))
+        ui.navigate.to(make_navigation_target("/search", q=query, days=ndays))
     elif task == "trending":
-        ui.navigate.to(make_url("/trending", category=query, days=ndays))
+        ui.navigate.to(make_navigation_target("/trending", category=query, days=ndays))
     else:
-        ui.navigate.to(make_url("/search", q=prompt, days=ndays))
+        ui.navigate.to(make_navigation_target("/search", q=prompt, days=ndays))
 
 def render_shell(settings, current_tab="Home"):
     # set themes  
@@ -166,12 +117,12 @@ def render_shell(settings, current_tab="Home"):
     
     def render_news_topic(topic):
         return (topic, 
-                make_url("/trending", category=topic, days=settings['search']['last_ndays']),
+                make_navigation_target("/trending", category=topic, days=settings['search']['last_ndays']),
                 beanops.count_beans(query=None, categories=topic, tags=None, kind=(NEWS, BLOG), last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT))
 
     def render_post_topic(topic):
         return (topic, 
-                make_url("/hot", category=topic, days=settings['search']['last_ndays']),
+                make_navigation_target("/hot", category=topic, days=settings['search']['last_ndays']),
                 beanops.count_beans(query=None, categories=topic, tags=None, kind=(POST, COMMENT), last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT))
 
     def navigate(selected_tab):

@@ -1,4 +1,5 @@
 from pybeansack.datamodels import *
+from shared import beanops
 from web_ui.custom_ui import *
 from nicegui import ui
 from icecream import ic
@@ -15,59 +16,135 @@ F_SEARCH_RESULT = "search_result"
 F_PROMPT = "prompt"
 F_PROCESSING_PROMPT = "processing_prompt"
 
-nugget_markdown = lambda nugget: (f"**{nugget.keyphrase}**"+((": "+nugget.description) if nugget.description else "")) if nugget else None
-tag_route = lambda tag: ui.navigate.to(make_url("/search", keyword=tag))
+tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
 ellipsis_text = lambda text: text if len(text)<=30 else f"{text[:27]}..."
 
-def make_url(target, **kwargs):
+def make_navigation_target(target, **kwargs):
     url_val = URL().with_path(target)    
     if kwargs:
         url_val = url_val.with_query(**kwargs)
     return str(url_val)
 
-def set_tag_route(func):
-    global tag_route
-    tag_route = func
+def render_settings_as_text(settings: dict):
+    return ui.markdown("Currently showing news, blogs and social media posts on %s trending in the last **%d** days." % \
+        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['last_ndays']))  
 
-def settings_markdown(settings: dict):
-    return "Currently showing news, blogs and social media posts on %s trending in the last **%d** days." % \
-        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['last_ndays'])      
+def render_separator():
+    return ui.separator().style("height: 5px; margin: 0px; padding: 0px;") 
 
 def render_tags(tags: list[str]):
     with ui.row().classes("gap-0") as view:
-        [ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline') for text in tags]
+        [ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline dense') for text in tags]
     return view
 
+def render_bean_tags_as_hashtag(bean: Bean):
+    format_tag = lambda tag: "#"+"".join(item for item in tag.split())
+    if bean.tags:
+        return [ui.link(ellipsis_text(format_tag(tag)), target=make_navigation_target("/search", keyword=tag)).classes('text-caption') for tag in bean.tags[:3]]
+
+def render_bean_tags_as_chips(bean: Bean):
+    if bean.tags:
+        with ui.row().classes("gap-0") as view:
+            [ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]]
+        return view
+    
 def render_text_banner(banner: str):
     with ui.label(banner).classes("text-h5") as view:
         ui.separator().style("margin-top: 5px;")
     return view
 
-render_separator = lambda: ui.separator().style("height: 5px; margin: 0px; padding: 0px;") 
+def render_expandable_bean(bean: Bean):
+    @ui.refreshable
+    def render_related_beans(load_items: bool):     
+        related_beans = []   
+        if load_items:
+            related_beans = beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT)
+        render_beans_as_carousel(related_beans, render_whole_bean).set_visibility(load_items)            
 
-def _shortened_markdown(text, emoji = None, url = None):
-    text = ellipsis_text(str(text))
-    if url:
-        text = f"[{text}]({url})"
-    if emoji:
-        text = emoji+" "+text
-    return ui.markdown(text)
+    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT)    
+    with ui.element() as view:
+        with ui.item(on_click=lambda: body_panel.set_visibility(not body_panel.visible)).classes("w-full").style("padding: 0px; margin-bottom: 5px;"):            
+            if bean.image_url:    
+                with ui.item_section().props("side top"):
+                    ui.image(bean.image_url).classes("w-32 h-32")                 
+            with ui.item_section().props('top'):                
+                render_bean_title(bean)                
+                render_bean_stats(bean, False) 
+        
+        with ui.element() as body_panel:                           
+            render_bean_tags_as_chips(bean)
+            render_bean_body(bean, False)
+            with ui.row(align_items="center"):
+                ui.markdown(f"*Read more in [{bean.source}]({bean.url})*")
+                ui.space()
+                if related_count:
+                    related_expansion=ui.expansion(
+                        caption=f"{rounded_number_with_max(related_count, DEFAULT_LIMIT)} related item(s)",
+                        on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right")
+                    render_related_beans(False)
 
-def render_bean_body(bean: Bean, show_highlights: bool):    
-    ui.label(bean.highlights[0] if bean.highlights else bean.title).classes("text-bold")
-    if show_highlights:
-        contents = "\n\n".join(["- "+highlight for highlight in bean.highlights]) \
-                if bean.highlights else bean.summary
-    else:
-        contents = bean.summary
-    ui.markdown(contents)
+        body_panel.set_visibility(False)
+    return view
 
-def _render_tags_as_hashtag(bean: Bean):
-    format_tag = lambda tag: "#"+"".join(item for item in tag.split())
-    if bean.tags:
-        return [ui.link(ellipsis_text(format_tag(tag)), target=make_url("/search", keyword=tag)).classes('text-caption') for tag in bean.tags[:3]]
+def render_whole_bean(bean: Bean):
+    with ui.element() as view:
+        with ui.item().style("padding: 0px; margin-bottom: 5px;"):
+            if bean.image_url:            
+                with ui.item_section().props("side top"):
+                    ui.image(bean.image_url).classes("w-28 h-28")  
+            with ui.item_section().props('top'):                
+                render_bean_title(bean)
+                render_bean_stats(bean, True) 
+        render_bean_tags_as_chips(bean)
+        render_bean_body(bean, bean.highlights)
+    return view
 
-def render_bean_banner(bean: Bean, display_media_stats=True):
+def render_bean_title(bean: Bean):
+    return ui.label(bean.highlights[0] if bean.highlights else bean.title).classes("text-bold")
+
+def render_bean_body(bean: Bean, highlights):
+    return ui.markdown("\n".join(f"- {hl}" for hl in bean.highlights[1:]) if highlights else bean.summary)
+
+def render_bean_stats(bean: Bean, render_source: bool): 
+    with ui.row(align_items="baseline").classes("text-caption") as view:   
+        if bean.created:
+            ui.label(date_to_str(bean.created))
+        if bean.comments:
+            ui.label(f"💬 {bean.comments}")
+        if bean.likes:
+            ui.label(f"👍 {bean.likes}")
+        if render_source:
+            ui.markdown(f"🔗 [{bean.source}]({bean.url})")
+    return view
+
+def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):
+    page_index = {"page_index": 1}
+    page_count = min(MAX_PAGES, -(-count//MAX_ITEMS_PER_PAGE))
+
+    @ui.refreshable
+    def render_search_items():
+        render_beans_as_list(beans_iter((page_index['page_index']-1)*MAX_ITEMS_PER_PAGE), True, render_whole_bean)    
+    if count > MAX_ITEMS_PER_PAGE:
+        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index['page_index'], on_change=render_search_items.refresh).bind_value(page_index, 'page_index')
+    render_search_items()
+    if count > MAX_ITEMS_PER_PAGE:
+        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index).bind_value(page_index, 'page_index')
+
+def render_beans_as_list(beans, render_articles, bean_render_func):
+    with ui.list().props(add="dense" if render_articles else "separator").classes("w-full") as view:        
+        for bean in beans:
+            with ui.item().classes("w-full border-[1px]" if render_articles else "w-full").style(add="border-radius: 5px; margin-bottom: 5px;" if render_articles else "margin-bottom: 5px;"):
+                bean_render_func(bean)
+    return view
+
+def render_beans_as_carousel(beans: list[Bean], bean_render_func):
+    with ui.carousel(animated=True, arrows=True).props(f"swipeable height=60") as view:          
+        for bean in beans:
+            with ui.carousel_slide(name=bean.url).style('background-color: lightgray; border-radius: 5px;').classes("h-60"):
+                bean_render_func(bean)
+    return view
+
+def _render_bean_banner(bean: Bean, display_media_stats=True):
     with ui.column().classes('text-caption') as view:
         with ui.row(align_items="center"): 
             if bean.created:
@@ -82,32 +159,5 @@ def render_bean_banner(bean: Bean, display_media_stats=True):
                 if bean.likes:
                     ui.label(f"👍 {bean.likes}")
         with ui.row():
-            _render_tags_as_hashtag(bean)
+            render_bean_tags_as_hashtag(bean)
     return view
-
-def render_bean_as_card(bean: Bean, show_highlight: bool=False):
-    with ui.card().classes("w-full") as view:
-        render_bean_banner(bean)
-        render_bean_body(bean, show_highlights=show_highlight)
-    return view
-
-def render_beans_as_list(beans: list[Bean], item_render_func=render_bean_as_card):  
-    if beans:  
-        with ui.list() as view:
-            for bean in beans:
-                with ui.item().props("dense"):
-                    item_render_func(bean)
-        return view
-
-def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):
-    page_index = {"page_index": 1}
-    page_count = min(MAX_PAGES, -(-count//MAX_ITEMS_PER_PAGE))
-
-    @ui.refreshable
-    def render_search_items():
-        render_beans_as_list(beans_iter((page_index['page_index']-1)*MAX_ITEMS_PER_PAGE))    
-    if count > MAX_ITEMS_PER_PAGE:
-        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index['page_index'], on_change=render_search_items.refresh).bind_value(page_index, 'page_index')
-    render_search_items()
-    if count > MAX_ITEMS_PER_PAGE:
-        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index).bind_value(page_index, 'page_index')

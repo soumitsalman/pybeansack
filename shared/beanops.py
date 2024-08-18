@@ -31,7 +31,7 @@ def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[
         return beansack.query_unique_beans(filter=filter, sort_by=sort_by, skip=start_index, limit=topn)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
-def trending_tags_and_highlights(categories: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> list[Bean]:
+def trending_tags(categories: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> list[Bean]:
     return beansack.query_top_tags_and_highlights(filter=_create_filter(categories, None, kind, last_ndays), limit=topn)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
