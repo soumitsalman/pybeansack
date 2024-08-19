@@ -25,7 +25,7 @@ async def render_home(settings):
         ui.label(messages.NOTHING_TRENDING)
     render_separator()
 
-    ui.label("📱 Social Media").classes('text-h5 w-full')
+    ui.label("🗣️ Social Media").classes('text-h5 w-full')
     posts = beanops.trending(None, None, None, (POST), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE)    
     if posts:
         render_beans_as_list(posts, False, render_expandable_bean).props("separator").classes("w-full")
@@ -131,10 +131,13 @@ def render_shell(settings, current_tab="Home"):
         elif selected_tab == "Search":
             ui.navigate.to("/search")
 
+    # login = _render_login(settings)
+
     # header
     with ui.header().classes(replace="row"):
         with ui.avatar(square=True):
             ui.image("images/cafecito.png")
+        
         with ui.tabs(on_change=lambda: navigate(tab_selector.value), value=current_tab) as tab_selector:
             ui.tab(name="Home", label="", icon="home").tooltip("Home")           
             settings['search']['topics'] = sorted(settings['search']['topics'])
@@ -145,11 +148,20 @@ def render_shell(settings, current_tab="Home"):
             ui.tab(name="Search", label="", icon="search").tooltip("Search")
 
         ui.space()
-        ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").props('flat color=white').classes("self-right")
+        with ui.button_group().props('flat color=white').classes("self-right"):
+            # ui.button(on_click=login.open, icon="login").tooltip("Login")
+            ui.button(on_click=lambda: settings_drawer.toggle(), icon="settings").tooltip("Settings")
 
     # settings
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
         _render_settings(settings) 
+
+def _render_login(settings):
+    with ui.dialog() as view, ui.card():
+        ui.button("Continue with Reddit", on_click=lambda: view.submit("Reddit")).props("rounded")
+        ui.button("Continue with Slack", on_click=lambda: view.submit("Slack")).props("rounded")
+        # TODO: do a close somewhere here
+    return view
 
 def _render_settings(settings):   
     with ui.list():

@@ -30,7 +30,7 @@ def render_settings_as_text(settings: dict):
         (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['last_ndays']))  
 
 def render_separator():
-    return ui.separator().style("height: 5px; margin: 0px; padding: 0px;") 
+    return ui.separator().style("height: 5px; margin: 0px; padding: 0px;").classes("w-full")
 
 def render_tags(tags: list[str]):
     with ui.row().classes("gap-0") as view:
@@ -58,10 +58,10 @@ def render_expandable_bean(bean: Bean):
     def render_related_beans(load_items: bool):     
         related_beans = []   
         if load_items:
-            related_beans = beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT)
+            related_beans = beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS)
         render_beans_as_carousel(related_beans, render_whole_bean).set_visibility(load_items)            
 
-    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=DEFAULT_LIMIT)    
+    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)    
     with ui.element() as view:
         with ui.item(on_click=lambda: body_panel.set_visibility(not body_panel.visible)).classes("w-full").style("padding: 0px; margin-bottom: 5px;"):            
             if bean.image_url:    
@@ -75,11 +75,11 @@ def render_expandable_bean(bean: Bean):
             render_bean_tags_as_chips(bean)
             render_bean_body(bean, False)
             with ui.row(align_items="center"):
-                ui.markdown(f"*Read more in [{bean.source}]({bean.url})*")
+                ui.markdown(f"*Read more in [{bean.source}]({bean.url})*").classes("text-caption")
                 ui.space()
                 if related_count:
                     related_expansion=ui.expansion(
-                        caption=f"{rounded_number_with_max(related_count, DEFAULT_LIMIT)} related item(s)",
+                        caption=f"{rounded_number_with_max(related_count, MAX_RELATED_ITEMS)} related item(s)",
                         on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right")
                     render_related_beans(False)
 
@@ -138,9 +138,9 @@ def render_beans_as_list(beans, render_articles, bean_render_func):
     return view
 
 def render_beans_as_carousel(beans: list[Bean], bean_render_func):
-    with ui.carousel(animated=True, arrows=True).props(f"swipeable height=60") as view:          
+    with ui.carousel(animated=True, arrows=True).props(f"swipeable control-color=darkblue").classes("h-full") as view:          
         for bean in beans:
-            with ui.carousel_slide(name=bean.url).style('background-color: lightgray; border-radius: 5px;').classes("h-60"):
+            with ui.carousel_slide(name=bean.url).style('background-color: lightgray; border-radius: 10px;').classes("h-full"):
                 bean_render_func(bean)
     return view
 
