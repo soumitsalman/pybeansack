@@ -75,11 +75,11 @@ def render_expandable_bean(bean: Bean):
             render_bean_tags_as_chips(bean)
             render_bean_body(bean, False)
             with ui.row(align_items="center", wrap=False).classes("text-caption"):
-                ui.markdown(f"Read more in [{bean.source}]({bean.url})")
+                ui.markdown(f"🔗 [{bean.channel or bean.source}]({bean.url})")
                 ui.space()
                 if related_count:
                     related_expansion=ui.expansion(
-                        text=f"{rounded_number_with_max(related_count, MAX_RELATED_ITEMS)} related stories(s)",
+                        text=rounded_number_with_max(related_count, MAX_RELATED_ITEMS)+" related "+ ("stories" if related_count>1 else "story"),
                         on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right;")
             render_related_beans(False)
 
@@ -100,10 +100,11 @@ def render_whole_bean(bean: Bean):
     return view
 
 def render_bean_title(bean: Bean):
-    return ui.label(bean.highlights[0] if bean.highlights else bean.title).classes("text-bold")
+    # return ui.label(bean.highlights[0] if bean.highlights else bean.title).classes("text-bold")
+    ui.label(bean.title).classes("text-bold")
 
 def render_bean_body(bean: Bean, highlights):
-    return ui.markdown("\n".join(f"- {hl}" for hl in bean.highlights[1:]) if highlights else bean.summary)
+    return ui.markdown("\n".join(f"- {hl}" for hl in bean.highlights) if highlights else bean.summary)
 
 def render_bean_stats(bean: Bean, render_source: bool): 
     with ui.row(align_items="baseline").classes("text-caption") as view:   
@@ -114,7 +115,7 @@ def render_bean_stats(bean: Bean, render_source: bool):
         if bean.likes:
             ui.label(f"👍 {bean.likes}")
         if render_source:
-            ui.markdown(f"🔗 [{bean.source}]({bean.url})")
+            ui.markdown(f"🔗 [{bean.channel or bean.source}]({bean.url})")
     return view
 
 def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):

@@ -14,7 +14,7 @@ async def render_home(settings):
 
     tags = beanops.trending_tags(None, None, DEFAULT_WINDOW, DEFAULT_LIMIT)
     if tags:
-        render_tags([tag.tags for tag in tags])
+        render_tags([tag.tags for tag in tags ])
     render_separator()   
     
     ui.label("📰 News").classes('text-h5 w-full')
@@ -182,10 +182,10 @@ def _render_settings(settings):
             # with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
             ui.select(
                 label="Topics of Interest", 
-                options=espressops.get_topics(espressops.SYSTEM), 
+                options= espressops.get_topics(espressops.SYSTEM), 
                 multiple=True,
-                with_input=True, 
-                new_value_mode='add-unique').bind_value(settings['search'], 'topics').props("use-chips filled").classes("w-full")
+                with_input=True,
+                value=settings['search']['topics']).bind_value(settings['search'], 'topics').props("use-chips filled").classes("w-full")
     
     ui.separator()
 
