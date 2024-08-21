@@ -38,7 +38,7 @@ async def render_home(settings):
 
 async def render_trending_news(settings: dict, category: str, last_ndays: int):  
     render_shell(settings,"Trending News")
-    render_text_banner(category)
+    render_text_banner(f"📰 {category}")
     
     kinds = (NEWS, BLOG)
     total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)        
@@ -46,36 +46,45 @@ async def render_trending_news(settings: dict, category: str, last_ndays: int):
         tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
         render_tags([tag.tags for tag in tags])
         render_separator()
-        await render_beans_page(category, kinds, last_ndays, total)
+        await _render_beans_page(category, kinds, last_ndays, total)
     else:
         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
 async def render_hot_posts(settings: dict, category: str, last_ndays: int):  
     render_shell(settings, "Hot Posts")
-    render_text_banner(category)
+    render_text_banner(f"🗣️ {category}")
     
     kinds = (POST, COMMENT)
-    total_beans = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
-    if total_beans: 
+    total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
+    if total: 
         tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)     
         render_tags([tag.tags for tag in tags])
         render_separator()         
-        await render_beans_page(category, kinds, last_ndays, total_beans)
+        await _render_beans_page(category, kinds, last_ndays, total)
     else:
         ui.label(messages.NOTHING_HOT_IN%last_ndays)
 
-async def render_beans_page(category, kinds, last_ndays, total):
+async def _render_beans_page(category, kinds, last_ndays, total):
     is_article = (NEWS in kinds) or (BLOG in kinds)
-    beans = [] 
-    @ui.refreshable
-    def add_page():
-        nonlocal beans
-        beans += beanops.trending(None, category, None, kinds, last_ndays, len(beans), MAX_ITEMS_PER_PAGE)
-        render_beans_as_list(beans, is_article, render_expandable_bean)
-        if len(beans) < total:   
-            ui.button("More Stories", on_click=add_page.refresh).props("unelevated icon-right=chevron_right")
-    add_page()
+    item_class = "w-full border-[1px]" if is_article else "w-full"
+    item_style = "border-radius: 5px; margin-bottom: 5px;" if is_article else "margin-bottom: 5px;"    
+    start_index = 0 
 
+    async def load_page():
+        nonlocal start_index, panel, more
+        beans = beanops.trending(None, category, None, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE)
+        start_index += MAX_ITEMS_PER_PAGE
+
+        with panel:        
+            for bean in beans:                
+                with ui.item().classes(item_class).style(item_style):
+                    render_expandable_bean(bean)
+        if start_index >= total:
+            more.set_visibility(False)
+
+    panel = ui.list().props("dense" if is_article else "separator").classes("w-full")
+    more = ui.button("More Stories", on_click=load_page).props("unelevated icon-right=chevron_right")
+    await load_page()
 
 async def render_search(settings, query: str, keyword: str, kind, last_ndays: int):
     render_shell(settings, "Search") 
@@ -154,7 +163,7 @@ def render_shell(settings, current_tab="Home"):
 
     # settings
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
-        _render_settings(settings) 
+        _render_settings(settings)
 
 def _render_login(settings):
     with ui.dialog() as view, ui.card():
@@ -164,28 +173,33 @@ def _render_login(settings):
     return view
 
 def _render_settings(settings):   
-    with ui.list():
-        ui.item_label('Default Settings').classes("text-subtitle1")
+    with ui.list().classes("w-full"):
+        ui.item_label('Preferences').classes("text-subtitle1")
         with ui.item():
-            with ui.item_section().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days"):
+            with ui.item_section().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days").classes("text-caption"):
                 ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays")
         with ui.item():
-            with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
-                ui.select(options=espressops.DEFAULT_CATEGORIES, multiple=True).bind_value(settings['search'], 'topics').props("use-chips")
+            # with ui.expansion("Topics of Interest", caption="Select topics your are interesting in"):
+            ui.select(
+                label="Topics of Interest", 
+                options=espressops.get_topics(espressops.SYSTEM), 
+                multiple=True,
+                with_input=True, 
+                new_value_mode='add-unique').bind_value(settings['search'], 'topics').props("use-chips filled").classes("w-full")
     
     ui.separator()
 
     with ui.column(align_items="stretch"):
-        ui.label('Connections').classes("text-subtitle1")
-        ui.switch(text="Slack")
-        ui.switch(text="Reddit")
-        ui.switch(text="LinkedIn")
+        ui.label('Connected Accounts').classes("text-subtitle1")
+        ui.switch(text="Slack", on_change=lambda: ui.notify(messages.NO_ACTION))
+        ui.switch(text="Reddit", on_change=lambda: ui.notify(messages.NO_ACTION))
+
 
 def create_default_settings():
     return {
         "search": {
             "last_ndays": DEFAULT_WINDOW,            
-            "topics": espressops.DEFAULT_CATEGORIES
+            "topics": config.DEFAULT_CATEGORIES
         },
         "connections": {
             config.REDDIT: None,

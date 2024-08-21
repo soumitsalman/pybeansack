@@ -74,14 +74,14 @@ def render_expandable_bean(bean: Bean):
         with ui.element() as body_panel:                           
             render_bean_tags_as_chips(bean)
             render_bean_body(bean, False)
-            with ui.row(align_items="center"):
-                ui.markdown(f"*Read more in [{bean.source}]({bean.url})*").classes("text-caption")
+            with ui.row(align_items="center", wrap=False).classes("text-caption"):
+                ui.markdown(f"Read more in [{bean.source}]({bean.url})")
                 ui.space()
                 if related_count:
                     related_expansion=ui.expansion(
-                        caption=f"{rounded_number_with_max(related_count, MAX_RELATED_ITEMS)} related item(s)",
-                        on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right")
-                    render_related_beans(False)
+                        text=f"{rounded_number_with_max(related_count, MAX_RELATED_ITEMS)} related stories(s)",
+                        on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right;")
+            render_related_beans(False)
 
         body_panel.set_visibility(False)
     return view
@@ -138,7 +138,7 @@ def render_beans_as_list(beans, render_articles, bean_render_func):
     return view
 
 def render_beans_as_carousel(beans: list[Bean], bean_render_func):
-    with ui.carousel(animated=True, arrows=True).props(f"swipeable control-color=darkblue").classes("h-full") as view:          
+    with ui.carousel(animated=True, arrows=True).props(f"swipeable control-color=primary").classes("h-full") as view:          
         for bean in beans:
             with ui.carousel_slide(name=bean.url).style('background-color: lightgray; border-radius: 10px;').classes("h-full"):
                 bean_render_func(bean)

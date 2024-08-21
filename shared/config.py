@@ -9,8 +9,8 @@ DEFAULT_CATEGORIES = ["AI", "Aviation & Aerospace", "Business & Finance", "Caree
 
 APP_NAME="Espresso by Cafecit.io"
 
-SLACK = "SLACK"
-REDDIT = "REDDIT"
+SLACK = "slack"
+REDDIT = "reddit"
 
 def get_slack_bot_token() -> str:
     return os.getenv("ESPRESSO_SLACK_BOT_TOKEN")
