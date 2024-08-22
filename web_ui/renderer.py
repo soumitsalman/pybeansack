@@ -75,7 +75,7 @@ def render_expandable_bean(bean: Bean):
             render_bean_tags_as_chips(bean)
             render_bean_body(bean, False)
             with ui.row(align_items="center", wrap=False).classes("text-caption"):
-                ui.markdown(f"🔗 [{bean.channel or bean.source}]({bean.url})")
+                ui.markdown(f"Original content in [{bean.channel or bean.source}]({bean.url})")
                 ui.space()
                 if related_count:
                     related_expansion=ui.expansion(

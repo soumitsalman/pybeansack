@@ -36,33 +36,55 @@ async def render_home(settings):
     render_settings_as_text(settings['search']) 
     ui.label(NAVIGATION_HELP).classes('text-caption')
 
-async def render_trending_news(settings: dict, category: str, last_ndays: int):  
-    render_shell(settings,"Trending News")
-    render_text_banner(f"📰 {category}")
-    
-    kinds = (NEWS, BLOG)
-    total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)        
-    if total: 
-        tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+async def render_trending(settings, category: str, last_ndays: int):
+    render_shell(settings,"Trending")
+    render_text_banner(category)
+
+    tags = beanops.trending_tags(categories=category, kind=None, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+    if tags:
         render_tags([tag.tags for tag in tags])
         render_separator()
-        await _render_beans_page(category, kinds, last_ndays, total)
-    else:
-        ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
-async def render_hot_posts(settings: dict, category: str, last_ndays: int):  
-    render_shell(settings, "Hot Posts")
-    render_text_banner(f"🗣️ {category}")
+    with ui.tabs(on_change=lambda: content_panel.set_value(tabs_panel.value)).props("dense").classes("w-full") as tabs_panel:
+        for tab in TRENDING_TABS:
+            ui.tab(name=tab['name'], label=tab['label'])
+
+    with ui.carousel(animated=True, on_value_change=lambda: tabs_panel.set_value(content_panel.value)).props("swipeable").classes("w-full h-full m-0 p-0") as content_panel:
+        for tab in TRENDING_TABS:
+            with ui.carousel_slide(name=tab['name']).classes("w-full h-full m-0 p-0"):        
+                total = beanops.count_beans(None, category, None, tab["kinds"], last_ndays, MAX_LIMIT)        
+                if total:                     
+                    await _render_beans_page(category, tab["kinds"], last_ndays, total)
+                else:
+                    ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
+
+# async def render_trending_news(settings: dict, category: str, last_ndays: int):  
+#     render_shell(settings,"Trending News")
+#     render_text_banner(f"📰 {category}")
     
-    kinds = (POST, COMMENT)
-    total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
-    if total: 
-        tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)     
-        render_tags([tag.tags for tag in tags])
-        render_separator()         
-        await _render_beans_page(category, kinds, last_ndays, total)
-    else:
-        ui.label(messages.NOTHING_HOT_IN%last_ndays)
+#     kinds = (NEWS, BLOG)
+#     total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)        
+#     if total: 
+#         tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+#         render_tags([tag.tags for tag in tags])
+#         render_separator()
+#         await _render_beans_page(category, kinds, last_ndays, total)
+#     else:
+#         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
+
+# async def render_hot_posts(settings: dict, category: str, last_ndays: int):  
+#     render_shell(settings, "Hot Posts")
+#     render_text_banner(f"🗣️ {category}")
+    
+#     kinds = (POST, COMMENT)
+#     total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
+#     if total: 
+#         tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)     
+#         render_tags([tag.tags for tag in tags])
+#         render_separator()         
+#         await _render_beans_page(category, kinds, last_ndays, total)
+#     else:
+#         ui.label(messages.NOTHING_HOT_IN%last_ndays)
 
 async def _render_beans_page(category, kinds, last_ndays, total):
     is_article = (NEWS in kinds) or (BLOG in kinds)
@@ -124,15 +146,15 @@ def render_shell(settings, current_tab="Home"):
     ui.colors(secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
     
-    def render_news_topic(topic):
+    def render_topics_menu(topic):
         return (topic, 
                 make_navigation_target("/trending", category=topic, days=settings['search']['last_ndays']),
-                beanops.count_beans(query=None, categories=topic, tags=None, kind=(NEWS, BLOG), last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT))
+                beanops.count_beans(query=None, categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT))
 
-    def render_post_topic(topic):
-        return (topic, 
-                make_navigation_target("/hot", category=topic, days=settings['search']['last_ndays']),
-                beanops.count_beans(query=None, categories=topic, tags=None, kind=(POST, COMMENT), last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT))
+    # def render_post_topic(topic):
+    #     return (topic, 
+    #             make_navigation_target("/hot", category=topic, days=settings['search']['last_ndays']),
+    #             beanops.count_beans(query=None, categories=topic, tags=None, kind=(POST, COMMENT), last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT))
 
     def navigate(selected_tab):
         if selected_tab == "Home":
@@ -150,10 +172,10 @@ def render_shell(settings, current_tab="Home"):
         with ui.tabs(on_change=lambda: navigate(tab_selector.value), value=current_tab) as tab_selector:
             ui.tab(name="Home", label="", icon="home").tooltip("Home")           
             settings['search']['topics'] = sorted(settings['search']['topics'])
-            with ui.tab(name="Trending News", label="", icon='trending_up').tooltip("Trending News"):
-                BindableNavigationMenu(render_news_topic).bind_items_from(settings['search'], 'topics')            
-            with ui.tab(name="Hot Posts", label="", icon="local_fire_department").tooltip("Hot Posts"):
-                BindableNavigationMenu(render_post_topic).bind_items_from(settings['search'], 'topics')
+            with ui.tab(name="Trending", label="", icon='trending_up').tooltip("Trending News & Posts"):
+                BindableNavigationMenu(render_topics_menu).bind_items_from(settings['search'], 'topics')            
+            # with ui.tab(name="Hot Posts", label="", icon="local_fire_department").tooltip("Hot Posts"):
+            #     BindableNavigationMenu(render_post_topic).bind_items_from(settings['search'], 'topics')
             ui.tab(name="Search", label="", icon="search").tooltip("Search")
 
         ui.space()
@@ -206,3 +228,16 @@ def create_default_settings():
             config.SLACK: None
         }            
     }
+
+TRENDING_TABS = [
+        {
+            "name": "articles", 
+            "label": "📰 News & Articles",
+            "kinds": (NEWS, BLOG)
+        },
+        {
+            "name": "posts", 
+            "label": "🗣️ Social Media",
+            "kinds": (POST, COMMENT)
+        }
+    ]
