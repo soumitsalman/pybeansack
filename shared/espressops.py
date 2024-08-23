@@ -31,7 +31,7 @@ def get_userid(idval: str|tuple[str, str]):
 
 @cached(TTLCache(maxsize=100, ttl=ONE_DAY))
 def get_topics(userid: str|tuple[str, str]):
-    items=categories.distinct("text", {K_SOURCE:userid})
+    items=categories.distinct("categories", {K_SOURCE:userid})
     items.sort()
     return items
     
