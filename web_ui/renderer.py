@@ -17,7 +17,8 @@ F_PROMPT = "prompt"
 F_PROCESSING_PROMPT = "processing_prompt"
 
 tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
-ellipsis_text = lambda text: text if len(text)<=30 else f"{text[:27]}..."
+ellipsis_text = lambda text: text if len(text)<=40 else f"{text[:37]}..."
+is_bean_title_too_long = lambda bean: len(bean.title) >= 180
 
 def make_navigation_target(target, **kwargs):
     url_val = URL().with_path(target)    
@@ -45,77 +46,76 @@ def render_bean_tags_as_hashtag(bean: Bean):
 def render_bean_tags_as_chips(bean: Bean):
     if bean.tags:
         with ui.row().classes("gap-0") as view:
-            [ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]]
+            [ui.chip(ellipsis_text(text), on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]]
         return view
+    
+def render_bean_title(bean: Bean):
+    return ui.label(bean.title).classes("text-bold")
+
+def render_bean_body(bean: Bean):
+    return ui.markdown(bean.summary).style("word-wrap: break-word; overflow-wrap: break-word;")
+
+def render_bean_stats(bean: Bean, show_source: bool, vertical: bool): 
+    with (ui.column(align_items="stretch").classes(add="gap-0") if vertical else ui.row(align_items="baseline")).classes(add="text-caption").style("margin-top: 1px;") as view:   
+        ui.label(date_to_str(bean.created or bean.updated))
+        with ui.row():
+            if bean.comments:
+                ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")
+            if bean.likes:
+                ui.label(f"👍 {bean.likes}").tooltip(f"{bean.likes} likes across various social media sources")
+    return view
     
 def render_text_banner(banner: str):
     with ui.label(banner).classes("text-h5") as view:
         ui.separator().style("margin-top: 5px;")
     return view
 
-def render_expandable_bean(bean: Bean):
+def render_expandable_bean(bean: Bean, show_related: bool = True):
     @ui.refreshable
     def render_related_beans(load_items: bool):     
         related_beans = []   
         if load_items:
             related_beans = beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS)
         render_beans_as_carousel(related_beans, render_whole_bean).set_visibility(load_items)            
-
-    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)    
-    with ui.element() as view:
-        with ui.item(on_click=lambda: body_panel.set_visibility(not body_panel.visible)).classes("w-full").style("padding: 0px; margin-bottom: 5px;"):            
-            if bean.image_url:    
-                with ui.item_section().props("side top"):
-                    ui.image(bean.image_url).classes("w-32 h-32")                 
-            with ui.item_section().props('top'):                
-                render_bean_title(bean)                
-                render_bean_stats(bean, False) 
         
+    with ui.element() as view:
+        render_bean_banner(bean).on_click(lambda: body_panel.set_visibility(not body_panel.visible))
         with ui.element() as body_panel:                           
             render_bean_tags_as_chips(bean)
-            render_bean_body(bean, False)
+            render_bean_body(bean)
             with ui.row(align_items="center", wrap=False).classes("text-caption"):
-                ui.markdown(f"Original content in [{bean.channel or bean.source}]({bean.url})")
+                ui.markdown(f"Read more in [{bean.channel or bean.source}]({bean.url})")
                 ui.space()
-                if related_count:
-                    related_expansion=ui.expansion(
-                        text=rounded_number_with_max(related_count, MAX_RELATED_ITEMS)+" related "+ ("stories" if related_count>1 else "story"),
-                        on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right;")
+                if show_related:
+                    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)
+                    if related_count:
+                        related_expansion=ui.expansion(
+                            text=rounded_number_with_max(related_count, MAX_RELATED_ITEMS)+" related "+ ("stories" if related_count>1 else "story"),
+                            on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).style("text-align: right;")
             render_related_beans(False)
 
         body_panel.set_visibility(False)
     return view
 
-def render_whole_bean(bean: Bean):
-    with ui.element() as view:
-        with ui.item().style("padding: 0px; margin-bottom: 5px;"):
-            if bean.image_url:            
-                with ui.item_section().props("side top"):
-                    ui.image(bean.image_url).classes("w-28 h-28")  
-            with ui.item_section().props('top'):                
-                render_bean_title(bean)
-                render_bean_stats(bean, True) 
-        render_bean_tags_as_chips(bean)
-        render_bean_body(bean, bean.highlights)
+def render_bean_banner(bean: Bean):
+    with ui.item().classes("w-full").style("padding: 0px; margin-bottom: 5px;") as view:            
+        if bean.image_url:    
+            with ui.item_section().props("side top"):
+                ui.image(bean.image_url).classes("w-32 h-32")   
+                if is_bean_title_too_long(bean):
+                    render_bean_stats(bean, show_source=False, vertical=True) 
+        with ui.item_section().props('top'):                
+            render_bean_title(bean)     
+            if not bean.image_url or not is_bean_title_too_long(bean):           
+                render_bean_stats(bean, show_source=False, vertical=False)    
     return view
 
-def render_bean_title(bean: Bean):
-    # return ui.label(bean.highlights[0] if bean.highlights else bean.title).classes("text-bold")
-    ui.label(bean.title).classes("text-bold")
-
-def render_bean_body(bean: Bean, highlights):
-    return ui.markdown("\n".join(f"- {hl}" for hl in bean.highlights) if highlights else bean.summary)
-
-def render_bean_stats(bean: Bean, render_source: bool): 
-    with ui.row(align_items="baseline").classes("text-caption") as view:   
-        if bean.created:
-            ui.label(date_to_str(bean.created))
-        if bean.comments:
-            ui.label(f"💬 {bean.comments}")
-        if bean.likes:
-            ui.label(f"👍 {bean.likes}")
-        if render_source:
-            ui.markdown(f"🔗 [{bean.channel or bean.source}]({bean.url})")
+def render_whole_bean(bean: Bean):
+    with ui.element() as view:
+        render_bean_banner(bean)
+        render_bean_tags_as_chips(bean)
+        render_bean_body(bean)
+        ui.markdown(f"Read more in [{bean.channel or bean.source}]({bean.url})").classes("text-caption")
     return view
 
 def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):
@@ -124,7 +124,7 @@ def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda ind
 
     @ui.refreshable
     def render_search_items():
-        render_beans_as_list(beans_iter((page_index['page_index']-1)*MAX_ITEMS_PER_PAGE), True, render_whole_bean)    
+        render_beans_as_list(beans_iter((page_index['page_index']-1)*MAX_ITEMS_PER_PAGE), True, lambda bean: render_expandable_bean(bean, show_related=False))    
     if count > MAX_ITEMS_PER_PAGE:
         ui.pagination(min=1, max=page_count, direction_links=True, value=page_index['page_index'], on_change=render_search_items.refresh).bind_value(page_index, 'page_index')
     render_search_items()

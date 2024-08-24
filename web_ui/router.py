@@ -20,7 +20,7 @@ async def render_home(settings):
     ui.label("📰 News").classes('text-h5 w-full')
     news = beanops.trending(None, None, None, (NEWS), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE) 
     if news:           
-        render_beans_as_list(news, True, render_expandable_bean).props("dense").classes("w-full")
+        render_beans_as_list(news, True, lambda bean: render_expandable_bean(bean, True)).props("dense").classes("w-full")
     else:
         ui.label(messages.NOTHING_TRENDING)
     render_separator()
@@ -28,7 +28,7 @@ async def render_home(settings):
     ui.label("🗣️ Social Media").classes('text-h5 w-full')
     posts = beanops.trending(None, None, None, (POST), DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE)    
     if posts:
-        render_beans_as_list(posts, False, render_expandable_bean).props("separator").classes("w-full")
+        render_beans_as_list(posts, False, lambda bean: render_expandable_bean(bean, True)).props("separator").classes("w-full")
     else:
         ui.label(messages.NOTHING_TRENDING)
     render_separator()
@@ -45,46 +45,18 @@ async def render_trending(settings, category: str, last_ndays: int):
         render_tags([tag.tags for tag in tags])
         render_separator()
 
-    with ui.tabs(on_change=lambda: content_panel.set_value(tabs_panel.value)).props("dense").classes("w-full") as tabs_panel:
+    with ui.tabs().props("dense").classes("w-full") as tab_headers:
         for tab in TRENDING_TABS:
             ui.tab(name=tab['name'], label=tab['label'])
 
-    with ui.carousel(animated=True, on_value_change=lambda: tabs_panel.set_value(content_panel.value)).props("swipeable").classes("w-full h-full m-0 p-0") as content_panel:
+    with ui.tab_panels(tabs=tab_headers, animated=True, value=TRENDING_TABS[0]['name']).props("swipeable").classes("w-full h-full m-0 p-0"):
         for tab in TRENDING_TABS:
-            with ui.carousel_slide(name=tab['name']).classes("w-full h-full m-0 p-0"):        
+            with ui.tab_panel(name=tab['name']).classes("w-full h-full m-0 p-0"):        
                 total = beanops.count_beans(None, category, None, tab["kinds"], last_ndays, MAX_LIMIT)        
                 if total:                     
                     await _render_beans_page(category, tab["kinds"], last_ndays, total)
                 else:
                     ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
-
-# async def render_trending_news(settings: dict, category: str, last_ndays: int):  
-#     render_shell(settings,"Trending News")
-#     render_text_banner(f"📰 {category}")
-    
-#     kinds = (NEWS, BLOG)
-#     total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)        
-#     if total: 
-#         tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
-#         render_tags([tag.tags for tag in tags])
-#         render_separator()
-#         await _render_beans_page(category, kinds, last_ndays, total)
-#     else:
-#         ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
-
-# async def render_hot_posts(settings: dict, category: str, last_ndays: int):  
-#     render_shell(settings, "Hot Posts")
-#     render_text_banner(f"🗣️ {category}")
-    
-#     kinds = (POST, COMMENT)
-#     total = beanops.count_beans(None, category, None, kinds, last_ndays, MAX_LIMIT)     
-#     if total: 
-#         tags = beanops.trending_tags(categories=category, kind=kinds, last_ndays=last_ndays, topn=DEFAULT_LIMIT)     
-#         render_tags([tag.tags for tag in tags])
-#         render_separator()         
-#         await _render_beans_page(category, kinds, last_ndays, total)
-#     else:
-#         ui.label(messages.NOTHING_HOT_IN%last_ndays)
 
 async def _render_beans_page(category, kinds, last_ndays, total):
     is_article = (NEWS in kinds) or (BLOG in kinds)
@@ -100,7 +72,7 @@ async def _render_beans_page(category, kinds, last_ndays, total):
         with panel:        
             for bean in beans:                
                 with ui.item().classes(item_class).style(item_style):
-                    render_expandable_bean(bean)
+                    render_expandable_bean(bean, True)
         if start_index >= total:
             more.set_visibility(False)
 
