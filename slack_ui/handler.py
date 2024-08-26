@@ -9,8 +9,8 @@ _SLACK_SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat
 # _POSTS_AND_ARTICLES = [renderer._ARTICLE, renderer._POST]
 
 oauth_settings = OAuthSettings(
-    client_id=config.get_slack_client_id(),
-    client_secret=config.get_slack_client_secret(),
+    client_id=config.slack_client_id(),
+    client_secret=config.slack_client_secret(),
     scopes=_SLACK_SCOPES,
     installation_store=slack_stores.MongoInstallationStore(conn_str=config.get_db_connection_string(), app_name="espresso"),
     state_store=slack_stores.MongoOauthStateStore(conn_str=config.get_db_connection_string(), app_name="espresso", expiration_seconds=600)
@@ -19,7 +19,7 @@ oauth_settings = OAuthSettings(
 # set up the initial app
 slack_router = App(
     # token=config.get_slack_bot_token(),
-    signing_secret=config.get_slack_signing_secret(),
+    signing_secret=config.slack_signing_secret(),
     oauth_settings=oauth_settings
 )
 

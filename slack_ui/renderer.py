@@ -1,7 +1,7 @@
 from datetime import datetime
 from itertools import chain
 import queue
-from shared import espressops, config, beanops, messages, llm, fields
+from shared import espressops, config, beanops, llmops, messages, fields
 from icecream import ic
 import pandas as pd
 import logging
@@ -158,7 +158,7 @@ def get_beans_by_search(username, search_text: str):
 
 def get_digests(username, search_text: str):
     # this should search across the board without window
-    result = llm._create_digest(search_text, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)  
+    result = llmops._create_digest(search_text, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)  
     return [_create_digest_blocks(nug, res, beans) for nug, res, beans in result] if result else messages.NOTHING_FOUND
 
 def _create_digest_blocks(nugget, summary, beans): 

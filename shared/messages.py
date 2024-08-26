@@ -1,5 +1,5 @@
 # messages
-NO_INTERESTS_MESSAGE = "Is there anything under god's green earth that interests you? If so do some clickittyclick and tell us what floats your boat."
+NO_INTERESTS_MESSAGE = "Is there anything under god's green earth that you find interesting? Just do some clickittyclack and tell us what floats your boat."
 NO_MORE_CONTENT = "Thass'it ... Se acabo! Go get some :coffee:"
 NO_ACTION = "I don't really do much. I just sit here and look pretty."
 NOTHING_FOUND = "Couldn't find anything"

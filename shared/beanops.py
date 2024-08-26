@@ -19,7 +19,7 @@ def get_sources():
 def get_content_types():
     return beansack.beanstore.distinct(K_KIND)
 
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
     filter=_create_filter(categories, tags, kind, last_ndays)
@@ -34,7 +34,7 @@ def trending(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[
 def trending_tags(categories: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> list[Bean]:
     return beansack.query_top_tags(filter=_create_filter(categories, None, kind, last_ndays), limit=topn)
     
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def search(query: str|tuple[str], categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(categories, tags, kind, last_ndays)
@@ -53,7 +53,7 @@ def count_beans(query: str|tuple[str], categories: str|tuple[str], tags: str|tup
     else:
         return beansack.count_unique_beans(filter=filter, limit=topn)
 
-@cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
+# @cached(TTLCache(maxsize=CACHE_SIZE, ttl=FOUR_HOURS))
 def related(cluster_id: str, url: str, last_ndays: int, topn: int):
     filter = _create_filter(None, None, None, last_ndays)
     filter.update({

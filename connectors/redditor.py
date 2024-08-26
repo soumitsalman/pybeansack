@@ -1,8 +1,10 @@
+import os
 import requests
 import requests.auth
 import shared.config as config
 import urllib
 from icecream import ic
+import praw
 
 def is_user_authenticated(user_id) -> str:
     header = {
@@ -17,6 +19,25 @@ def is_user_authenticated(user_id) -> str:
         return resp.text
     else:
         return True
+    
+def collect_user_as_text(username, limit):
+    user = ic(create_client().redditor(username))
+    text = f"Reddit posts and comments by u/{username}\n\n"
+    for post in list(post for post in user.submissions.new(limit=limit*2) if post.is_self)[:limit]:
+        text += f"POSTED in r/{post.subreddit.display_name}\n{post.title}\n{post.selftext}\n\n"
+    for comment in list(user.comments.new(limit=limit)):
+        text += f"COMMENTED in r/{comment.subreddit.display_name}\nOn POST: {comment.submission.title}\n{comment.body}\n\n"
+    return text
+
+def create_client():
+    return praw.Reddit(
+        client_id = os.getenv('REDDITOR_APP_ID'), 
+        client_secret = os.getenv('REDDITOR_APP_SECRET'),
+        user_agent = "Espresso by Cafecito (by u/randomizer_000)",
+        redirect_uri=os.getenv("HOST_URL")+"/reddit/redirect"
+    )
+
+
 
 # def get_reddit_user_token(user_id, code):
 #     client_auth = requests.auth.HTTPBasicAuth(config.get_reddit_app_id(), config.get_reddit_app_secret())

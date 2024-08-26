@@ -12,3 +12,5 @@ langchain
 pymongo
 retry
 python-dotenv
+authlib
+praw
