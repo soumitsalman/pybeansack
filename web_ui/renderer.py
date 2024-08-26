@@ -5,17 +5,8 @@ from nicegui import ui
 from icecream import ic
 from yarl import URL
 
-F_NUGGETS = "nuggets"
-F_NUGGETCOUNT = "nugget_count"
-F_SELECTED = "selected"
-F_BEANS = "beans"
-F_CATEGORIES = "categories"
-F_LISTVIEW = "listview"
-
-F_SEARCH_RESULT = "search_result"
-F_PROMPT = "prompt"
-F_PROCESSING_PROMPT = "processing_prompt"
-
+bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
+bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
 tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
 ellipsis_text = lambda text: text if len(text)<=40 else f"{text[:37]}..."
 is_bean_title_too_long = lambda bean: len(bean.title) >= 175
@@ -95,7 +86,6 @@ def render_expandable_bean(bean: Bean, show_related: bool = True):
                         on_value_change=lambda: render_related_beans.refresh(related_expansion.value)).props("dense").style("text-align: right; self-align: right;")
             render_related_beans(False)
         ui.query('div.q-expansion-item__header').style(add=CONTENT_STYLE).classes(add="w-full")
-        ui.query('div.q-expansion-item__content').style(add=CONTENT_STYLE).classes(add="w-full")
 
     return view
 
@@ -138,7 +128,7 @@ def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda ind
 def render_beans_as_list(beans, render_articles, bean_render_func):
     with ui.list().props(add="dense" if render_articles else "separator").classes("w-full") as view:        
         for bean in beans:
-            with ui.item().classes("w-full border-[1px]" if render_articles else "w-full").style(add="border-radius: 5px; margin-bottom: 5px;" if render_articles else "margin-bottom: 5px;"):
+            with ui.item().classes(bean_item_class(render_articles)).style(bean_item_style):
                 bean_render_func(bean)
     return view
 

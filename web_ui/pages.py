@@ -52,9 +52,7 @@ def render_trending(settings, category: str, last_ndays: int):
                     ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
 
 def _render_beans_page(category, kinds, last_ndays, total):
-    is_article = (NEWS in kinds) or (BLOG in kinds)
-    item_class = "w-full border-[1px]" if is_article else "w-full"
-    item_style = "border-radius: 5px; margin-bottom: 5px; padding: 10px;"    
+    is_article = (NEWS in kinds) or (BLOG in kinds)       
     start_index = 0 
 
     def load_page():
@@ -64,7 +62,7 @@ def _render_beans_page(category, kinds, last_ndays, total):
 
         with panel:        
             for bean in beans:                
-                with ui.item().classes(item_class).style(item_style):
+                with ui.item().classes(bean_item_class(is_article)).style(bean_item_style):
                     render_expandable_bean(bean, True)
         if start_index >= total:
             more.set_visibility(False)
