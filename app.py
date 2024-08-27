@@ -17,7 +17,7 @@ import web_ui.pages
 import web_ui.defaults
 from slack_bolt.adapter.fastapi import SlackRequestHandler
 
-oauth = OAuth(Config(env_file=".env"))
+oauth = OAuth()
 
 # from slack_ui.router import slack_router
 
