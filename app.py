@@ -3,6 +3,8 @@ import time
 from icecream import ic
 from dotenv import load_dotenv
 from pybeansack import utils
+from pybeansack.embedding import BeansackEmbeddings
+import web_ui.renderer
 
 load_dotenv()
 logger = utils.create_logger("Espresso")
@@ -31,27 +33,44 @@ oauth = OAuth()
 # def slack_events(req):
 #     return handler.handle(req)
 
-def _temp_user():
-    return app.storage.user.get("temp_user")
-
-def _set_temp_user(user):
-    app.storage.user["temp_user"] = user
-
-def _clear_temp_user():
-    if 'temp_user' in app.storage.user:
-        del app.storage.user["temp_user"]
-
-def _session_settings() -> dict:
+def session_settings() -> dict:
     if 'settings' not in app.storage.user:
         app.storage.user['settings'] = web_ui.pages.create_default_settings()
     return app.storage.user['settings']
 
+def last_page() -> str:
+    return session_settings().get('last_page', "/")
+
+def temp_user():
+    return app.storage.user.get("temp_user")
+
+def set_temp_user(user):
+    app.storage.user["temp_user"] = user
+
+def clear_temp_user():
+    if 'temp_user' in app.storage.user:
+        del app.storage.user["temp_user"]
+
+def logged_in_user():
+    return app.storage.user.get('logged_in_user')
+
+def set_logged_in_user(authenticated_user):
+    app.storage.user['logged_in_user'] = authenticated_user  
+    settings = session_settings() 
+    if espressops.PREFERENCES in authenticated_user:        
+        settings['search']['last_ndays'] = authenticated_user[espressops.PREFERENCES]['last_ndays']
+    settings['search']['topics'] = espressops.get_topics(authenticated_user) or settings['search']['topics']
+
+def log_out_user():
+    if 'logged_in_user' in app.storage.user:
+        del app.storage.user['logged_in_user']
+
 @app.get("/reddit/login")
 async def reddit_login(request: Request):
-    redirect_uri = os.getenv('HOST_URL')+"/reddit/redirect"
+    redirect_uri = os.getenv('HOST_URL')+"/reddit/oauth-redirect"
     return await oauth.reddit.authorize_redirect(request, redirect_uri)
 
-@app.get("/reddit/redirect")
+@app.get("/reddit/oauth-redirect")
 async def reddit_redirect(request: Request):    
     try:
         token = await oauth.reddit.authorize_access_token(request)
@@ -63,10 +82,10 @@ async def reddit_redirect(request: Request):
 
 @app.get("/slack/login")
 async def slack_login(request: Request):
-    redirect_uri = os.getenv('HOST_URL')+"/slack/redirect"
+    redirect_uri = os.getenv('HOST_URL')+"/slack/oauth-redirect"
     return await oauth.slack.authorize_redirect(request, redirect_uri)
 
-@app.get("/slack/redirect")
+@app.get("/slack/oauth-redirect")
 async def slack_redirect(request: Request):
     try:
         token = await oauth.slack.authorize_access_token(request)
@@ -83,45 +102,63 @@ def _redirect_after_auth(name, id, source, token):
         "source": source,
         **token
     }
-    existing_user = espressops.get_user(authenticated_user)
-    if existing_user:
-        web_ui.pages.set_session_settings(_session_settings(), existing_user)
-        web_ui.pages.set_logged_in_user(_session_settings(), authenticated_user)
-        return RedirectResponse("/") 
+    current_user = logged_in_user()
+    registered_user = espressops.get_user(authenticated_user)
+    # if a user is already logged in then add this as a connection
+    if current_user:
+        espressops.add_connection(current_user, authenticated_user)
+        current_user[espressops.CONNECTIONS][source]=name
+        return RedirectResponse(last_page())
+    # else no user is logged in but there is an registered user with this cred then log-in that user    
+    elif registered_user:
+        set_logged_in_user(registered_user)
+        return RedirectResponse(last_page()) 
+    # or else this is new session log registration
     else:
-        _set_temp_user(authenticated_user)
+        set_temp_user(authenticated_user)
         return RedirectResponse("/user-registration")
 
 @app.get('/logout')
 def logout():
-    web_ui.pages.log_out_user(_session_settings())
-    return RedirectResponse('/')
+    log_out_user()
+    return RedirectResponse(last_page())
 
 @ui.page('/login-failed')
 def login_failed(source: str):
-    web_ui.pages.render_login_failed(_session_settings(), f'/{source}/login')
+    web_ui.pages.render_login_failed(session_settings(), f'/{source}/login')
 
 @ui.page('/user-registration')
-async def user_registration():
-    web_ui.pages.render_user_registration(_session_settings(), _temp_user())
-    _clear_temp_user()
+def user_registration():
+    web_ui.pages.render_user_registration(
+        session_settings(), 
+        temp_user(),
+        success_func=lambda new_user: [set_logged_in_user(new_user), clear_temp_user(), ui.navigate.to(last_page())],
+        failure_func=lambda: [clear_temp_user(), ui.navigate.to(last_page())])    
 
 @ui.page("/")
-async def home():   
-    web_ui.pages.render_home(_session_settings())
+async def home():  
+    settings = session_settings()
+    settings['last_page'] = "/" 
+    await web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
 async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW)
-    web_ui.pages.render_search(_session_settings(), q, keyword, kind, days)
+    settings = session_settings()
+    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword = keyword, kind = kind, days = days) 
+    await web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, days)
 
 @ui.page("/trending")
 async def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW) 
-    web_ui.pages.render_trending(_session_settings(), category, days)
+    settings = session_settings()
+    settings['last_page'] = web_ui.renderer.make_navigation_target("/trending", category=category, days=days) 
+    await web_ui.pages.render_trending(settings, logged_in_user(), category, days)
 
 def initialize_server():
-    beanops.initiatize(config.db_connection_str(), None)
+    beanops.initiatize(
+        config.db_connection_str(), 
+        BeansackEmbeddings(config.EMBEDDER_PATH, config.EMBEDDER_CTX))
     espressops.initialize(config.db_connection_str())
     oauth.register(
         name=config.REDDIT,

@@ -56,3 +56,5 @@ def run_console(db_conn, llm_api_key, embedder_path):
 
 # if __name__ == "__main__":
 #     run_console(db_conn, llm_api_key)
+
+#  & 'C:\Program Files\ngrok\ngrok.exe' http --domain=workable-feline-deeply.ngrok-free.app 8081

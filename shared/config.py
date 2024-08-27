@@ -1,7 +1,7 @@
 import os
 
 APP_NAME="Espresso by Cafecit.io"
-FOUR_HOURS = 14400
+ONE_HOUR = 3600
 ONE_DAY = 86400
 ONE_WEEK = 604800
 CACHE_SIZE = 100
@@ -28,6 +28,8 @@ DEFAULT_CATEGORIES = [
 ]
 SLACK = "slack"
 REDDIT = "reddit"
+EMBEDDER_PATH = os.path.dirname(__file__)+"/gte-base-Q6.gguf"
+EMBEDDER_CTX = 4096
 
 def slack_bot_token() -> str:
     return os.getenv("SLACKER_BOT_TOKEN")

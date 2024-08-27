@@ -92,6 +92,9 @@ from connectors import redditor
 
 # interactive.bind_tools([get_trending_news_and_posts, search_news_and_posts, create_digest])
 
+
+
+
 def analyze_reddit_posts(username):
     text = redditor.collect_user_as_text(ic(username), limit=10)
 

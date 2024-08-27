@@ -49,11 +49,21 @@ def register_user(user, preferences) -> bool:
         }
         users.insert_one(new_user)
         update_topics(new_user, preferences['topics'])
+        return new_user
+
+def unregister_user(user) -> bool:
+    userid = _get_userid(user)
+    categories.delete_many({SOURCE: userid})
+    users.delete_one({ID: userid})
  
 def get_topics(user: dict):
     items=categories.distinct(CATEGORIES, {SOURCE:_get_userid(user)})
     items.sort()
     return items
+
+@cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
+def get_system_topics():
+    return get_topics({ID: SYSTEM})
 
 def update_topics(user: dict, topics: list[str]|dict[str, str]):
     userid = _get_userid(user)
@@ -64,16 +74,19 @@ def update_topics(user: dict, topics: list[str]|dict[str, str]):
         elif isinstance(topics, list) and isinstance(topics[0], str):
             categories.insert_many([{TEXT: topic, CATEGORIES: [topic], SOURCE: userid} for topic in topics], ordered=False)
 
-@cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
-def get_system_topics():
-    return get_topics({ID: SYSTEM})
+def add_connection(user: dict, connection: dict):
+    users.update_one(
+        filter = userid_filter(user), 
+        update = {
+            "$set": { f"{CONNECTIONS}.{connection[SOURCE]}": connection[NAME] }
+        })
 
-
-# def add_connection(userid: str|tuple[str, str], connection: tuple[str, str]):
-#     _upsert_user_metadata(userid, {K_CONNECTIONS: {connection[0]: connection[1]}})
-
-# def remove_connection(userid: str|tuple[str, str], connection):
-#     users.update_one(userid_filter(userid), {"$unset": { f"{K_CONNECTIONS}.{connection}": "" }})
+def remove_connection(user: dict, source):
+    users.update_one(
+        filter = userid_filter(user), 
+        update = {
+            "$unset": { f"{CONNECTIONS}.{source}": "" } 
+        })
 
     
 

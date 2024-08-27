@@ -76,7 +76,7 @@ def render_expandable_bean(bean: Bean, show_related: bool = True):
         with ui.element():                        
             render_bean_tags_as_chips(bean)
             render_bean_body(bean)
-            with ui.row(align_items="baseline", wrap=False).classes("text-caption w-full"):
+            with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
                 render_bean_source(bean)
                 ui.space()
                 related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)

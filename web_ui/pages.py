@@ -9,13 +9,13 @@ from shared import prompt_parser
 
 parser = prompt_parser.InteractiveInputParser()
 
-def render_home(settings):
-    _render_shell(settings, "Home")
+async def render_home(settings, user):
+    render_shell(settings, user, "Home")
 
     tags = beanops.trending_tags(None, None, DEFAULT_WINDOW, DEFAULT_LIMIT)
     if tags:
         render_tags([tag.tags for tag in tags ])
-    render_separator()   
+        render_separator()   
     
     for section in TRENDING_TABS:
         ui.label(section['label']).classes('text-h5 w-full')
@@ -28,9 +28,15 @@ def render_home(settings):
 
     render_settings_as_text(settings['search']) 
     ui.label(NAVIGATION_HELP).classes('text-caption')
+    render_separator()
 
-def render_trending(settings, category: str, last_ndays: int):
-    _render_shell(settings,"Trending")
+    with ui.row(align_items="center").classes("text-caption").style("self-align: center; text-align: center;"):
+        ui.markdown("[[Project Cafecito](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
+        ui.markdown("[[Espresso](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
+        ui.markdown("[[About Us](https://github.com/soumitsalman/espresso/blob/main/documents/about-us.md)]")
+
+async def render_trending(settings, user, category: str, last_ndays: int):
+    render_shell(settings, user, "Trending")
     render_text_banner(category)
 
     tags = beanops.trending_tags(categories=category, kind=None, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
@@ -71,8 +77,9 @@ def _render_beans_page(category, kinds, last_ndays, total):
     more = ui.button("More Stories", on_click=load_page).props("unelevated icon-right=chevron_right")
     load_page()
 
-def render_search(settings, query: str, keyword: str, kind, last_ndays: int):
-    _render_shell(settings, "Search") 
+async def render_search(settings, user, query: str, keyword: str, kind, last_ndays: int):
+    render_shell(settings, user, "Search") 
+
     process_prompt = lambda: _trigger_search(settings, prompt_input.value)   
     with ui.input(placeholder=PLACEHOLDER, autocomplete=EXAMPLE_OPTIONS).on('keydown.enter', process_prompt) \
         .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
@@ -104,7 +111,7 @@ def _trigger_search(settings, prompt):
     else:
         ui.navigate.to(make_navigation_target("/search", q=prompt, days=ndays))
 
-def _render_shell(settings, current_tab="Home"):
+def render_shell(settings, user, current_tab="Home"):
     # set themes  
     ui.colors(secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
@@ -122,7 +129,7 @@ def _render_shell(settings, current_tab="Home"):
 
     # settings
     with ui.right_drawer(elevated=True, value=False) as settings_drawer:
-        _render_settings(settings)
+        _render_settings(settings, user)
 
     # header
     with ui.header().classes(replace="row"):
@@ -139,11 +146,10 @@ def _render_shell(settings, current_tab="Home"):
         ui.space()
 
         with ui.button_group().props('flat color=white').classes("self-right"):
-            _render_login(settings)
+            _render_login(settings, user)
             ui.button(on_click=settings_drawer.toggle, icon="settings").tooltip("Settings")
 
-def _render_login(settings):
-    user = logged_in_user(settings)    
+def _render_login(settings, user): 
     if user:
         return ui.button(icon='logout', on_click=lambda: ui.navigate.to("/logout")).tooltip("Log-out")
     else:
@@ -155,9 +161,22 @@ def _render_login(settings):
                     ui.avatar("img:https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png", square=True, color="transparent")
         return view
 
-def _render_settings(settings):   
-    with ui.list().classes("w-full"):
-        ui.item_label('Preferences').classes("text-subtitle1")
+def _render_settings(settings: dict, user: dict):  
+    async def delete_user():     
+        # TODO: add a warning dialog   
+        espressops.unregister_user(user)
+        ui.navigate.to("/logout")
+
+    def update_connection(source, connect):        
+        if user and not connect:
+            # TODO: add a dialog
+            espressops.remove_connection(user, source)
+            del user[espressops.CONNECTIONS][source]
+        else:
+            ui.navigate.to(f"/{source}/login")
+
+    ui.label('Preferences').classes("text-subtitle1")
+    with ui.list().classes("w-full"):        
         with ui.item():
             with ui.item_section().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days").classes("text-caption"):
                 ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1, on_change=save_session_settings).bind_value(settings['search'], "last_ndays")
@@ -171,37 +190,30 @@ def _render_settings(settings):
                 on_change=save_session_settings).bind_value(settings['search'], 'topics').props("use-chips filled").classes("w-full")
     
     ui.separator()
+    ui.label('Accounts').classes("text-subtitle1")
+    user_connected = lambda source: (user and (source in user.get(espressops.CONNECTIONS, "")))
+    reddit_connect = ui.switch(text="Reddit", on_change=lambda: update_connection(config.REDDIT, reddit_connect.value), value=user_connected(config.REDDIT)).tooltip("Link/Unlink Connection")
+    slack_connect = ui.switch(text="Slack", on_change=lambda: update_connection(config.SLACK, slack_connect.value), value=user_connected(config.SLACK)).tooltip("Link/Unlink Connection")
 
-    ui.label('Connected Accounts').classes("text-subtitle1")
-    ui.switch(text="Reddit", on_change=save_session_settings).bind_value(settings['connections'], config.REDDIT)
-    ui.switch(text="Slack", on_change=save_session_settings).bind_value(settings['connections'], config.SLACK)
-    
-    # ui.space()
-    # ui.button("Delete Account", color="negative", on_click=lambda: ui.notify("WRITE CODE")).props("flat").classes("self-right")
+    if user:
+        ui.space()
+        ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
-def render_user_registration(settings, user):
-    _render_shell(settings, None)
+def render_user_registration(settings, temp_user, success_func: Callable, failure_func: Callable):
+    render_shell(settings, None, None)
 
-    async def complete_registration():       
-        ui.notify("Processing") 
-        set_logged_in_user(settings, user)         
-        espressops.register_user(user, settings['search']) 
-        ui.navigate.to("/")
-
-    def cancel_registration():
-        if 'logged_in_user' in settings:
-            del settings['logged_in_user'] 
-        ui.navigate.to('/')
+    async def complete_registration(): 
+        success_func(espressops.register_user(temp_user, settings['search']))
 
     async def import_topics():
-        new_topics = llmops.analyze_reddit_posts(ic(user['name']))
+        new_topics = llmops.analyze_reddit_posts(ic(temp_user['name']))
         if new_topics:
             topics_panel.set_options(topics_panel.options + new_topics)
             topics_panel.set_value(new_topics)
         else:
             ui.notify(messages.NO_INTERESTS_MESSAGE)
 
-    if user:
+    if temp_user:
         render_text_banner("You Look New! Let's Get You Signed-up.")
         with ui.stepper().props("vertical").classes("w-full") as stepper:
             with ui.step("Sign Your Life Away") :
@@ -211,12 +223,12 @@ def render_user_registration(settings, user):
                 user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
                 with ui.stepper_navigation():
                     ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
-                    ui.button('Hell No!', color="negative", icon="cancel", on_click=cancel_registration).props("outline")
+                    ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
             with ui.step("Tell Me Your Dreams") :
                 ui.label("Personalization").classes("text-h6")
                 with ui.row(wrap=False, align_items="center").classes("w-full"):
                     ui.label("Name")
-                    ui.input(user['name']).props("outlined").tooltip("We are saving this one").disable()
+                    ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
                 
                 ui.label("Your Interests")                                 
                 topics_panel = ui.select(
@@ -231,7 +243,7 @@ def render_user_registration(settings, user):
 
                 with ui.stepper_navigation():
                     ui.button("Done", icon="thumb_up", on_click=complete_registration).props("outline")
-                    ui.button('Nope!', color="negative", icon="cancel", on_click=cancel_registration).props("outline")
+                    ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
     else:
         ui.label("You really thought we wouldn't have a check for this?!")
 
@@ -242,22 +254,6 @@ def render_login_failed(forward_path):
             ui.button('Try Again', icon="login", on_click=lambda: [dialog.close(), ui.navigate.to(forward_path)])
             ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: [dialog.close(), ui.navigate.to('/')])
     dialog.open()
-
-def logged_in_user(settings: dict):
-    return settings.get('logged_in_user')
-
-def set_logged_in_user(settings, user):
-    settings['logged_in_user'] = user    
-
-def log_out_user(settings):
-    if 'logged_in_user' in settings:
-        del settings['logged_in_user']
-
-def set_session_settings(settings, user):
-    settings['search']['last_ndays'] = user[espressops.PREFERENCES]['last_ndays']
-    settings['search']['topics'] = espressops.get_topics(user)
-    for src in user[espressops.CONNECTIONS].keys():
-        settings['connections'][src] = True
 
 async def save_session_settings(settings):
     # ic(settings, "to store")
