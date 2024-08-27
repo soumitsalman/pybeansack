@@ -14,7 +14,7 @@ is_bean_title_too_long = lambda bean: len(bean.title) >= 175
 def make_navigation_target(target, **kwargs):
     url_val = URL().with_path(target)    
     if kwargs:
-        url_val = url_val.with_query(**kwargs)
+        url_val = url_val.with_query({key:value for key, value in kwargs.items() if value})
     return str(url_val)
 
 def render_settings_as_text(settings: dict):
