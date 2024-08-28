@@ -28,8 +28,10 @@ DEFAULT_CATEGORIES = [
 ]
 SLACK = "slack"
 REDDIT = "reddit"
-EMBEDDER_PATH = os.path.dirname(__file__)+"/gte-base-Q6.gguf"
+
 EMBEDDER_CTX = 4096
+def embedder_path():
+    return os.getenv("MODEL_PATH")
 
 def slack_bot_token() -> str:
     return os.getenv("SLACKER_BOT_TOKEN")

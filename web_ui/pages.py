@@ -1,3 +1,4 @@
+from connectors import redditor
 from shared import beanops, espressops, config, llmops, messages
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
@@ -9,17 +10,19 @@ from shared import prompt_parser
 
 parser = prompt_parser.InteractiveInputParser()
 
-async def render_home(settings, user):
+def render_home(settings, user):
     render_shell(settings, user, "Home")
-
-    tags = beanops.trending_tags(None, None, DEFAULT_WINDOW, DEFAULT_LIMIT)
+    
+    # pull in everything that came in within the last 24 hours
+    categories = tuple(settings['search']['topics']) if user else None
+    tags = beanops.trending_tags(categories, None, MIN_WINDOW, DEFAULT_LIMIT)
     if tags:
         render_tags([tag.tags for tag in tags ])
-        render_separator()   
+        render_separator()
     
     for section in TRENDING_TABS:
         ui.label(section['label']).classes('text-h5 w-full')
-        beans = beanops.trending(None, None, None, section['kinds'], DEFAULT_WINDOW, None, MAX_ITEMS_PER_PAGE) 
+        beans = beanops.trending(None, categories, None, section['kinds'], MIN_WINDOW, 0, DEFAULT_LIMIT) 
         if beans:           
             render_beans_as_list(beans, True, lambda bean: render_expandable_bean(bean, True)).props("dense").classes("w-full")
         else:
@@ -35,11 +38,11 @@ async def render_home(settings, user):
         ui.markdown("[[Espresso](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
         ui.markdown("[[About Us](https://github.com/soumitsalman/espresso/blob/main/documents/about-us.md)]")
 
-async def render_trending(settings, user, category: str, last_ndays: int):
+def render_trending(settings, user, category: str, last_ndays: int):
     render_shell(settings, user, "Trending")
     render_text_banner(category)
 
-    tags = beanops.trending_tags(categories=category, kind=None, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
+    tags = beanops.trending_tags(categories=category, kinds=None, last_ndays=last_ndays, topn=DEFAULT_LIMIT)
     if tags:
         render_tags([tag.tags for tag in tags])
         render_separator()
@@ -77,7 +80,7 @@ def _render_beans_page(category, kinds, last_ndays, total):
     more = ui.button("More Stories", on_click=load_page).props("unelevated icon-right=chevron_right")
     load_page()
 
-async def render_search(settings, user, query: str, keyword: str, kind, last_ndays: int):
+def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: int):
     render_shell(settings, user, "Search") 
 
     process_prompt = lambda: _trigger_search(settings, prompt_input.value)   
@@ -85,11 +88,14 @@ async def render_search(settings, user, query: str, keyword: str, kind, last_nda
         .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
         ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
     
-    kind = tuple(kind) if kind else None
-    def _run_search():        
-        if keyword or query:
-            return (beanops.count_beans(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, topn=MAX_LIMIT),
-                lambda start: beanops.search(query=query, categories=None, tags=keyword, kind=kind, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
+    kinds = tuple(kinds) if kinds else None
+    def _run_search(): 
+        if query:            
+            result = beanops.search(query=query, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=0, topn=MAX_LIMIT)
+            return (len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE])
+        elif keyword:
+            return (beanops.count_beans(query=None, categories=None, tags=keyword, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT),
+                lambda start: beanops.search(query=None, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
         return (None, None)
 
     banner = query or keyword    
@@ -200,60 +206,59 @@ def _render_settings(settings: dict, user: dict):
         ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
 def render_user_registration(settings, temp_user, success_func: Callable, failure_func: Callable):
-    render_shell(settings, None, None)
-
-    async def complete_registration(): 
-        success_func(espressops.register_user(temp_user, settings['search']))
+    # render_shell(settings, None, None)
 
     async def import_topics():
-        new_topics = llmops.analyze_reddit_posts(ic(temp_user['name']))
+        text = redditor.collect_user_as_text(temp_user['name'], limit=10).strip()
+        new_topics = espressops.search_categories(text) if len(text) > 100 else None
         if new_topics:
             topics_panel.set_options(topics_panel.options + new_topics)
             topics_panel.set_value(new_topics)
         else:
             ui.notify(messages.NO_INTERESTS_MESSAGE)
 
-    if temp_user:
-        render_text_banner("You Look New! Let's Get You Signed-up.")
-        with ui.stepper().props("vertical").classes("w-full") as stepper:
-            with ui.step("Sign Your Life Away") :
-                ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
-                ui.link("What is Espresso", "https://github.com/soumitsalman/espresso/blob/main/README.md", new_tab=True)
-                ui.link("Usage Terms & Policy", "https://github.com/soumitsalman/espresso/blob/main/documents/user-policy.md", new_tab=True)
-                user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
-                with ui.stepper_navigation():
-                    ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
-                    ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
-            with ui.step("Tell Me Your Dreams") :
-                ui.label("Personalization").classes("text-h6")
-                with ui.row(wrap=False, align_items="center").classes("w-full"):
-                    ui.label("Name")
-                    ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
-                
-                ui.label("Your Interests")                                 
-                topics_panel = ui.select(
-                    label="Topics", with_input=True, multiple=True, 
-                    options=espressops.get_system_topics()
-                ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
+    with ui.card():
+        if temp_user:
+            render_text_banner("You Look New! Let's Get You Signed-up.")
+            with ui.stepper().props("vertical").classes("w-full") as stepper:
+                with ui.step("Sign Your Life Away") :
+                    ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
+                    ui.link("What is Espresso", "https://github.com/soumitsalman/espresso/blob/main/README.md", new_tab=True)
+                    ui.link("Usage Terms & Policy", "https://github.com/soumitsalman/espresso/blob/main/documents/user-policy.md", new_tab=True)
+                    user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
+                    with ui.stepper_navigation():
+                        ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
+                        ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+                with ui.step("Tell Me Your Dreams") :
+                    ui.label("Personalization").classes("text-h6")
+                    with ui.row(wrap=False, align_items="center").classes("w-full"):
+                        ui.label("Name")
+                        ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
+                    
+                    ui.label("Your Interests")                                 
+                    topics_panel = ui.select(
+                        label="Topics", with_input=True, multiple=True, 
+                        options=espressops.get_system_topics()
+                    ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
 
-                # TODO: enable it later
-                # if user['source'] == "reddit":
-                #     ui.label("- or -").classes("text-caption self-center")
-                #     ui.button("Analyze From Reddit", on_click=import_topics).classes("w-full")
+                    # TODO: enable it later
+                    if temp_user['source'] == "reddit":
+                        ui.label("- or -").classes("text-caption self-center")
+                        ui.button("Analyze From Reddit", on_click=import_topics).classes("w-full")
 
-                with ui.stepper_navigation():
-                    ui.button("Done", icon="thumb_up", on_click=complete_registration).props("outline")
-                    ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
-    else:
-        ui.label("You really thought we wouldn't have a check for this?!")
+                    with ui.stepper_navigation():
+                        ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
+                        ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+        else:
+            ui.label("You really thought I wouldn't check for this?!")
+            ui.button("My Bad!", on_click=failure_func)
 
-def render_login_failed(forward_path):
-    with ui.dialog() as dialog, ui.card():
+def render_login_failed(success_forward, failure_forward):
+    with ui.card():
         ui.label("Welp! That didn't work").classes("self-center")
         with ui.row(align_items="stretch").classes("w-full center"):
-            ui.button('Try Again', icon="login", on_click=lambda: [dialog.close(), ui.navigate.to(forward_path)])
-            ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: [dialog.close(), ui.navigate.to('/')])
-    dialog.open()
+            ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
+            ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
 
 async def save_session_settings(settings):
     # ic(settings, "to store")

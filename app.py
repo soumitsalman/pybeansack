@@ -124,42 +124,41 @@ def logout():
     return RedirectResponse(last_page())
 
 @ui.page('/login-failed')
-def login_failed(source: str):
-    web_ui.pages.render_login_failed(session_settings(), f'/{source}/login')
+async def login_failed(source: str):
+    web_ui.pages.render_login_failed(f'/{source}/login', last_page())
 
 @ui.page('/user-registration')
 def user_registration():
     web_ui.pages.render_user_registration(
         session_settings(), 
         temp_user(),
-        success_func=lambda new_user: [set_logged_in_user(new_user), clear_temp_user(), ui.navigate.to(last_page())],
-        failure_func=lambda: [clear_temp_user(), ui.navigate.to(last_page())])    
+        lambda user: [set_logged_in_user(user), clear_temp_user(), ui.navigate.to(last_page())],
+        lambda: [clear_temp_user(), ui.navigate.to(last_page())])
 
 @ui.page("/")
 async def home():  
     settings = session_settings()
     settings['last_page'] = "/" 
-    await web_ui.pages.render_home(settings, logged_in_user())
+    web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
 async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW)
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword = keyword, kind = kind, days = days) 
-    await web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, days)
+    web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, days)
 
 @ui.page("/trending")
 async def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW) 
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/trending", category=category, days=days) 
-    await web_ui.pages.render_trending(settings, logged_in_user(), category, days)
+    web_ui.pages.render_trending(settings, logged_in_user(), category, days)
 
 def initialize_server():
-    beanops.initiatize(
-        config.db_connection_str(), 
-        BeansackEmbeddings(config.EMBEDDER_PATH, config.EMBEDDER_CTX))
-    espressops.initialize(config.db_connection_str())
+    embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
+    beanops.initiatize(config.db_connection_str(), embedder)
+    espressops.initialize(config.db_connection_str(), embedder)
     oauth.register(
         name=config.REDDIT,
         client_id=config.reddit_client_id(),

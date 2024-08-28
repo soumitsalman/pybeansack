@@ -1,5 +1,6 @@
 from icecream import ic
 from connectors import redditor
+from shared import espressops
 
 # # using deepinfra to get support on rate limits
 # digest_llm = ChatDeepInfra(
@@ -94,13 +95,3 @@ from connectors import redditor
 
 
 
-
-def analyze_reddit_posts(username):
-    text = redditor.collect_user_as_text(ic(username), limit=10)
-
-    # TODO: actually implement this
-    with open("resp.text", "w") as file:
-        file.write(text)
-
-    res = []
-    return res

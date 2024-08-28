@@ -112,18 +112,20 @@ def render_whole_bean(bean: Bean):
         ui.markdown(f"Read more in [{bean.channel or bean.source}]({bean.url})").classes("text-caption")
     return view
 
-def render_beans_as_paginated_list(count: int, beans_iter: Callable = lambda index: None):
-    page_index = {"page_index": 1}
-    page_count = min(MAX_PAGES, -(-count//MAX_ITEMS_PER_PAGE))
+def render_beans_as_paginated_list(items_count: int, get_beans: Callable):
+    # page_index = {"page_index": 1}
+    page_count = min(MAX_PAGES, -(-items_count//MAX_ITEMS_PER_PAGE))
 
     @ui.refreshable
     def render_search_items():
-        render_beans_as_list(beans_iter((page_index['page_index']-1)*MAX_ITEMS_PER_PAGE), True, lambda bean: render_expandable_bean(bean, show_related=False))    
-    if count > MAX_ITEMS_PER_PAGE:
-        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index['page_index'], on_change=render_search_items.refresh).bind_value(page_index, 'page_index')
+        page, go_to_page = ui.state(0)
+        if items_count > MAX_ITEMS_PER_PAGE:
+            page_numbers = ui.pagination(min=1, max=page_count, direction_links=True, value=page+1, on_change=lambda: go_to_page(page_numbers.value - 1))
+        render_beans_as_list(get_beans(page*MAX_ITEMS_PER_PAGE), True, lambda bean: render_expandable_bean(bean, show_related=False))    
+        if items_count > MAX_ITEMS_PER_PAGE:
+            ui.pagination(min=1, max=page_count, direction_links=True, value=page+1).bind_value(page_numbers, 'value')
+
     render_search_items()
-    if count > MAX_ITEMS_PER_PAGE:
-        ui.pagination(min=1, max=page_count, direction_links=True, value=page_index).bind_value(page_index, 'page_index')
 
 def render_beans_as_list(beans, render_articles, bean_render_func):
     with ui.list().props(add="dense" if render_articles else "separator").classes("w-full") as view:        
