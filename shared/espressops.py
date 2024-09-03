@@ -68,7 +68,18 @@ def get_topics(user: dict):
 
 @cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
 def get_system_topics():
-    return get_topics({ID: SYSTEM})
+    return get_topics({ID: SYSTEM})+[UNCATEGORIZED]
+
+def update_preferences(user: dict, preferences: dict):
+    if user:
+        users.update_one(
+            filter=userid_filter(user), 
+            update={
+                "$set": {
+                    PREFERENCES: {'last_ndays': preferences['last_ndays']} 
+                }
+            })
+        update_topics(user, preferences['topics'])
 
 def update_topics(user: dict, topics: list[str]|dict[str, str]):
     userid = _get_userid(user)

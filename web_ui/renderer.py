@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pybeansack.datamodels import *
 from shared import beanops
 from web_ui.custom_ui import *
@@ -158,3 +159,11 @@ def _render_bean_banner(bean: Bean, display_media_stats=True):
         with ui.row():
             render_bean_tags_as_hashtag(bean)
     return view
+
+@contextmanager
+def disable_button(button: ui.button):
+    button.disable()
+    try:
+        yield
+    finally:
+        button.enable()

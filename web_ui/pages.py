@@ -1,14 +1,17 @@
+import threading
 from connectors import redditor
 from shared import beanops, espressops, config, llmops, messages
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
-from nicegui import ui, run
+from nicegui import ui, background_tasks
 from icecream import ic
 from .renderer import *
 from .defaults import *
 from shared import prompt_parser
 
 parser = prompt_parser.InteractiveInputParser()
+save_timer = threading.Timer(0, lambda: None)
+save_lock = threading.Lock()
 
 def render_home(settings, user):
     render_shell(settings, user, "Home")
@@ -24,7 +27,7 @@ def render_home(settings, user):
         ui.label(section['label']).classes('text-h5 w-full')
         beans = beanops.trending(None, categories, None, section['kinds'], MIN_WINDOW, 0, DEFAULT_LIMIT) 
         if beans:           
-            render_beans_as_list(beans, True, lambda bean: render_expandable_bean(bean, True)).props("dense").classes("w-full")
+            render_beans_as_list(beans, NEWS in section['kinds'], lambda bean: render_expandable_bean(bean, True)).props("dense" if NEWS in section['kinds'] else "separator").classes("w-full")
         else:
             ui.label(messages.NOTHING_TRENDING)
         render_separator()
@@ -88,27 +91,29 @@ def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: i
         .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
         ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
     
-    kinds = tuple(kinds) if kinds else None
-    def _run_search(): 
-        if query:            
-            result = beanops.search(query=query, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=0, topn=MAX_LIMIT)
-            return (len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE])
-        elif keyword:
-            return (beanops.count_beans(query=None, categories=None, tags=keyword, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT),
-                lambda start: beanops.search(query=None, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE))
-        return (None, None)
-
     banner = query or keyword    
     if banner:
         # means there can be a search result
         render_text_banner(banner)
-        count, beans_iter = _run_search()
-        if count:
-            render_beans_as_paginated_list(count, beans_iter)
-        else:
-            ui.label(messages.NOTHING_FOUND)
+        holder = ui.element()
+        background_tasks.create(_search_and_render(holder, query, keyword, tuple(kinds) if kinds else None, last_ndays), name=f"search-{banner}")
 
-def _trigger_search(settings, prompt):   
+async def _search_and_render(holder, query, keyword, kinds, last_ndays):         
+    count = 0
+    if query:            
+        result = beanops.search(query=query, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=0, topn=MAX_LIMIT)
+        count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
+    elif keyword:
+        count, beans_iter = beanops.count_beans(query=None, categories=None, tags=keyword, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
+            lambda start: beanops.search(query=None, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE)
+
+    with holder:
+        if not count:
+            ui.label(messages.NOTHING_FOUND)
+            return
+        render_beans_as_paginated_list(count, beans_iter)
+
+async def _trigger_search(settings, prompt):   
     task, query, ctype, ndays, limit = parser.parse(prompt, settings['search'])
     if task in ["lookfor", "search"]:
         ui.navigate.to(make_navigation_target("/search", q=query, days=ndays))
@@ -170,8 +175,9 @@ def _render_login(settings, user):
 def _render_settings(settings: dict, user: dict):  
     async def delete_user():     
         # TODO: add a warning dialog   
-        espressops.unregister_user(user)
-        ui.navigate.to("/logout")
+        if user:
+            espressops.unregister_user(user)
+            ui.navigate.to("/logout")
 
     def update_connection(source, connect):        
         if user and not connect:
@@ -181,77 +187,88 @@ def _render_settings(settings: dict, user: dict):
         else:
             ui.navigate.to(f"/{source}/login")
 
+    async def save_session_settings():
+        global save_lock, save_timer
+        if user:
+            with save_lock:
+                if save_timer.is_alive():
+                    save_timer.cancel()
+                save_timer=threading.Timer(SAVE_DELAY, function=espressops.update_preferences, args=(user, settings['search']))
+                save_timer.start()
+
     ui.label('Preferences').classes("text-subtitle1")
-    with ui.list().classes("w-full"):        
-        with ui.item():
-            with ui.item_section().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days").classes("text-caption"):
-                ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1, on_change=save_session_settings).bind_value(settings['search'], "last_ndays")
-        with ui.item():
-            ui.select(
-                label="Topics of Interest", 
-                options= espressops.get_system_topics(), 
-                multiple=True,
-                with_input=True,
-                value=settings['search']['topics'],
-                on_change=save_session_settings).bind_value(settings['search'], 'topics').props("use-chips filled").classes("w-full")
+    # sequencing of bind_value and on_value_change is important.
+    # otherwise the value_change function will be called every time the page loads
+    with ui.label().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days").classes("w-full"):
+        ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays").on_value_change(save_session_settings)        
+    ui.select(
+        label="Topics of Interest", 
+        # TODO: merge it with user preferences
+        options=espressops.get_system_topics(), 
+        multiple=True,
+        with_input=True).bind_value(settings['search'], 'topics').on_value_change(save_session_settings).props("use-chips filled").classes("w-full")
     
     ui.separator()
+
     ui.label('Accounts').classes("text-subtitle1")
-    user_connected = lambda source: (user and (source in user.get(espressops.CONNECTIONS, "")))
-    reddit_connect = ui.switch(text="Reddit", on_change=lambda: update_connection(config.REDDIT, reddit_connect.value), value=user_connected(config.REDDIT)).tooltip("Link/Unlink Connection")
-    slack_connect = ui.switch(text="Slack", on_change=lambda: update_connection(config.SLACK, slack_connect.value), value=user_connected(config.SLACK)).tooltip("Link/Unlink Connection")
+    user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
+    reddit_connect = ui.switch(text="Reddit", value=user_connected(config.REDDIT)).on_value_change(lambda: update_connection(config.REDDIT, reddit_connect.value)).tooltip("Link/Unlink Connection")
+    slack_connect = ui.switch(text="Slack", value=user_connected(config.SLACK)).on_value_change(lambda: update_connection(config.SLACK, slack_connect.value)).tooltip("Link/Unlink Connection")
 
     if user:
         ui.space()
         ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
-def render_user_registration(settings, temp_user, success_func: Callable, failure_func: Callable):
-    # render_shell(settings, None, None)
 
-    async def import_topics():
-        text = redditor.collect_user_as_text(temp_user['name'], limit=10).strip()
+
+
+def render_user_registration(settings, temp_user, success_func: Callable, failure_func: Callable):
+    # with ui.card():
+    if not temp_user:
+        ui.label("You really thought I wouldn't check for this?!")
+        ui.button("My Bad!", on_click=failure_func)
+        return
+    
+    render_text_banner("You Look New! Let's Get You Signed-up.")
+    with ui.stepper().props("vertical").classes("w-full") as stepper:
+        with ui.step("Sign Your Life Away") :
+            ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
+            ui.link("What is Espresso", "https://github.com/soumitsalman/espresso/blob/main/README.md", new_tab=True)
+            ui.link("Usage Terms & Policy", "https://github.com/soumitsalman/espresso/blob/main/documents/user-policy.md", new_tab=True)
+            user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
+            with ui.stepper_navigation():
+                ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
+                ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+        with ui.step("Tell Me Your Dreams") :
+            ui.label("Personalization").classes("text-h6")
+            with ui.row(wrap=False, align_items="center").classes("w-full"):
+                ui.label("Name")
+                ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
+            
+            ui.label("Your Interests")                                 
+            topics_panel = ui.select(
+                label="Topics", with_input=True, multiple=True, 
+                options=espressops.get_system_topics()
+            ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
+
+            # TODO: enable it later
+            if temp_user['source'] == "reddit":
+                ui.label("- or -").classes("text-caption self-center")
+                ui.button("Analyze From Reddit", on_click=lambda e: _trigger_reddit_import(temp_user['name'], topics_panel, e.sender)).classes("w-full")
+
+            with ui.stepper_navigation():
+                ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
+                ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+  
+def _trigger_reddit_import(username, selector: ui.select, button: ui.button):
+    with disable_button(button):
+        text = redditor.collect_user_as_text(username, limit=10).strip()
         new_topics = espressops.search_categories(text) if len(text) > 100 else None
         if new_topics:
-            topics_panel.set_options(topics_panel.options + new_topics)
-            topics_panel.set_value(new_topics)
+            selector.set_options(selector.options + new_topics)
+            selector.set_value(new_topics)
         else:
             ui.notify(messages.NO_INTERESTS_MESSAGE)
-
-    with ui.card():
-        if temp_user:
-            render_text_banner("You Look New! Let's Get You Signed-up.")
-            with ui.stepper().props("vertical").classes("w-full") as stepper:
-                with ui.step("Sign Your Life Away") :
-                    ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
-                    ui.link("What is Espresso", "https://github.com/soumitsalman/espresso/blob/main/README.md", new_tab=True)
-                    ui.link("Usage Terms & Policy", "https://github.com/soumitsalman/espresso/blob/main/documents/user-policy.md", new_tab=True)
-                    user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
-                    with ui.stepper_navigation():
-                        ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
-                        ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
-                with ui.step("Tell Me Your Dreams") :
-                    ui.label("Personalization").classes("text-h6")
-                    with ui.row(wrap=False, align_items="center").classes("w-full"):
-                        ui.label("Name")
-                        ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
-                    
-                    ui.label("Your Interests")                                 
-                    topics_panel = ui.select(
-                        label="Topics", with_input=True, multiple=True, 
-                        options=espressops.get_system_topics()
-                    ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
-
-                    # TODO: enable it later
-                    if temp_user['source'] == "reddit":
-                        ui.label("- or -").classes("text-caption self-center")
-                        ui.button("Analyze From Reddit", on_click=import_topics).classes("w-full")
-
-                    with ui.stepper_navigation():
-                        ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
-                        ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
-        else:
-            ui.label("You really thought I wouldn't check for this?!")
-            ui.button("My Bad!", on_click=failure_func)
 
 def render_login_failed(success_forward, failure_forward):
     with ui.card():
@@ -259,10 +276,6 @@ def render_login_failed(success_forward, failure_forward):
         with ui.row(align_items="stretch").classes("w-full center"):
             ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
             ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
-
-async def save_session_settings(settings):
-    # ic(settings, "to store")
-    pass
 
 def create_default_settings():
     return {

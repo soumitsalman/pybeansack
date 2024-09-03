@@ -1,5 +1,6 @@
 from pybeansack import datamodels
 
+SAVE_DELAY = 60
 # search settings
 DEFAULT_WINDOW = 7
 MIN_WINDOW = 1
