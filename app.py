@@ -136,20 +136,20 @@ def user_registration():
         lambda: [clear_temp_user(), ui.navigate.to(last_page())])
 
 @ui.page("/")
-async def home():  
+def home():  
     settings = session_settings()
     settings['last_page'] = "/" 
     web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
-async def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
+def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW)
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword = keyword, kind = kind, days = days) 
     web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, days)
 
 @ui.page("/trending")
-async def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
+def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
     days = min(days, web_ui.defaults.MAX_WINDOW) 
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/trending", category=category, days=days) 

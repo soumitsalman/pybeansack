@@ -142,6 +142,17 @@ def render_beans_as_carousel(beans: list[Bean], bean_render_func):
                 bean_render_func(bean)
     return view
 
+def render_skeleton_beans(count = 3):
+    with ui.element().classes("w-full") as holder:
+        for _ in range(count):
+            with ui.card().props("flat bordered").classes("w-full"):
+                with ui.row(align_items="start", wrap=False).classes("w-full"):                    
+                    ui.skeleton("rect", animation="pulse", width="40%", height="75px")
+                    with ui.column().classes("w-full"):
+                        ui.skeleton("text", width="100%")
+                        ui.skeleton("text", width="20%")     
+    return holder 
+
 def _render_bean_banner(bean: Bean, display_media_stats=True):
     with ui.column().classes('text-caption') as view:
         with ui.row(align_items="center"): 
