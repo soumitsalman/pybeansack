@@ -20,7 +20,6 @@ PLACEHOLDER = "Tell me lies, sweet little lies"
 # themes
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200')
     
 body {
     font-family: 'Open Sans', sans-serif;
