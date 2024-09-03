@@ -83,14 +83,14 @@ async def _load_and_render_trending_beans(holder: ui.element, categories, kinds,
         nonlocal start_index, more_button
         with disable_button(more_button):
             _render_beans_page(
-                await run.io_bound(beanops.trending, None, categories, None, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE),
+                beanops.trending(None, categories, None, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE),
                 beans_panel)        
 
         start_index += MAX_ITEMS_PER_PAGE
         if start_index >= total:
             more_button.set_visibility(False)
     
-    beans = await run.io_bound(beanops.trending, None, categories, None, kinds, last_ndays, 0, MAX_ITEMS_PER_PAGE)
+    beans = beanops.trending(None, categories, None, kinds, last_ndays, 0, MAX_ITEMS_PER_PAGE)
     holder.clear()
     with holder:        
         beans_panel = ui.list().props("dense" if is_article else "separator").classes("w-full")        

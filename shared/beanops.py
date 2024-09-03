@@ -71,15 +71,15 @@ def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     })
     return beansack.beanstore.count_documents(filter=filter, limit=topn)
     
-def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int):
+def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int):
     filter = {}
-    if last_ndays:
-        filter.update(timewindow_filter(last_ndays))
+    if last_ndays:        
+        filter.update(timewindow_filter(last_ndays, bool(kinds and (POST in kinds))))
     if tags:
         # TODO: update with elemMatch regex
         filter.update({K_TAGS: {"$in": [tags] if isinstance(tags, str) else list(tags)}})
-    if kind:
-        filter.update({K_KIND: {"$in": [kind] if isinstance(kind, str) else list(kind)}})
+    if kinds:
+        filter.update({K_KIND: {"$in": [kinds] if isinstance(kinds, str) else list(kinds)}})
     if categories == UNCATEGORIZED:
         filter.update({
             "$or": [
