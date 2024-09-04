@@ -1,17 +1,32 @@
+import asyncio
 import threading
 from connectors import redditor
-from shared import beanops, espressops, config, messages
+from shared.config import *
+from shared.messages import *
+from shared import beanops, espressops, prompt_parser
 from pybeansack.datamodels import *
 from web_ui.custom_ui import *
 from nicegui import ui, background_tasks, run
 from icecream import ic
 from .renderer import *
-from .defaults import *
-from shared import prompt_parser
 
-parser = prompt_parser.InteractiveInputParser()
+# themes
+CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+    
+body {
+    font-family: 'Open Sans', sans-serif;
+    color: #1D1D1D;        
+}
+
+.text-caption { color: gray; }
+"""
+SECONDARY_COLOR = "#ADD8E6"
+
+SAVE_DELAY = 60
 save_timer = threading.Timer(0, lambda: None)
 save_lock = threading.Lock()
+
 
 def render_home(settings, user):
     render_shell(settings, user, "Home")    
@@ -27,7 +42,7 @@ def render_home(settings, user):
         render_separator()
 
     render_settings_as_text(settings['search']) 
-    ui.label(NAVIGATION_HELP).classes('text-caption')
+    ui.label("Click on 📈 button for more trending stories by topics.\n\nClick on ⚙️ button to change topics and time window.").classes('text-caption')
     render_separator()
 
     with ui.row(align_items="center").classes("text-caption").style("self-align: center; text-align: center;"):
@@ -47,7 +62,9 @@ def render_trending(settings, user, category: str, last_ndays: int):
             with ui.tab(name=tab['name'], label=""):
                 with ui.row(wrap=False, align_items="stretch"):
                     ui.label(tab['label'])
-                    ui.badge(rounded_number(beanops.count_beans(None, category, None, tab['kinds'], last_ndays, MAX_LIMIT))).props("transparent")
+                    count = beanops.count_beans(None, category, None, tab['kinds'], last_ndays, MAX_LIMIT)
+                    if count:
+                        ui.badge(rounded_number(count)).props("transparent")
 
     with ui.tab_panels(tabs=tab_headers, animated=True, value=TRENDING_TABS[0]['name']).props("swipeable").classes("w-full h-full m-0 p-0"):
         for tab in TRENDING_TABS:
@@ -69,7 +86,7 @@ async def _load_and_render_trending_beans(holder: ui.element, categories, kinds,
     if not total:     
         holder.clear()  
         with holder: 
-            ui.label(messages.NOTHING_TRENDING_IN%last_ndays)
+            ui.label(NOTHING_TRENDING_IN%last_ndays)
         return  
     
     is_article = (NEWS in kinds) or (BLOG in kinds)    
@@ -103,7 +120,7 @@ def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: i
     render_shell(settings, user, "Search") 
 
     process_prompt = lambda: _trigger_search(settings, prompt_input.value)   
-    with ui.input(placeholder=PLACEHOLDER, autocomplete=EXAMPLE_OPTIONS).on('keydown.enter', process_prompt) \
+    with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
         .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
         ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
     
@@ -125,18 +142,18 @@ async def _search_and_render_beans(holder: ui.element, query, keyword, kinds, la
     holder.clear()
     with holder:
         if not count:
-            ui.label(messages.NOTHING_FOUND)
+            ui.label(NOTHING_FOUND)
             return
         render_beans_as_paginated_list(count, beans_iter)
 
 async def _trigger_search(settings, prompt):   
-    task, query, ctype, ndays, limit = parser.parse(prompt, settings['search'])
-    if task in ["lookfor", "search"]:
-        ui.navigate.to(make_navigation_target("/search", q=query, days=ndays))
-    elif task == "trending":
-        ui.navigate.to(make_navigation_target("/trending", category=query, days=ndays))
+    result = prompt_parser.parser.parse(prompt, settings['search'])
+    if result.task in ["lookfor", "search"]:
+        ui.navigate.to(make_navigation_target("/search", q=result.query, days=result.last_ndays))
+    elif result.task == "trending":
+        ui.navigate.to(make_navigation_target("/trending", q=result.query, category=result.category, days=result.last_ndays))
     else:
-        ui.navigate.to(make_navigation_target("/search", q=prompt, days=ndays))
+        ui.navigate.to(make_navigation_target("/search", q=prompt))
 
 def render_shell(settings, user, current_tab="Home"):
     # set themes  
@@ -146,9 +163,7 @@ def render_shell(settings, user, current_tab="Home"):
     def render_topics_menu(topic):
         return (
             topic, 
-            make_navigation_target("/trending", category=topic, days=settings['search']['last_ndays']),
-            # beanops.count_beans(query=None, categories=topic, tags=None, kind=None, last_ndays=settings['search']['last_ndays'], topn=MAX_LIMIT),
-            0
+            lambda: ui.navigate.to(make_navigation_target("/trending", category=topic, days=settings['search']['last_ndays']))
         )
 
     def navigate(selected_tab):
@@ -231,8 +246,8 @@ def _render_settings(settings: dict, user: dict):
 
     ui.label('Accounts').classes("text-subtitle1")
     user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
-    reddit_connect = ui.switch(text="Reddit", value=user_connected(config.REDDIT)).on_value_change(lambda: update_connection(config.REDDIT, reddit_connect.value)).tooltip("Link/Unlink Connection")
-    slack_connect = ui.switch(text="Slack", value=user_connected(config.SLACK)).on_value_change(lambda: update_connection(config.SLACK, slack_connect.value)).tooltip("Link/Unlink Connection")
+    reddit_connect = ui.switch(text="Reddit", value=user_connected(REDDIT)).on_value_change(lambda: update_connection(REDDIT, reddit_connect.value)).tooltip("Link/Unlink Connection")
+    slack_connect = ui.switch(text="Slack", value=user_connected(SLACK)).on_value_change(lambda: update_connection(SLACK, slack_connect.value)).tooltip("Link/Unlink Connection")
 
     if user:
         ui.space()
@@ -270,21 +285,25 @@ def render_user_registration(settings, temp_user, success_func: Callable, failur
             # TODO: enable it later
             if temp_user['source'] == "reddit":
                 ui.label("- or -").classes("text-caption self-center")
-                ui.button("Analyze From Reddit", on_click=lambda e: _trigger_reddit_import(temp_user['name'], topics_panel, e.sender)).classes("w-full")
+                with ui.button("Analyze From Reddit", on_click=lambda e: background_tasks.create_lazy(_trigger_reddit_import(temp_user['name'], topics_panel, e.sender), name="analyze reddit")).classes("w-full") as import_reddit_button:
+                    ui.spinner(color="white").style("margin-left: 10px;").bind_visibility_from(import_reddit_button, "enabled", backward=lambda x: not x)
 
             with ui.stepper_navigation():
                 ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
                 ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
   
-def _trigger_reddit_import(username, selector: ui.select, button: ui.button):
-    with disable_button(button):
-        text = redditor.collect_user_as_text(username, limit=10).strip()
-        new_topics = espressops.search_categories(text) if len(text) > 100 else None
-        if new_topics:
-            selector.set_options(selector.options + new_topics)
-            selector.set_value(new_topics)
-        else:
-            ui.notify(messages.NO_INTERESTS_MESSAGE)
+async def _trigger_reddit_import(username, selector: ui.select, button: ui.button):
+    with disable_button(button):        
+        new_topics = _import_categories_from_reddit(username)
+        if not new_topics:
+            ui.notify(NO_INTERESTS_MESSAGE)
+            return
+        selector.set_options(selector.options + new_topics)
+        selector.set_value(new_topics)
+
+def _import_categories_from_reddit(username):
+    text = redditor.collect_user_as_text(username, limit=10).strip()
+    return espressops.search_categories(text) if len(text) > 100 else None
 
 def render_login_failed(success_forward, failure_forward):
     with ui.card():
@@ -292,18 +311,6 @@ def render_login_failed(success_forward, failure_forward):
         with ui.row(align_items="stretch").classes("w-full center"):
             ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
             ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
-
-def create_default_settings():
-    return {
-        "search": {
-            "last_ndays": DEFAULT_WINDOW,            
-            "topics": config.DEFAULT_CATEGORIES
-        },
-        "connections": {
-            config.REDDIT: False,
-            config.SLACK: False
-        }            
-    }
 
 TRENDING_TABS = [
         {

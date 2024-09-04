@@ -16,26 +16,15 @@ from starlette.responses import RedirectResponse
 from nicegui import app, ui
 from shared import beanops, config, espressops
 import web_ui.pages
-import web_ui.defaults
 from slack_bolt.adapter.fastapi import SlackRequestHandler
+from slack_ui.handler import slack_app, SCOPES
 
 oauth = OAuth()
-
-# from slack_ui.router import slack_router
-
-# handler = SlackRequestHandler(slack_router)
-
-# @app.post("/slack/events", methods=["POST"])
-# @app.post("/slack/commands", methods=["POST"])
-# @app.post("/slack/actions", methods=["POST"])
-# @app.get("/slack/oauth_redirect")
-# @app.get("/slack/install")
-# def slack_events(req):
-#     return handler.handle(req)
+handler = SlackRequestHandler(slack_app)
 
 def session_settings() -> dict:
     if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = web_ui.pages.create_default_settings()
+        app.storage.user['settings'] = config.default_user_settings()
     return app.storage.user['settings']
 
 def last_page() -> str:
@@ -54,16 +43,42 @@ def clear_temp_user():
 def logged_in_user():
     return app.storage.user.get('logged_in_user')
 
-def set_logged_in_user(authenticated_user):
-    app.storage.user['logged_in_user'] = authenticated_user  
+def set_logged_in_user(registered_user):
+    app.storage.user['logged_in_user'] = registered_user  
     settings = session_settings() 
-    if espressops.PREFERENCES in authenticated_user:        
-        settings['search']['last_ndays'] = authenticated_user[espressops.PREFERENCES]['last_ndays']
-    settings['search']['topics'] = espressops.get_topics(authenticated_user) or settings['search']['topics']
+    if espressops.PREFERENCES in registered_user:        
+        settings['search']['last_ndays'] = registered_user[espressops.PREFERENCES]['last_ndays']
+    settings['search']['topics'] = espressops.get_topics(registered_user) or settings['search']['topics']
 
 def log_out_user():
     if 'logged_in_user' in app.storage.user:
         del app.storage.user['logged_in_user']
+
+@app.post("/slack/events")
+@app.post("/slack/commands")
+@app.post("/slack/actions")
+@app.get("/slack/oauth-redirect")
+@app.get("/slack/install")
+async def receive_slack_app_events(req: Request):
+    # ic(req.base_url, req.path_params, req.query_params, req.state, req.url, await req.body())
+    res = await handler.handle(req)
+    # ic(str(res.body))
+    return res
+
+@app.get("/slack/login")
+async def slack_login(request: Request):
+    redirect_uri = os.getenv('HOST_URL')+"/slack/web/oauth-redirect"
+    return await oauth.slack.authorize_redirect(request, redirect_uri)
+
+@app.get("/slack/web/oauth-redirect")
+async def slack_web_redirect(request: Request):
+    try:
+        token = await oauth.slack.authorize_access_token(request)
+        user = (await oauth.slack.get('https://slack.com/api/users.identity', token=token)).json()    
+        return _redirect_after_auth(user['user']['name'], user['user']['id'], "slack", token)
+    except Exception as err:
+        ic(err)
+        return RedirectResponse("/login-failed?source=slack")
 
 @app.get("/reddit/login")
 async def reddit_login(request: Request):
@@ -80,26 +95,11 @@ async def reddit_redirect(request: Request):
         ic(err)
         return RedirectResponse("/login-failed?source=reddit")
 
-@app.get("/slack/login")
-async def slack_login(request: Request):
-    redirect_uri = os.getenv('HOST_URL')+"/slack/oauth-redirect"
-    return await oauth.slack.authorize_redirect(request, redirect_uri)
-
-@app.get("/slack/oauth-redirect")
-async def slack_redirect(request: Request):
-    try:
-        token = await oauth.slack.authorize_access_token(request)
-        user = (await oauth.slack.get('https://slack.com/api/users.identity', token=token)).json()    
-        return _redirect_after_auth(user['user']['name'], user['user']['id'], "slack", token)
-    except Exception as err:
-        ic(err)
-        return RedirectResponse("/login-failed?source=slack")
-
 def _redirect_after_auth(name, id, source, token):
     authenticated_user = {
-        "name": name,
-        "id_in_source": id,
-        "source": source,
+        espressops.NAME: name,
+        espressops.SOURCE_ID: id,
+        espressops.SOURCE: source,
         **token
     }
     current_user = logged_in_user()
@@ -142,15 +142,15 @@ def home():
     web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
-def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
-    days = min(days, web_ui.defaults.MAX_WINDOW)
+def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=config.DEFAULT_WINDOW):  
+    days = min(days, config.MAX_WINDOW)
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword = keyword, kind = kind, days = days) 
     web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, days)
 
 @ui.page("/trending")
-def trending(category: str=None, days: int=web_ui.defaults.DEFAULT_WINDOW):  
-    days = min(days, web_ui.defaults.MAX_WINDOW) 
+def trending(category: str=None, days: int=config.DEFAULT_WINDOW):  
+    days = min(days, config.MAX_WINDOW) 
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/trending", category=category, days=days) 
     web_ui.pages.render_trending(settings, logged_in_user(), category, days)

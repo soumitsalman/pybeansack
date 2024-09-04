@@ -1,7 +1,7 @@
 from datetime import datetime
 from itertools import chain
 import queue
-from shared import espressops, config, beanops, llmops, messages, fields
+from shared import espressops, config, beanops, llmops, messages
 from icecream import ic
 import pandas as pd
 import logging
@@ -48,10 +48,11 @@ class ChannelManager:
         self.queues = {}
 
     def _get_channel(self, channel_id: str = None, channel_type: str = None, user_id: str = None, create_new = True) -> str:
-        if channel_type == "directmessage":
+        if channel_type in ["directmessage", "dm"]:
             channel_id = user_id
-        elif not channel_id:
+        if not channel_id:
             channel_id = user_id
+
         if create_new or (not self.queues.get(channel_id)):
             self.queues[channel_id] = queue.Queue()
         return channel_id
@@ -98,18 +99,19 @@ class ChannelManager:
         self.next_page(client = client, channel_id=channel_id, channel_type=channel_type, user_id=user_id)
 
 
-def get_user_home(username):
-    pref_texts = espressops.get_preference_texts(config.SLACK, username)
-    interests = _create_interests_blocks(username, pref_texts)
-    user_nuggets = None
-    if pref_texts:
-        trending_for_user = beanops.trending_nuggets(espressops.get_preference_embeddings(source=config.SLACK, username=username), config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
-        user_nuggets = _create_nugget_blocks(username, trending_for_user, config.DEFAULT_WINDOW, True, True) if trending_for_user else _create_text_blocks(messages.NOTHING_TRENDING)
+def render_home(settings):
+    # pref_texts = espressops.get_preference_texts(config.SLACK, username)
+    # interests = _create_interests_blocks(username, pref_texts)
+    # user_nuggets = None
+    # if pref_texts:
+    #     trending_for_user = beanops.trending_nuggets(espressops.get_preference_embeddings(source=config.SLACK, username=username), config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
+    #     user_nuggets = _create_nugget_blocks(username, trending_for_user, config.DEFAULT_WINDOW, True, True) if trending_for_user else _create_text_blocks(messages.NOTHING_TRENDING)
 
-    trending_globally = beanops.trending_nuggets(None, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
-    global_nuggets = _create_nugget_blocks(username, trending_globally, config.DEFAULT_WINDOW, True, False) if trending_globally else _create_text_blocks(messages.NOTHING_TRENDING)
+    # trending_globally = beanops.trending_nuggets(None, config.DEFAULT_WINDOW, config.DEFAULT_LIMIT)
+    # global_nuggets = _create_nugget_blocks(username, trending_globally, config.DEFAULT_WINDOW, True, False) if trending_globally else _create_text_blocks(messages.NOTHING_TRENDING)
     
-    return _create_home_blocks(username, interests, user_nuggets, global_nuggets)
+    # return _create_home_blocks(username, interests, user_nuggets, global_nuggets)
+    return []
 
 def get_trending_items(username: str, params: list[str]):
     # get the user preference and show the type of items the user wants
@@ -123,10 +125,10 @@ def get_trending_items(username: str, params: list[str]):
             window=config.DEFAULT_WINDOW, for_home_page=False, preference_included=True)
         # items = _get_nuggets_blocks(user_id=username, categories=prefs, window=_DEFAULT_WINDOW, limit=10, for_home_page=False, preference_included=True)
     elif "news" in params:
-        items = _create_bean_blocks(username, 
+        items = render_beans(username, 
             beanops.trending_beans(categories=prefs, kinds=[config.ARTICLE], window=config.DEFAULT_WINDOW, limit=config.DEFAULT_LIMIT))
     elif "posts" in params:
-        items = _create_bean_blocks(username, 
+        items = render_beans(username, 
             beanops.trending_beans(categories=prefs, kinds=[config.POST], window=config.DEFAULT_WINDOW, limit=config.DEFAULT_LIMIT))
     else:
         items = messages.INVALID_INPUT
@@ -139,7 +141,7 @@ def get_beans_by_category(username, category):
     beans = beanops.trending_beans(categories=(embs or category), window=config.DEFAULT_WINDOW, limit=10)
     if not beans:
         return messages.NOTHING_TRENDING
-    return [_create_text_blocks(f":label: *{category}*:")] + _create_bean_blocks(username, beans)
+    return [_create_text_blocks(f":label: *{category}*:")] + render_beans(username, beans)
 
 def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_preference: bool, window: int):
     user_prefs = espressops.get_preference_embeddings(source=config.SLACK, username=username) if show_by_preference else None
@@ -149,12 +151,12 @@ def get_beans_by_nugget(username, keyphrase: str, description: str, show_by_pref
         logging.warning("get_beans(%s, %s, %d) came empty. Thats not supposed to happen", username, keyphrase, window)
         return messages.NOTHING_FOUND
     # always show the nuggets description as initial entry
-    return [_create_text_blocks(f":rolled_up_newspaper: *{keyphrase}*: {description}")] + _create_bean_blocks(username, beans)
+    return [_create_text_blocks(f":rolled_up_newspaper: *{keyphrase}*: {description}")] + render_beans(username, beans)
 
 def get_beans_by_search(username, search_text: str):
     # this should search across the board without window
     beans = beanops.search(search_text=search_text, limit=10)
-    return _create_bean_blocks(username, beans) if beans else messages.NOTHING_FOUND
+    return render_beans(username, beans) if beans else messages.NOTHING_FOUND
 
 def get_digests(username, search_text: str):
     # this should search across the board without window
@@ -275,7 +277,7 @@ def _create_bean_banner(bean):
         "elements": banner_elements
     }
 
-def _create_bean_blocks(userid, beans):    
+def render_beans(userid, beans):    
     body = lambda data: {        
 		"type": "section",
 		"text": {

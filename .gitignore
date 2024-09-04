@@ -1,10 +1,12 @@
 *.env
 *.json
-/.venv
-/.deployment
 *__pycache__
-/data
+.venv
+.vscode
+.deployment
+.data
 .nicegui
 .models
+.slack
 
 

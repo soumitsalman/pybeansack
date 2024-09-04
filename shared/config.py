@@ -1,10 +1,28 @@
 import os
 
 APP_NAME="Espresso by Cafecit.io"
+SLACK = "slack"
+REDDIT = "reddit"
+
+# search settings
+DEFAULT_WINDOW = 7
+MIN_WINDOW = 1
+MAX_WINDOW = 30
+DEFAULT_LIMIT = 10
+MIN_LIMIT = 1
+MAX_LIMIT = 50
+MAX_ITEMS_PER_PAGE = 5
+MAX_PAGES = 10
+MAX_TAGS_PER_BEAN = 3
+MAX_RELATED_ITEMS = 5
+
+# cache settings
 ONE_HOUR = 3600
 ONE_DAY = 86400
 ONE_WEEK = 604800
 CACHE_SIZE = 100
+
+# category settings
 UNCATEGORIZED = "Yo Momma"
 DEFAULT_CATEGORIES = [
     "Artificial Intelligence (AI)", 
@@ -26,9 +44,20 @@ DEFAULT_CATEGORIES = [
     "Video Games & Virtual Reality",
     UNCATEGORIZED
 ]
-SLACK = "slack"
-REDDIT = "reddit"
 
+def default_user_settings():
+    return {
+        "search": {
+            "last_ndays": DEFAULT_WINDOW,            
+            "topics": DEFAULT_CATEGORIES
+        },
+        "connections": {
+            REDDIT: False,
+            SLACK: False
+        }            
+    }
+
+# deployment settings
 EMBEDDER_CTX = 4096
 def embedder_path():
     return os.getenv("MODEL_PATH")
@@ -51,5 +80,7 @@ def reddit_client_secret():
 
 def db_connection_str():
     return os.getenv("DB_CONNECTION_STRING")
-def get_llm_api_key():
+def llm_api_key():
     return os.getenv("GROQ_API_TOKEN")
+def host_url():
+    return os.getenv("HOST_URL")

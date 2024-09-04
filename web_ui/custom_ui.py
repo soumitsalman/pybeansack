@@ -6,7 +6,7 @@ from datetime import datetime as dt
 from itertools import groupby
 from typing import Callable
 from icecream import ic
-from .defaults import *
+from shared.config import *
 
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 rounded_number = lambda counter: str(counter) if counter < 100 else str(99)+'+'
@@ -83,10 +83,8 @@ class BindableNavigationMenu(ui.menu):
         self.clear()    
         with self:
             for item in (value or []): 
-                text, target, counter_badge = self.extract(item)
-                with ui.menu_item(text = text, on_click=lambda target=target: ui.navigate.to(target)):
-                    if counter_badge:
-                        ui.badge(rounded_number(counter_badge)).props("transparent").style("margin-left: 10px;")
+                text, target = self.extract(item)
+                ui.menu_item(text = text, on_click=target)
 
     def bind_items_from(self, target_object, target_name: str = 'items', backward = lambda x: x) -> Self:
         bind_from(self, "items", target_object, target_name, backward)

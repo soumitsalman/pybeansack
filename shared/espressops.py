@@ -16,6 +16,7 @@ SYSTEM = "__SYSTEM__"
 SOURCE = "source"
 ID = "_id"
 NAME = "name"
+SOURCE_ID = "id_in_source"
 TOPICS = "topics"
 TEXT = "text"
 DESCRIPTION = "description"
@@ -31,7 +32,7 @@ def initialize(conn_str: str, emb: BeansackEmbeddings):
     categories = client[DB][CATEGORIES]
     embedder = emb
 
-userid_filter = lambda user: {ID: user[ID]} if ID in user else {f"{CONNECTIONS}.{user[SOURCE]}": user[NAME]}
+userid_filter = lambda user: {ID: user[ID]} if ID in user else {f"{CONNECTIONS}.{user[SOURCE]}": user.get(SOURCE_ID)}
 
 def _get_userid(user: dict) -> str:
     if ID not in user:
@@ -46,7 +47,7 @@ def register_user(user, preferences) -> dict:
         new_user = {
             ID: f"{user[NAME]}@{user[SOURCE]}",
             CONNECTIONS: {
-                user[SOURCE]: user[NAME]
+                user[SOURCE]: user[SOURCE_ID]
             },
             PREFERENCES: {
                 'last_ndays': preferences['last_ndays']
@@ -69,6 +70,14 @@ def get_topics(user: dict):
 @cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
 def get_system_topics():
     return get_topics({ID: SYSTEM})+[UNCATEGORIZED]
+
+@cached(TTLCache(maxsize=100, ttl=ONE_HOUR)) 
+def get_preferences(user: dict):
+    userdata = get_user(user)
+    return {
+        "topics": get_topics(user),
+        "last_ndays": userdata[PREFERENCES]['last_ndays']        
+    } if userdata else None
 
 def update_preferences(user: dict, preferences: dict):
     if user:
@@ -94,7 +103,7 @@ def add_connection(user: dict, connection: dict):
     users.update_one(
         filter = userid_filter(user), 
         update = {
-            "$set": { f"{CONNECTIONS}.{connection[SOURCE]}": connection[NAME] }
+            "$set": { f"{CONNECTIONS}.{connection[SOURCE]}": connection[SOURCE_ID] }
         })
 
 def remove_connection(user: dict, source):

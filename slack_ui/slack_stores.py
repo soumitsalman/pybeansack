@@ -13,26 +13,25 @@ from slack_sdk.oauth.installation_store.models import Installation
 from slack_sdk.oauth.state_store import OAuthStateStore
 
 
-_BLANK_ENTERPRISE_ID = "blank-enterprise-id"
-_BLANK_TEAM_ID = "blank-team-id"
-_DEFAULT_STORE = "slackapp"
-_INSTALLATIONS = "installations"
-_STATES = "oauthstates"
+# _BLANK_ENTERPRISE_ID = "blank-enterprise-id"
+# _BLANK_TEAM_ID = "blank-team-id"
+INSTALLATIONS = "installations"
+STATES = "oauthstates"
 
-get_enterprise_id = lambda val: val if val else _BLANK_ENTERPRISE_ID
-get_team_id = lambda val: val if val else _BLANK_TEAM_ID
+# get_enterprise_id = lambda val: val if val else _BLANK_ENTERPRISE_ID
+# get_team_id = lambda val: val if val else _BLANK_TEAM_ID
 
 class MongoInstallationStore(InstallationStore):
-    def __init__(self, conn_str: str = os.getenv("MONGODB_CONNECTION_STRING"), app_name: str = _DEFAULT_STORE):
+    def __init__(self, conn_str: str, app_name: str):
         client: MongoClient = MongoClient(conn_str)
-        self.collection: Collection = client[app_name][_INSTALLATIONS]
+        self.collection: Collection = client[app_name][INSTALLATIONS]
 
     def save(self, installation: Installation):
         filter = { "team_id": installation.team_id }
         if installation.enterprise_id:
             filter["enterprise_id"] = installation.enterprise_id
         self.collection.replace_one(
-            filter=ic(filter),
+            filter=filter,
             replacement=installation.__dict__,
             upsert=True
         )
@@ -48,12 +47,12 @@ class MongoInstallationStore(InstallationStore):
         filter = { "team_id": team_id }
         if enterprise_id:
             filter["enterprise_id"] = enterprise_id
-        self.collection.delete_one(filter=ic(filter))
+        self.collection.delete_one(filter=filter)
 
 class MongoOauthStateStore(OAuthStateStore):
-    def __init__(self, conn_str: str = os.getenv("MONGODB_CONNECTION_STRING"), app_name: str = _DEFAULT_STORE, expiration_seconds=3600) -> None:
+    def __init__(self, conn_str: str, app_name: str, expiration_seconds=3600) -> None:
         client: MongoClient = MongoClient(conn_str)
-        self.collection: Collection = client[app_name][_STATES]
+        self.collection: Collection = client[app_name][STATES]
         self.expire_duration = expiration_seconds
     
     def issue(self, *args, **kwargs) -> str:
@@ -74,13 +73,13 @@ class MongoOauthStateStore(OAuthStateStore):
     
 
 class AzureTableInstallationStore(InstallationStore):
-    def __init__(self, conn_str: str = os.getenv("AZURE_STORAGE_CONNECTION_STRING"), app_name: str = _DEFAULT_STORE) -> None:
-        self.table = TableServiceClient.from_connection_string(conn_str=conn_str).create_table_if_not_exists(table_name=f"{app_name}{_INSTALLATIONS}")
+    def __init__(self, conn_str: str, app_name: str ) -> None:
+        self.table = TableServiceClient.from_connection_string(conn_str=conn_str).create_table_if_not_exists(table_name=f"{app_name}{INSTALLATIONS}")
         
     def save(self, installation: Installation):
         entity = {
-            "PartitionKey": get_enterprise_id(installation.enterprise_id),
-            "RowKey": get_team_id(installation.team_id),
+            "PartitionKey": installation.enterprise_id,
+            "RowKey": installation.team_id,
             "installation" : json.dumps(installation.__dict__, indent=2)
         }
         self.table.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
@@ -88,8 +87,8 @@ class AzureTableInstallationStore(InstallationStore):
     def find_installation(self, *, enterprise_id: str | None, team_id: str | None, user_id: str | None = None, is_enterprise_install: bool | None = False) -> Installation | None:
         try:
             install_data = self.table.get_entity(
-                partition_key=get_enterprise_id(enterprise_id),
-                row_key=get_team_id(team_id),
+                partition_key=enterprise_id,
+                row_key=team_id,
                 select=["installation"])['installation']
             return Installation(**json.loads(install_data)) if install_data else None
         except Exception as err:
@@ -99,16 +98,16 @@ class AzureTableInstallationStore(InstallationStore):
     def delete_installation(self, *, enterprise_id: str | None, team_id: str | None, user_id: str | None = None) -> None:
         try:
             self.table.delete_entity(
-                partition_key=get_enterprise_id(enterprise_id),
-                row_key=get_team_id(team_id)
+                partition_key=enterprise_id,
+                row_key=team_id
             )
         except Exception as err:
             logging.info("Installation Not Found", err)
     
 
 class AzureTableOauthStateStore(OAuthStateStore):
-    def __init__(self, conn_str: str = os.getenv("AZURE_STORAGE_CONNECTION_STRING"), app_name: str = _DEFAULT_STORE, expiration_seconds=3600) -> None:
-        self.table = TableServiceClient.from_connection_string(conn_str=conn_str).create_table_if_not_exists(table_name=f"{app_name}{_STATES}")
+    def __init__(self, conn_str: str, app_name: str, expiration_seconds=3600) -> None:
+        self.table = TableServiceClient.from_connection_string(conn_str=conn_str).create_table_if_not_exists(table_name=f"{app_name}{STATES}")
         self.expire_duration = expiration_seconds
 
     def issue(self, *args, **kwargs) -> str:
@@ -116,7 +115,7 @@ class AzureTableOauthStateStore(OAuthStateStore):
         state = str(uuid4())
         self.table.upsert_entity(
             {
-                "PartitionKey": _STATES,
+                "PartitionKey": STATES,
                 "RowKey": state,
                 "expire_at": expire_at.timestamp()
             }
@@ -125,8 +124,8 @@ class AzureTableOauthStateStore(OAuthStateStore):
     
     def consume(self, state: str) -> bool:
         try:
-            result = self.table.get_entity(partition_key=_STATES, row_key=state)['expire_at']
-            self.table.delete_entity(partition_key=_STATES, row_key=state)    
+            result = self.table.get_entity(partition_key=STATES, row_key=state)['expire_at']
+            self.table.delete_entity(partition_key=STATES, row_key=state)    
             return ic(result) >= datetime.datetime.now().timestamp()
         except Exception as err:
             ic("State not found or already consumed", err)

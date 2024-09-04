@@ -34,7 +34,7 @@ def create_client():
         client_id = os.getenv('REDDITOR_APP_ID'), 
         client_secret = os.getenv('REDDITOR_APP_SECRET'),
         user_agent = "Espresso by Cafecito (by u/randomizer_000)",
-        redirect_uri=os.getenv("HOST_URL")+"/reddit/redirect"
+        redirect_uri=os.getenv("HOST_URL")+"/reddit/oauth-redirect"
     )
 
 

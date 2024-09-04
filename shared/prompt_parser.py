@@ -7,8 +7,6 @@ import argparse
 import shlex
 from pybeansack.datamodels import *
 
-# _ALL = [NEWS, POST, COMMENT]
-
 class ContentType(str, Enum):    
     POSTS = "posts"
     COMMENTS = "comments"
@@ -17,11 +15,23 @@ class ContentType(str, Enum):
     HIGHLIGHTS = "highlights"
     NEWSLETTER = "newsletter"
 
+class ParseResult (BaseModel):
+    prompt: str
+    task: Optional[str]
+    query: Optional[str] = None
+    category: Optional[str] = None
+    keyword: Optional[str] = None
+    kind: Optional[str] = None
+    last_ndays: Optional[int] = None
+    topn: Optional[int] = None
+    channel: Optional[str] = None
+
 class InteractiveInputParser:
     def __init__(self):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('task', help='The main task')
         self.parser.add_argument('-q', '--query', help='The search query')
+        self.parser.add_argument('-c', '--category', help='The category of the content')
         self.parser.add_argument('-k', '--keyword', help='The keyword to search with')
         self.parser.add_argument('-t', '--type', help='The type of content to search or to create.')    
         self.parser.add_argument('-d', '--ndays', help='The last N days of data to retrieve. N should be between 1 - 30')
@@ -32,22 +42,19 @@ class InteractiveInputParser:
     def parse(self, prompt: str, defaults: dict):        
         try:
             args = self.parser.parse_args(shlex.split(prompt.lower()))      
-            # parse query/topics            
-            query = [item.strip() for item in args.query.split(",")] if args.query else defaults.get('topics', [])
-            # parser content_types/kind
-            ctypes = [_translate_ctype(getattr(ContentType, item.strip().upper(), None)) for item in args.type.split(",")] if args.type else None
-            ndays = int(args.ndays) if args.ndays else defaults.get('last_ndays')
-            topn = int(args.topn) if args.topn else defaults.get('topn')
-            return (args.task, _tuplify_if_many(query), _tuplify_if_many(ctypes) , ndays, topn)
+            return ParseResult(
+                prompt=prompt, 
+                task=args.task, 
+                query=args.query, 
+                category=args.category if args.category else tuple(defaults.get('topics')),
+                keyword=args.keyword,
+                kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
+                last_ndays=int(args.ndays) if args.ndays else defaults.get('last_ndays'), 
+                topn=int(args.topn) if args.topn else defaults.get('topn'),
+                channel=args.source.lower() if args.source else None)
         except:
-            return (None, defaults.get('topics', []), None, defaults.get('last_ndays'), defaults.get('topn'))
-        
-
-def _tuplify_if_many(items):
-    if isinstance(items, list):
-        return tuple(items) if len(items) > 1 else items[0]
-    else:
-        return items     
+            return ParseResult(prompt = prompt, task=None)
+          
 
 def _translate_ctype(ctype: ContentType):
     if ctype == ContentType.POSTS:
@@ -60,3 +67,5 @@ def _translate_ctype(ctype: ContentType):
         return COMMENT  
     else:
         return ctype.value
+    
+parser = InteractiveInputParser()
