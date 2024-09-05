@@ -177,10 +177,7 @@ def render_shell(settings, user, current_tab="Home"):
         _render_settings(settings, user)
 
     # header
-    with ui.header().classes(replace="row"):
-        with ui.avatar(square=True).tooltip("Espresso by Cafecit.io"):
-            ui.image("images/cafecito.png")
-        
+    with render_header():        
         with ui.tabs(on_change=lambda: navigate(tab_selector.value), value=current_tab) as tab_selector:
             ui.tab(name="Home", label="", icon="home").tooltip("Home")           
             settings['search']['topics'] = sorted(settings['search']['topics'])
@@ -254,11 +251,21 @@ def _render_settings(settings: dict, user: dict):
         ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
 def render_user_registration(settings, temp_user, success_func: Callable, failure_func: Callable):
-    # with ui.card():
+    render_header()
+
     if not temp_user:
         ui.label("You really thought I wouldn't check for this?!")
         ui.button("My Bad!", on_click=failure_func)
         return
+    
+    async def trigger_reddit_import():
+        with disable_button(import_reddit_button):      
+            text = await run.io_bound(redditor.collect_user_as_text, temp_user['name'], limit=10)                            
+            new_topics = (await run.cpu_bound(espressops.search_categories, text)) if len(text) > 100 else None      
+            if not new_topics:
+                ui.notify(NO_INTERESTS_MESSAGE)
+                return            
+            settings['search']['topics'] = new_topics
     
     render_text_banner("You Look New! Let's Get You Signed-up.")
     with ui.stepper().props("vertical").classes("w-full") as stepper:
@@ -277,35 +284,23 @@ def render_user_registration(settings, temp_user, success_func: Callable, failur
                 ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
             
             ui.label("Your Interests")                                 
-            topics_panel = ui.select(
+            ui.select(
                 label="Topics", with_input=True, multiple=True, 
                 options=espressops.get_system_topics()
             ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
 
-            # TODO: enable it later
             if temp_user['source'] == "reddit":
                 ui.label("- or -").classes("text-caption self-center")
-                with ui.button("Analyze From Reddit", on_click=lambda e: background_tasks.create_lazy(_trigger_reddit_import(temp_user['name'], topics_panel, e.sender), name="analyze reddit")).classes("w-full") as import_reddit_button:
+                with ui.button("Analyze From Reddit", on_click=trigger_reddit_import).classes("w-full") as import_reddit_button:
                     ui.spinner(color="white").style("margin-left: 10px;").bind_visibility_from(import_reddit_button, "enabled", backward=lambda x: not x)
 
             with ui.stepper_navigation():
                 ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
                 ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
-  
-async def _trigger_reddit_import(username, selector: ui.select, button: ui.button):
-    with disable_button(button):        
-        new_topics = _import_categories_from_reddit(username)
-        if not new_topics:
-            ui.notify(NO_INTERESTS_MESSAGE)
-            return
-        selector.set_options(selector.options + new_topics)
-        selector.set_value(new_topics)
-
-def _import_categories_from_reddit(username):
-    text = redditor.collect_user_as_text(username, limit=10).strip()
-    return espressops.search_categories(text) if len(text) > 100 else None
 
 def render_login_failed(success_forward, failure_forward):
+    render_header()
+
     with ui.card():
         ui.label("Welp! That didn't work").classes("self-center")
         with ui.row(align_items="stretch").classes("w-full center"):

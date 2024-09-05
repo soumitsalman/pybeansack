@@ -27,7 +27,7 @@ def collect_user_as_text(username, limit):
         text += f"POSTED in r/{post.subreddit.display_name}\n{post.title}\n{post.selftext}\n\n"
     for comment in list(user.comments.new(limit=limit)):
         text += f"COMMENTED in r/{comment.subreddit.display_name}\nOn POST: {comment.submission.title}\n{comment.body}\n\n"
-    return text
+    return text.strip()
 
 def create_client():
     return praw.Reddit(

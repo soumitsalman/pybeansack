@@ -19,11 +19,16 @@ def make_navigation_target(target, **kwargs):
     return str(url_val)
 
 def render_settings_as_text(settings: dict):
-    return ui.markdown("Currently showing news, blogs and social media posts on %s trending in the last **%d** days." % \
-        (", ".join([f"**{topic}**" for topic in settings['topics']]), settings['last_ndays']))  
+    return ui.markdown("Currently showing news, blogs and social media posts on %s." % (", ".join([f"**{topic}**" for topic in settings['topics']])))
 
 def render_separator():
     return ui.separator().style("height: 5px; margin: 0px; padding: 0px;").classes("w-full")
+
+def render_header():
+    with ui.header().classes(replace="row") as header:
+        with ui.avatar(square=True).tooltip("Espresso by Cafecit.io"):
+            ui.image("images/cafecito.png")
+    return header
 
 def render_tags(tags: list[str]):
     with ui.row().classes("gap-0") as view:
@@ -147,7 +152,7 @@ def render_skeleton_beans(count = 3):
         for _ in range(count):
             with ui.card().props("flat bordered").classes("w-full"):
                 with ui.row(align_items="start", wrap=False).classes("w-full"):                    
-                    ui.skeleton("rect", animation="pulse", width="40%", height="75px")
+                    ui.skeleton("rect", width="40%", height="75px")
                     with ui.column().classes("w-full"):
                         ui.skeleton("text", width="100%")
                         ui.skeleton("text", width="20%")     
