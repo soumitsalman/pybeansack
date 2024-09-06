@@ -6,6 +6,7 @@ from nicegui import ui
 from icecream import ic
 from yarl import URL
 
+IMAGE_DIMENSIONS = "w-32 h-28"
 bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
 bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
 tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
@@ -102,11 +103,9 @@ def render_bean_banner(bean: Bean):
     with ui.row(wrap=False, align_items="start").classes("w-full") as view:            
         if bean.image_url: 
             with ui.element():   
-                ui.image(bean.image_url).classes("w-24 h-24")   
-                # if is_bean_title_too_long(bean):
+                ui.image(bean.image_url).classes(IMAGE_DIMENSIONS)   
                 render_bean_stats(bean, stack=True) 
         with render_bean_title(bean):    
-            # if not bean.image_url or not is_bean_title_too_long(bean):   
             if not bean.image_url:        
                 render_bean_stats(bean, stack=False)    
     return view

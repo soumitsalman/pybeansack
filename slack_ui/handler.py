@@ -1,7 +1,8 @@
 from itertools import chain
 import re
 from queue import Queue
-from . import renderer, slack_stores
+from .renderer import *
+from .slack_stores import MongoInstallationStore
 from shared.config import *
 from shared.messages import *
 from shared import prompt_parser, beanops, espressops
@@ -22,7 +23,7 @@ slack_app = App(
         client_id=slack_client_id(),
         client_secret=slack_client_secret(),
         scopes=SCOPES,
-        installation_store=slack_stores.MongoInstallationStore(conn_str=db_connection_str(), app_name="espresso"),
+        installation_store=MongoInstallationStore(conn_str=db_connection_str(), app_name="espresso"),
         state_store=FileOAuthStateStore(client_id=slack_client_id(), base_dir=".slack", expiration_seconds=600),
         redirect_uri_path="/slack/oauth-redirect"
     )
@@ -52,13 +53,7 @@ def session_settings(userid):
 @slack_app.event("app_home_opened")
 def update_home_tab(event, client):
     if event['tab'] == "home":
-        client.views_publish(
-            user_id = event['user'],
-            view = {
-                "type": "home",
-                "blocks": renderer.render_home_blocks(session_settings(event['user']))
-            }
-        ) 
+        _render_home_tab(event['user'], client)
 
 @slack_app.message()
 def handle_message(message, say): 
@@ -106,7 +101,7 @@ def handle_trending_in_category(ack, action, body, say):
     settings = session_settings(body['user']['id'])
     _new_message_queue(
         settings,
-        beanops.trending(None, action['value'], None, (NEWS, BLOG), settings['search']['last_ndays'], 0, LOCAL_MAX_LIMIT))
+        beanops.trending(None, action['value'], None, DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
     _say_beans(beans, left, say, body['user']['id'])
     
@@ -116,14 +111,14 @@ def handle_trending_in_keyword(ack, action, body, say):
     settings = session_settings(body['user']['id'])
     _new_message_queue(
         settings,
-        beanops.trending(None, None, action['value'], (NEWS, BLOG), settings['search']['last_ndays'], 0, LOCAL_MAX_LIMIT))
+        beanops.trending(None, None, action['value'], DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
     _say_beans(beans, left, say, body['user']['id'])
    
 def _say_beans(beans, left, say, channel_id):
     if beans:
         say(
-            blocks=list(chain(*(renderer.render_whole_bean(bean) for bean in beans))), 
+            blocks=list(chain(*(render_whole_bean(bean) for bean in beans))), 
             text=f"Showing {len(beans)} stories",
             channel=channel_id)
         
@@ -161,21 +156,21 @@ def update_account(ack, action, body, say):
     ack()
     say(NO_ACTION, channel=body['user']['id'])
 
-@slack_app.view("new_interest_input")
-def new_interests(ack, body, view, client):
-    ack()
-    user_id = body["user"]["id"]
-    interests = view["state"]["values"]["new_interest_input"]["new_interests"]['value']
-    # update database
-    renderer.update_user_preferences(user_id=user_id, interests=[item.strip().lower() for item in interests.split(',') if item.strip()])
-    # update home view
-    _refresh_home_tab(user_id, client)
+# @slack_app.view("new_interest_input")
+# def new_interests(ack, body, view, client):
+#     ack()
+#     user_id = body["user"]["id"]
+#     interests = view["state"]["values"]["new_interest_input"]["new_interests"]['value']
+#     # update database
+#     update_user_preferences(user_id=user_id, interests=[item.strip().lower() for item in interests.split(',') if item.strip()])
+#     # update home view
+#     _render_home_tab(user_id, client)
 
-def _refresh_home_tab(user_id, client):
+def _render_home_tab(userid, client):
     client.views_publish(
-        user_id = user_id,
+        user_id = userid,
         view = {
             "type": "home",
-            "blocks": renderer.render_home_blocks(user_id)
+            "blocks": render_home_blocks(session_settings(userid))
         }
     )

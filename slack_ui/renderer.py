@@ -1,14 +1,11 @@
-from datetime import datetime
 from itertools import chain
-import queue
 from shared.config import *
-from shared import espressops, beanops, llmops, messages
+from shared import espressops, beanops, messages
 from icecream import ic
-import pandas as pd
 import logging
 from datetime import datetime as dt
 
-
+DEFAULT_KIND = (NEWS, BLOG)
 UPDATE_INTEREST_VIEW={
     "type": "modal",
     "callback_id": "new_interest_input",
@@ -45,7 +42,7 @@ def render_home_blocks(settings):
         blocks.append(render_tags([tag.tags for tag in tags]))
         blocks.append(DIVIDER)
     
-    beans = beanops.trending(None, categories, None, (NEWS, BLOG), MIN_WINDOW, 0, MAX_ITEMS_PER_PAGE)
+    beans = beanops.trending(None, categories, None, DEFAULT_KIND, MIN_WINDOW, 0, MAX_ITEMS_PER_PAGE)
     if beans:
         blocks.append(render_text_banner("Trending News & Articles", True))    
         blocks.extend(chain(*(render_bean_digest(bean) for bean in beans)))

@@ -60,7 +60,7 @@ def log_out_user():
 @app.get("/slack/install")
 async def receive_slack_app_events(req: Request):
     # ic(req.base_url, req.path_params, req.query_params, req.state, req.url, await req.body())
-    res = await handler.handle(req)
+    res = await handler.handle(req, addition_context_properties={"TEST":"TEST"})
     # ic(str(res.body))
     return res
 
