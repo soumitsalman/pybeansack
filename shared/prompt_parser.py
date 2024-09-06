@@ -6,6 +6,7 @@ from enum import Enum
 import argparse
 import shlex
 from pybeansack.datamodels import *
+from icecream import ic
 
 class ContentType(str, Enum):    
     POSTS = "posts"
@@ -16,15 +17,14 @@ class ContentType(str, Enum):
     NEWSLETTER = "newsletter"
 
 class ParseResult (BaseModel):
-    prompt: str
-    task: Optional[str]
+    task: Optional[str] = None
     query: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[str|list[str]] = None
     keyword: Optional[str] = None
     kind: Optional[str] = None
     last_ndays: Optional[int] = None
     topn: Optional[int] = None
-    channel: Optional[str] = None
+    channel: Optional[str|list[str]] = None
 
 class InteractiveInputParser:
     def __init__(self):
@@ -39,22 +39,20 @@ class InteractiveInputParser:
         self.parser.add_argument('-s', '--source', help='Data source to pull from')
         self.parser.format_help()
         
-    def parse(self, prompt: str, defaults: dict):        
+    def parse(self, prompt: str, defaults: dict): 
         try:
-            args = self.parser.parse_args(shlex.split(prompt.lower()))      
+            args = self.parser.parse_args(shlex.split(prompt.lower()))
             return ParseResult(
-                prompt=prompt, 
                 task=args.task, 
                 query=args.query, 
-                category=args.category if args.category else tuple(defaults.get('topics')),
+                category=args.category or defaults.get('topics'),
                 keyword=args.keyword,
-                kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
-                last_ndays=int(args.ndays) if args.ndays else defaults.get('last_ndays'), 
-                topn=int(args.topn) if args.topn else defaults.get('topn'),
-                channel=args.source.lower() if args.source else None)
+                # kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
+                last_ndays=int(args.ndays or defaults.get('last_ndays')), 
+                # topn=int(args.topn or 0),
+                channel=args.source)
         except:
-            return ParseResult(prompt = prompt, task=None)
-          
+            return ParseResult(task=None, query=prompt)
 
 def _translate_ctype(ctype: ContentType):
     if ctype == ContentType.POSTS:
@@ -68,4 +66,4 @@ def _translate_ctype(ctype: ContentType):
     else:
         return ctype.value
     
-parser = InteractiveInputParser()
+console_parser = InteractiveInputParser()

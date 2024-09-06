@@ -146,14 +146,14 @@ async def _search_and_render_beans(holder: ui.element, query, keyword, kinds, la
             return
         render_beans_as_paginated_list(count, beans_iter)
 
-async def _trigger_search(settings, prompt):   
-    result = prompt_parser.parser.parse(prompt, settings['search'])
+def _trigger_search(settings, prompt):   
+    result = prompt_parser.console_parser.parse(prompt, settings['search'])
+    if not result.task:
+        ui.navigate.to(make_navigation_target("/search", q=result.query))
     if result.task in ["lookfor", "search"]:
-        ui.navigate.to(make_navigation_target("/search", q=result.query, days=result.last_ndays))
-    elif result.task == "trending":
+        ui.navigate.to(make_navigation_target("/search", q=result.query, category=result.category, days=result.last_ndays))
+    if result.task in ["trending"]:
         ui.navigate.to(make_navigation_target("/trending", q=result.query, category=result.category, days=result.last_ndays))
-    else:
-        ui.navigate.to(make_navigation_target("/search", q=prompt))
 
 def render_shell(settings, user, current_tab="Home"):
     # set themes  
@@ -306,16 +306,3 @@ def render_login_failed(success_forward, failure_forward):
         with ui.row(align_items="stretch").classes("w-full center"):
             ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
             ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
-
-TRENDING_TABS = [
-        {
-            "name": "articles", 
-            "label": "📰 News & Articles",
-            "kinds": (NEWS, BLOG)
-        },
-        {
-            "name": "posts", 
-            "label": "🗣️ Social Media",
-            "kinds": (POST, COMMENT)
-        }
-    ]

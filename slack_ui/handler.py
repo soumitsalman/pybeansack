@@ -1,4 +1,6 @@
+from itertools import chain
 import re
+from queue import Queue
 from . import renderer, slack_stores
 from shared.config import *
 from shared.messages import *
@@ -8,15 +10,8 @@ from slack_bolt import App
 from slack_bolt.oauth.oauth_settings import OAuthSettings
 from slack_sdk.oauth.state_store import FileOAuthStateStore
 
-class UserSettings:
-    topics: list[str]
-    last_ndays: int
-    connections: dict
-    
-    def __init__(self, topics, last_ndays, connections):
-        self.topics = topics
-        self.last_ndays = last_ndays
-        self.connections = connections
+LOCAL_MAX_LIMIT = 20
+LOCAL_MAX_ITEMS_PER_PAGE = 3
 
 SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "groups:history", "groups:read", "groups:write", "im:history", "im:read"]
 # set up the initial app
@@ -32,7 +27,6 @@ slack_app = App(
         redirect_uri_path="/slack/oauth-redirect"
     )
 ) 
-channel_mgr = renderer.ChannelManager() 
 sessions = dict()
 
 def session_settings(userid):
@@ -40,17 +34,20 @@ def session_settings(userid):
         registered_user = espressops.get_user({espressops.SOURCE_ID: userid, espressops.SOURCE: SLACK})
         if registered_user:
             sessions[userid] = {
-                "topics": espressops.get_topics(registered_user),
-                "last_ndays": registered_user[espressops.PREFERENCES]['last_ndays'],
-                "connections": registered_user[espressops.CONNECTIONS]}
+                "search": {
+                    "topics": espressops.get_topics(registered_user),
+                    "last_ndays": registered_user[espressops.PREFERENCES]['last_ndays']
+                },
+                "user": registered_user
+            }                
         else:
             sessions[userid] = {
-                "topics": espressops.get_system_topics(),
-                "last_ndays": DEFAULT_WINDOW,
-                "connections": {}}
-        
+                "search": {
+                    "topics": DEFAULT_CATEGORIES,
+                    "last_ndays": MIN_WINDOW
+                }
+            }        
     return sessions[userid]
-        
 
 @slack_app.event("app_home_opened")
 def update_home_tab(event, client):
@@ -59,135 +56,110 @@ def update_home_tab(event, client):
             user_id = event['user'],
             view = {
                 "type": "home",
-                "blocks": renderer.render_home(session_settings(event['user']))
+                "blocks": renderer.render_home_blocks(session_settings(event['user']))
             }
         ) 
 
 @slack_app.message()
-def receive_message(message, say, client): 
-    _process_prompt(message['text'], message['user'], say, message['channel'], message['channel_type'], client)
+def handle_message(message, say): 
+    _process_prompt(message['text'], message['user'], say)
 
 @slack_app.command("/espresso")
-def receive_command(ack, command, say, client):
+def handle_command(ack, command, say):
     ack()  
-    _process_prompt(command['text'], command['user_id'], say, command['channel_id'], command['channel_name'], client)
+    _process_prompt(command['text'], command['user_id'], say)
 
-def _process_prompt(prompt, userid, say, channel_id, channel_type, client):
-    result = prompt_parser.parser.parse(prompt, session_settings(userid))
-    beans, count, more_beans = None, None, None
-    say("Processing")
-
+def _process_prompt(prompt, userid, say):
+    settings = session_settings(userid)
+    beans, left, response = None, None, None
+    result = prompt_parser.console_parser.parse(prompt, settings['search'])
     if not result.task:
-        beans = beanops.search(query=ic(result.prompt), categories=None, tags=None, kinds=None, last_ndays=None, start_index=0, topn=MAX_LIMIT)
-    if result.task in ["lookfor", "search"]:
-        beans = beanops.search(query=result.query, categories=result.category, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=MAX_LIMIT)        
-    if result.task == "trending":
-        beans = beanops.trending(query=ic(result.query), categories=ic(result.category), tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=MAX_LIMIT)
+        _new_message_queue(
+            settings,
+            beanops.search(
+                query=result.query, categories=None, tags=None, kinds=None, last_ndays=None, start_index=0, topn=LOCAL_MAX_LIMIT))   
+        beans, left = _dequeue_message(settings)
+    if result.task in ["lookfor", "search"]: 
+        _new_message_queue(
+            settings,
+            beanops.search(
+                query=result.query, categories=tuple(result.category) if result.category else None, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=LOCAL_MAX_LIMIT))        
+        beans, left = _dequeue_message(settings)
+    if result.task in ["trending"]: 
+        _new_message_queue(
+            settings,
+            beanops.trending(
+                query=result.query, categories=tuple(result.category) if result.category else None, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=LOCAL_MAX_LIMIT))        
+        beans, left = _dequeue_message(settings)
+    if result.task == "more":
+        beans, left = _dequeue_message(settings)
     if result.task == "publish":
-        # TODO: do something
-        pass
-    
-    say(f"{len(beans or [])} beans found")
+        response = NO_ACTION        
 
-    # if beans:
-    #     channel_mgr.publish(
-    #         client=client, 
-    #         channel_id=message['channel'],
-    #         channel_type=message['channel_type'], 
-    #         user_id=message['user'],
-    #         blocks=renderer.render_beans(beans),
-    #         count = 10,
-    #         beans_iter = lambda: None)
+    _say_beans(beans, left, say, None)
+    if response:
+        say(response)
 
 @slack_app.action(re.compile("^category:*"))
-def receive_category_search(ack, action, client):
+def handle_trending_in_category(ack, action, body, say):
     ack()
-    vals = ic(action)['value'].split("//")
-    channel_mgr.publish(
-        client = client, 
-        user_id=vals[1],
-        blocks = renderer.get_beans_by_category(username=vals[1], category=vals[0]))
+    settings = session_settings(body['user']['id'])
+    _new_message_queue(
+        settings,
+        beanops.trending(None, action['value'], None, (NEWS, BLOG), settings['search']['last_ndays'], 0, LOCAL_MAX_LIMIT))
+    beans, left = _dequeue_message(settings)
+    _say_beans(beans, left, say, body['user']['id'])
     
-@slack_app.action(re.compile("^nugget//*"))
-def receive_keyword_search(ack, action, event, client):
+@slack_app.action(re.compile("^keyword:*"))
+def handle_trending_in_keyword(ack, action, body, say):
     ack()
-    ic(event)
-    vals = ic(action)['value'].split("//")
-    channel_mgr.publish(
-        client = client, 
-        user_id=vals[1],
-        blocks = renderer.get_beans_by_category(username=vals[1], category=vals[0]))
+    settings = session_settings(body['user']['id'])
+    _new_message_queue(
+        settings,
+        beanops.trending(None, None, action['value'], (NEWS, BLOG), settings['search']['last_ndays'], 0, LOCAL_MAX_LIMIT))
+    beans, left = _dequeue_message(settings)
+    _say_beans(beans, left, say, body['user']['id'])
+   
+def _say_beans(beans, left, say, channel_id):
+    if beans:
+        say(
+            blocks=list(chain(*(renderer.render_whole_bean(bean) for bean in beans))), 
+            text=f"Showing {len(beans)} stories",
+            channel=channel_id)
+        
+    response = (MORE_BEANS_LEFT if left else None) if beans else NOTHING_FOUND
+    if response:
+        say(response, channel=channel_id)
 
+def _new_message_queue(settings, beans):
+    if not beans:
+        if "more" in settings:
+            del settings['more']
+        return
     
+    queue = Queue(maxsize=MAX_LIMIT)
+    for i in range(0, len(beans), LOCAL_MAX_ITEMS_PER_PAGE):
+        queue.put_nowait(beans[i: i+LOCAL_MAX_ITEMS_PER_PAGE])
+    settings["more"] = queue
 
+def _dequeue_message(settings) -> tuple[list[Bean], bool]: 
+    beans = None       
+    if "more" in settings:
+        if not settings['more'].empty():
+            beans = settings['more'].get_nowait()
+        if settings['more'].empty():
+            del settings['more']
+    return beans, "more" in settings
 
-# @slack_app.command("/trending")
-# def receive_trending(ack, command, client, say):
-#     ack()    
-#     channel_mgr.publish(
-#         client = client, 
-#         channel_id = command['channel_id'],
-#         channel_type=command['channel_name'], 
-#         user_id=command['user_id'],
-#         blocks = renderer.get_trending_items(username=command['user_id'], params=command['text'].split(' ')))
-
-# @slack_app.command("/more")
-# def receive_more(ack, command, client, say):
-#     ack()
-#     channel_mgr.next_page(
-#         client = client,
-#         channel_id = command['channel_id'],
-#         channel_type=command['channel_name'], 
-#         user_id=command['user_id'])
-    
-# @slack_app.command("/lookfor")
-# def receive_lookfor(ack, command, client, say):
-#     ack()    
-#     say(messages.PROCESSING) 
-#     channel_mgr.publish(
-#         client = client, 
-#         channel_id = command['channel_id'],
-#         channel_type=command['channel_name'], 
-#         user_id=command['user_id'],
-#         blocks = renderer.get_beans_by_search(username=command['user_id'], search_text=command['text']))
-
-# @slack_app.command("/digest")
-# def receive_trending(ack, command, client, say):
-#     ack()   
-#     say(messages.PROCESSING) 
-#     channel_mgr.publish(
-#         client = client, 
-#         channel_id = command['channel_id'],
-#         channel_type=command['channel_name'], 
-#         user_id=command['user_id'],
-#         blocks = renderer.get_digests(username=command['user_id'], search_text=command['text']))
-
-# @slack_app.action(re.compile("^nugget//*"))
-# def receive_nugget_search(ack, action, client):
-#     ack()
-#     vals = action['value'].split("//")
-#     keyphrase, description, user_id, window = vals[0], vals[1], vals[2], int(vals[3])
-
-#     channel_mgr.publish(
-#         client = client, 
-#         user_id=user_id,
-#         blocks=renderer.get_beans_by_nugget(
-#             username=user_id, 
-#             keyphrase=keyphrase, 
-#             description=description, 
-#             show_by_preference=("show_by_preference" in action['action_id'].split("//")),
-#             window=window))
-
-
-
-
-@slack_app.action(re.compile("^update_interests:*"))
-def trigger_update_interest(ack, action, body, client):
+@slack_app.action(re.compile("^update:*"))
+def trigger_update_preference(ack, action, body, say):
     ack()
-    client.views_open(
-        trigger_id=body['trigger_id'],
-        view = renderer.UPDATE_INTEREST_VIEW
-    )
+    say(NO_ACTION, channel=body['user']['id'])
+
+@slack_app.action(re.compile("^(delete-account|register-account):*"))
+def update_account(ack, action, body, say):
+    ack()
+    say(NO_ACTION, channel=body['user']['id'])
 
 @slack_app.view("new_interest_input")
 def new_interests(ack, body, view, client):
@@ -204,6 +176,6 @@ def _refresh_home_tab(user_id, client):
         user_id = user_id,
         view = {
             "type": "home",
-            "blocks": renderer.render_home(user_id)
+            "blocks": renderer.render_home_blocks(user_id)
         }
     )

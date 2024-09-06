@@ -23,10 +23,9 @@ def get_content_types():
 def trending(query: str, categories: str|tuple[str], tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int, start_index: int, topn: int):
     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
     filter=_create_filter(categories, tags, kinds, last_ndays)
-    sort_by = LATEST_AND_TRENDING if kinds and (POST in kinds) else NEWEST_AND_TRENDING
+    sort_by = TRENDING_AND_LATEST if kinds and (POST in kinds) else NEWEST_AND_TRENDING
     if query:
         return beansack.vector_search_beans(query=query, filter=filter, sort_by=sort_by, limit=topn, projection=PROJECTION)
-        # return beansack.text_search_beans(query=query, filter=filter, sort_by=sort_by, skip=start_index, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=sort_by, skip=start_index, limit=topn)
     

@@ -1,10 +1,7 @@
 import os
-import time
 from icecream import ic
 from dotenv import load_dotenv
 from pybeansack import utils
-from pybeansack.embedding import BeansackEmbeddings
-import web_ui.renderer
 
 load_dotenv()
 logger = utils.create_logger("Espresso")
@@ -13,11 +10,13 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
+from pybeansack.embedding import BeansackEmbeddings
 from nicegui import app, ui
 from shared import beanops, config, espressops
 import web_ui.pages
+import web_ui.renderer
 from slack_bolt.adapter.fastapi import SlackRequestHandler
-from slack_ui.handler import slack_app, SCOPES
+from slack_ui.handler import slack_app
 
 oauth = OAuth()
 handler = SlackRequestHandler(slack_app)

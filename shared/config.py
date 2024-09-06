@@ -1,4 +1,5 @@
 import os
+from pybeansack.datamodels import *
 
 APP_NAME="Espresso by Cafecit.io"
 SLACK = "slack"
@@ -45,16 +46,25 @@ DEFAULT_CATEGORIES = [
     UNCATEGORIZED
 ]
 
+TRENDING_TABS = [
+    {
+        "name": "articles", 
+        "label": "📰 News & Articles",
+        "kinds": (NEWS, BLOG)
+    },
+    {
+        "name": "posts", 
+        "label": "🗣️ Social Media",
+        "kinds": (POST, COMMENT)
+    }
+]
+
 def default_user_settings():
     return {
         "search": {
             "last_ndays": DEFAULT_WINDOW,            
             "topics": DEFAULT_CATEGORIES
-        },
-        "connections": {
-            REDDIT: False,
-            SLACK: False
-        }            
+        }          
     }
 
 # deployment settings
