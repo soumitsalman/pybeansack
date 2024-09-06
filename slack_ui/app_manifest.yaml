@@ -1,5 +1,5 @@
 display_information:
-  name: EspressoTEST
+  name: Espresso
   description: Expresso by Cafecit.io is an LLM powered news app
   background_color: "#5c2600"
   long_description: "Espresso by Cafecit.io is an LLM powered news app. Its aim is to bring to you the trending contents across media for that day and week. Espresso primarily focuses on technology news and their intersection with business and politics. \r
@@ -23,31 +23,18 @@ features:
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
-    display_name: Espresso TEST
+    display_name: Espresso (Alpha)
     always_online: true
   slash_commands:
-    - command: /trending
-      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
-      description: Shows what is trending across news and media sources. Options - news, posts or topics
-      usage_hint: "[news] [posts] [nuggets]"
-      should_escape: false
-    - command: /more
-      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
-      description: Shows the next page for paginated list of news and posts
-      should_escape: false
-    - command: /lookfor
-      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
-      description: Vector search on the news repo
-      usage_hint: recent news on us politics
-      should_escape: false
-    - command: /digest
-      url: https://workable-feline-deeply.ngrok-free.app/slack/commands
-      description: creates summary on a topic of your interest
-      usage_hint: recent security incidents and breaches
+    - command: /espresso
+      url: https://espresso-app.azurewebsites.net/slack/commands
+      description: Call Espresso bot from any channel in your workspace
+      usage_hint: "trending -q 'top 10 stocks'"
       should_escape: false
 oauth_config:
   redirect_urls:
-    - https://workable-feline-deeply.ngrok-free.app/slack/oauth_redirect
+    - https://espresso-app.azurewebsites.net/slack/oauth-redirect
+    - https://espresso-app.azurewebsites.net/slack/web/oauth-redirect
   scopes:
     bot:
       - app_mentions:read
@@ -63,7 +50,7 @@ oauth_config:
       - mpim:history
 settings:
   event_subscriptions:
-    request_url: https://workable-feline-deeply.ngrok-free.app/slack/events
+    request_url: https://espresso-app.azurewebsites.net/slack/events
     bot_events:
       - app_home_opened
       - app_mention
@@ -73,7 +60,7 @@ settings:
       - message.mpim
   interactivity:
     is_enabled: true
-    request_url: https://workable-feline-deeply.ngrok-free.app/slack/actions
+    request_url: https://espresso-app.azurewebsites.net/slack/actions
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
