@@ -6,7 +6,20 @@ from nicegui import ui
 from icecream import ic
 from yarl import URL
 
-IMAGE_DIMENSIONS = "w-32 h-28"
+# themes
+CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+    
+body {
+    font-family: 'Open Sans', sans-serif;
+    color: #1D1D1D;        
+}
+
+.text-caption { color: gray; }
+"""
+SECONDARY_COLOR = "#ADD8E6"
+IMAGE_DIMENSIONS = "w-32 h-24"
+
 bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
 bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
 tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
@@ -26,8 +39,11 @@ def render_separator():
     return ui.separator().style("height: 5px; margin: 0px; padding: 0px;").classes("w-full")
 
 def render_header():
+    ui.colors(secondary=SECONDARY_COLOR)
+    ui.add_css(content=CSS)
+
     with ui.header().classes(replace="row") as header:
-        with ui.avatar(square=True).tooltip("Espresso by Cafecit.io"):
+        with ui.avatar(square=True, color="transparent").tooltip("Espresso by Cafecit.io"):
             ui.image("images/cafecito.png")
     return header
 
@@ -50,10 +66,10 @@ def render_bean_title(bean: Bean):
     return ui.label(bean.title).classes("text-bold").style("word-wrap: break-word; overflow-wrap: break-word;")
 
 def render_bean_body(bean: Bean):
-    return ui.markdown(bean.summary).style("word-wrap: break-word; overflow-wrap: break-word; text-align: justify;")
+    return ui.markdown(bean.summary).style("word-wrap: break-word; overflow-wrap: break-word; text-align: justify;").tooltip("AI generated (duh!)")
 
 def render_bean_stats(bean: Bean, stack: bool): 
-    with (ui.column(align_items="stretch").classes(add="gap-0") if stack else ui.row(align_items="baseline")).classes(add="text-caption").style("margin-top: 1px;") as view:   
+    with (ui.column(align_items="stretch").classes(add="gap-0") if stack else ui.row(align_items="baseline")).classes(add="text-caption").style("margin-top: 1px;") as view:  
         ui.label(date_to_str(bean.created or bean.updated))
         with ui.row():
             if bean.comments:
@@ -97,7 +113,10 @@ def render_expandable_bean(bean: Bean, show_related: bool = True):
     return view
 
 def render_bean_source(bean: Bean):
-    return ui.markdown(f"Read more in [{bean.channel or bean.source}]({bean.url})")
+    with ui.row(wrap=False, align_items="center").classes("gap-0") as view:
+        ui.avatar("img:"+beanops.favicon(bean), size="xs", color="transparent")
+        ui.link(ellipsis_text(bean.source), bean.url)
+    return view
 
 def render_bean_banner(bean: Bean):
     with ui.row(wrap=False, align_items="start").classes("w-full") as view:            
@@ -115,7 +134,7 @@ def render_whole_bean(bean: Bean):
         render_bean_banner(bean)
         render_bean_tags_as_chips(bean)
         render_bean_body(bean)
-        ui.markdown(f"Read more in [{bean.channel or bean.source}]({bean.url})").classes("text-caption")
+        render_bean_source(bean).classes("text-caption")
     return view
 
 def render_beans_as_paginated_list(items_count: int, get_beans: Callable):

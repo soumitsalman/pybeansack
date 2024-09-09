@@ -132,8 +132,13 @@ def render_whole_bean(bean: Bean):
             "text": render_date(bean.created or bean.updated)
         },
         {
-            "type": "mrkdwn",
-            "text": f":link: <{bean.url}|{bean.channel or bean.source}>",
+            "type": "image",
+            "image_url": beanops.favicon(bean),
+            "alt_text": bean.source
+        },
+        {
+            "type": "plain_text",
+            "text": bean.source,
         }
     ]        
     if bean.comments:
@@ -148,7 +153,7 @@ def render_whole_bean(bean: Bean):
         })    
     return [
         {"type": "context", "elements": context},
-        render_text_banner(f"*{bean.title}*", False, bean.image_url),
+        render_text_banner(f"*<{bean.url}|{bean.title}>*", False, bean.image_url),
         render_text_banner(bean.summary, False, None),
         DIVIDER
     ] 

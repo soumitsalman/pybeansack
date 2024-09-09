@@ -1,4 +1,5 @@
 import os
+import random
 import requests
 import requests.auth
 import shared.config as config
@@ -21,12 +22,16 @@ def is_user_authenticated(user_id) -> str:
         return True
     
 def collect_user_as_text(username, limit):
-    user = ic(create_client().redditor(username))
-    text = f"Reddit posts and comments by u/{username}\n\n"
-    for post in list(post for post in user.submissions.new(limit=limit*2) if post.is_self)[:limit]:
+    text, user = "", create_client().redditor(username)
+    
+    posts = list(post for post in user.submissions.new(limit=limit*10) if post.is_self)
+    for post in random.sample(posts, k=min(len(posts),limit)):
         text += f"POSTED in r/{post.subreddit.display_name}\n{post.title}\n{post.selftext}\n\n"
-    for comment in list(user.comments.new(limit=limit)):
+
+    comments = list(user.comments.new(limit=limit*10))
+    for comment in random.sample(comments, k=min(len(comments), limit)):
         text += f"COMMENTED in r/{comment.subreddit.display_name}\nOn POST: {comment.submission.title}\n{comment.body}\n\n"
+
     return text.strip()
 
 def create_client():

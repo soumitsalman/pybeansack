@@ -1,4 +1,5 @@
 from icecream import ic
+import tldextract
 from pybeansack.beansack import *
 from pybeansack.datamodels import *
 from .config import *
@@ -73,7 +74,7 @@ def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
 def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int):
     filter = {}
     if last_ndays:        
-        filter.update(timewindow_filter(last_ndays, bool(kinds and (POST in kinds))))
+        filter.update(created_in(last_ndays) if kinds and ((NEWS in kinds) or (BLOG in kinds)) else updated_in(last_ndays))
     if tags:
         # TODO: update with elemMatch regex
         filter.update({K_TAGS: {"$in": [tags] if isinstance(tags, str) else list(tags)}})
@@ -90,3 +91,5 @@ def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kinds: str|
         # TODO: update with elemMatch regex
         filter.update({K_CATEGORIES: {"$in": [categories] if isinstance(categories, str) else list(categories)}})
     return filter
+
+favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+tldextract.extract(bean.url).registered_domain

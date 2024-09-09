@@ -14,3 +14,4 @@ retry
 python-dotenv
 authlib
 praw
+tldextract

@@ -10,23 +10,9 @@ from nicegui import ui, background_tasks, run
 from icecream import ic
 from .renderer import *
 
-# themes
-CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
-    
-body {
-    font-family: 'Open Sans', sans-serif;
-    color: #1D1D1D;        
-}
-
-.text-caption { color: gray; }
-"""
-SECONDARY_COLOR = "#ADD8E6"
-
 SAVE_DELAY = 60
 save_timer = threading.Timer(0, lambda: None)
 save_lock = threading.Lock()
-
 
 def render_home(settings, user):
     render_shell(settings, user, "Home")    
@@ -157,8 +143,8 @@ def _trigger_search(settings, prompt):
 
 def render_shell(settings, user, current_tab="Home"):
     # set themes  
-    ui.colors(secondary=SECONDARY_COLOR)
-    ui.add_css(content=CSS)
+    # ui.colors(secondary=SECONDARY_COLOR)
+    # ui.add_css(content=CSS)
     
     def render_topics_menu(topic):
         return (
@@ -198,9 +184,9 @@ def _render_login(settings, user):
         with ui.button(icon='login').tooltip("Log-in / Sign-up") as view:
             with ui.menu():
                 with ui.menu_item(text="Continue with Reddit", on_click=lambda: ui.navigate.to("/reddit/login")).style("border-radius: 20px; color: #FF4500").classes("border-[1px] text-bold m-1"):
-                    ui.avatar("img:https://www.redditinc.com/assets/images/site/Reddit_Icon_FullColor-1_2023-11-29-161416_munx.jpg", color="transparent")
+                    ui.avatar("img:https://www.redditinc.com/assets/images/site/Reddit_Icon_FullColor-1_2023-11-29-161416_munx.jpg", size="md", color="transparent")
                 with ui.menu_item(text="Continue with Slack", on_click=lambda: ui.navigate.to('/slack/login')).style("border-radius: 20px; color: #4A154B").classes("border-[1px] text-bold m-1"):
-                    ui.avatar("img:https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png", square=True, color="transparent")
+                    ui.avatar("img:https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png", square=True, size="md", color="transparent")
         return view
 
 def _render_settings(settings: dict, user: dict):  
@@ -283,16 +269,15 @@ def render_user_registration(settings, temp_user, success_func: Callable, failur
                 ui.label("Name")
                 ui.input(temp_user['name']).props("outlined").tooltip("We are saving this one").disable()
             
-            ui.label("Your Interests")                                 
+            ui.label("Your Interests")      
+            if temp_user['source'] == "reddit":                
+                with ui.button("Analyze From Reddit", on_click=trigger_reddit_import).classes("w-full") as import_reddit_button:
+                    ui.spinner(color="white").style("margin-left: 10px;").bind_visibility_from(import_reddit_button, "enabled", backward=lambda x: not x)  
+                ui.label("- or -").classes("text-caption self-center")                         
             ui.select(
                 label="Topics", with_input=True, multiple=True, 
                 options=espressops.get_system_topics()
             ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
-
-            if temp_user['source'] == "reddit":
-                ui.label("- or -").classes("text-caption self-center")
-                with ui.button("Analyze From Reddit", on_click=trigger_reddit_import).classes("w-full") as import_reddit_button:
-                    ui.spinner(color="white").style("margin-left: 10px;").bind_visibility_from(import_reddit_button, "enabled", backward=lambda x: not x)
 
             with ui.stepper_navigation():
                 ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
@@ -300,9 +285,9 @@ def render_user_registration(settings, temp_user, success_func: Callable, failur
 
 def render_login_failed(success_forward, failure_forward):
     render_header()
-
     with ui.card():
         ui.label("Welp! That didn't work").classes("self-center")
         with ui.row(align_items="stretch").classes("w-full center"):
             ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
             ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
+
