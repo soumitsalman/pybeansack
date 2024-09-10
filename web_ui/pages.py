@@ -110,7 +110,7 @@ def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: i
     with render_shell(settings, user, "Search"):
         with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
             .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
-            ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
+            ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense").tooltip("WE'LL BE RIGHT BACK")
         prompt_input.disable()
  
         if banner: # means there can be a search result            

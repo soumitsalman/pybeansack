@@ -55,7 +55,7 @@ IMAGE_DIMENSIONS = "w-32 h-24"
 bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
 bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
 tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
-ellipsis_text = lambda text: text if len(text)<=30 else f"{text[:27]}..."
+ellipsis_text = lambda text, cap: text if len(text)<=cap else f"{text[:cap-3]}..."
 is_bean_title_too_long = lambda bean: len(bean.title) >= 175
 
 def make_navigation_target(target, **kwargs):
@@ -92,11 +92,11 @@ def render_tags(tags: list[str]):
 def render_bean_tags_as_hashtag(bean: Bean):
     format_tag = lambda tag: "#"+"".join(item for item in tag.split())
     if bean.tags:
-        return [ui.link(ellipsis_text(format_tag(tag)), target=make_navigation_target("/search", keyword=tag)).classes('text-caption') for tag in bean.tags[:3]]
+        return [ui.link(ellipsis_text(format_tag(tag), 30), target=make_navigation_target("/search", keyword=tag)).classes('text-caption') for tag in bean.tags[:3]]
 
 def render_bean_tags_as_chips(bean: Bean):
     with ui.row().classes("gap-0") as view:
-        [ui.chip(ellipsis_text(text), on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]] if bean.tags else None
+        [ui.chip(ellipsis_text(text, 30), on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]] if bean.tags else None
     return view
     
 def render_bean_title(bean: Bean):
@@ -104,7 +104,7 @@ def render_bean_title(bean: Bean):
 
 def render_bean_body(bean: Bean):
     if bean.summary:
-        return ui.markdown(bean.summary).style("word-wrap: break-word; overflow-wrap: break-word; text-align: justify;").tooltip("AI generated (duh!)")
+        return ui.markdown(ellipsis_text(bean.summary, 1500)).style("word-wrap: break-word; overflow-wrap: break-word; text-align: justify;").tooltip("AI generated (duh!)")
 
 def render_bean_stats(bean: Bean, stack: bool): 
     with (ui.column(align_items="stretch").classes(add="gap-0") if stack else ui.row(align_items="baseline")).classes(add="text-caption").style("margin-top: 1px;") as view:  
@@ -119,7 +119,7 @@ def render_bean_stats(bean: Bean, stack: bool):
 def render_bean_source(bean: Bean):
     with ui.row(wrap=False, align_items="center").classes("gap-0") as view:
         ui.avatar("img:"+beanops.favicon(bean), size="xs", color="transparent")
-        ui.link(ellipsis_text(bean.source), bean.url)
+        ui.link(ellipsis_text(bean.source, 30), bean.url)
     return view
 
 def render_bean_banner(bean: Bean):
@@ -146,11 +146,11 @@ def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
         render_bean_source(bean)
         ui.space()
-        with ui.button_group().props("unelevated dense"):            
-            ui.button(icon="publish", on_click=publish).props("flat size=sm").tooltip("Publish on your Espresso channel")
-            ui.button(icon="share", on_click=lambda: ui.notify(NO_ACTION)).props("flat size=sm").tooltip("Share on social-media")  
+        with ui.button_group().props("unelevated dense flat text-color=gray size=sm"):            
+            ui.button(icon="publish", on_click=publish).props("flat text-color=gray size=sm").tooltip("Publish")
+            ui.button(icon="share", on_click=lambda: ui.notify(NO_ACTION)).props("flat text-color=gray size=sm").tooltip("Share")  
             if show_related_items and related_count:
-                ExpandButton(text=count_label).on_click(lambda e: show_related_items(e.sender.value)).props("flat size=sm no-caps no-wrap")
+                ExpandButton(text=count_label).on_click(lambda e: show_related_items(e.sender.value)).props("flat text-color=gray size=sm no-caps")
 
 def render_whole_bean(user, bean: Bean):
     with ui.element() as view:
@@ -232,7 +232,7 @@ def _render_bean_banner(bean: Bean, display_media_stats=True):
                 ui.markdown(f"🔗 [{bean.source}]({bean.url})")
             if display_media_stats:
                 if bean.author:
-                    ui.label(f"✍️ {ellipsis_text(bean.author)}")
+                    ui.label(f"✍️ {ellipsis_text(bean.author, 30)}")
                 if bean.comments:
                     ui.label(f"💬 {bean.comments}")
                 if bean.likes:
