@@ -1,16 +1,16 @@
 from itertools import chain
+import time
 from pymongo import MongoClient
 from pymongo.collection import Collection
-from pybeansack import utils
-from pybeansack.embedding import BeansackEmbeddings
-from .config import *
+from shared import llmops
+from shared.config import *
 from cachetools import TTLCache, cached
 from icecream import ic
 
 DB = "espresso"
 users: Collection = None
 categories: Collection = None
-embedder = None
+channels: Collection = None
 
 SYSTEM = "__SYSTEM__"
 SOURCE = "source"
@@ -25,12 +25,12 @@ CONNECTIONS = "connections"
 PREFERENCES = "preferences"
 CATEGORIES = "categories"
 
-def initialize(conn_str: str, emb: BeansackEmbeddings):
+def initialize(conn_str: str):
     client = MongoClient(conn_str)
-    global users, categories, embedder
+    global users, categories, channels
     users = client[DB]["users"]
     categories = client[DB][CATEGORIES]
-    embedder = emb
+    channels = client[DB]["channels"]
 
 userid_filter = lambda user: {ID: user[ID]} if ID in user else {f"{CONNECTIONS}.{user[SOURCE]}": user.get(SOURCE_ID)}
 
@@ -113,12 +113,12 @@ def remove_connection(user: dict, source):
             "$unset": { f"{CONNECTIONS}.{source}": "" } 
         })
 
-def search_categories(query):    
+def search_categories(content):    
     pipeline = [
         {
             "$search": {
                 "cosmosSearch": {
-                    "vector": embedder.embed_query(utils.truncate(query, EMBEDDER_CTX)),
+                    "vector": llmops.embed(content),
                     "path":   EMBEDDING,
                     "k":      20,
                     "filter": {SOURCE: SYSTEM}
@@ -132,3 +132,13 @@ def search_categories(query):
     ] 
     matches = categories.aggregate(pipeline)
     return list(set(chain(*(cat[CATEGORIES] for cat in matches))))
+
+def publish(user: dict, url: str):
+    userid = _get_userid(user)
+    if userid and url:
+        id = f"{userid}:{url}"
+        entry = {K_ID: id, K_SOURCE: userid, K_URL: url, K_UPDATED: int(time.time())}
+        res = channels.update_one(filter = {K_ID: id}, update = {"$setOnInsert": entry}, upsert=True).acknowledged
+        # TODO: push url to index-queue
+        return res
+    

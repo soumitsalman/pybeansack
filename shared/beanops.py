@@ -2,15 +2,16 @@ from icecream import ic
 import tldextract
 from pybeansack.beansack import *
 from pybeansack.datamodels import *
+from shared import llmops
 from .config import *
 from cachetools import TTLCache, cached
 
 beansack: Beansack = None
 PROJECTION = {K_EMBEDDING: 0, K_TEXT:0}
 
-def initiatize(db_conn, embedder):
+def initiatize(db_conn):
     global beansack
-    beansack=Beansack(db_conn, embedder)
+    beansack=Beansack(db_conn)
 
 @cached(TTLCache(maxsize=1, ttl=ONE_WEEK))
 def get_sources():
@@ -26,7 +27,7 @@ def trending(query: str, categories: str|tuple[str], tags: str|tuple[str], kinds
     filter=_create_filter(categories, tags, kinds, last_ndays)
     sort_by = TRENDING_AND_LATEST if kinds and (POST in kinds) else NEWEST_AND_TRENDING
     if query:
-        return beansack.vector_search_beans(query=query, filter=filter, sort_by=sort_by, limit=topn, projection=PROJECTION)
+        return beansack.vector_search_beans(embedding=llmops.embed(query), filter=filter, sort_by=sort_by, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=sort_by, skip=start_index, limit=topn)
     
@@ -39,8 +40,7 @@ def search(query: str, categories: str|tuple[str], tags: str|tuple[str], kinds: 
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(categories, tags, kinds, last_ndays)
     if query:
-        return beansack.vector_search_beans(query=query, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
-        # return beansack.text_search_beans(query=query, filter=filter, sort_by=LATEST, skip=start_index, limit=topn, projection=PROJECTION)
+        return beansack.vector_search_beans(embedding=llmops.embed(query), filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=TRENDING_AND_LATEST, skip=start_index, limit=topn)
     
@@ -48,8 +48,7 @@ def search(query: str, categories: str|tuple[str], tags: str|tuple[str], kinds: 
 def count_beans(query: str, categories: str|tuple[str], tags: str|tuple[str], kind: str|tuple[str], last_ndays: int, topn: int) -> int:
     filter = _create_filter(categories, tags, kind, last_ndays)
     if query:
-        return beansack.count_vector_search_beans(query=query, filter=filter, limit=topn)
-        # return beansack.count_text_search_beans(query=query, filter=filter, limit=topn)
+        return beansack.count_vector_search_beans(embedding=llmops.embed(query), filter=filter, limit=topn)
     else:
         return beansack.count_unique_beans(filter=filter, limit=topn)
 
@@ -72,7 +71,9 @@ def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     return beansack.beanstore.count_documents(filter=filter, limit=topn)
     
 def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int):
-    filter = {}
+    filter = {
+        K_CLUSTER_ID: {"$exists": True}
+    }
     if last_ndays:        
         filter.update(created_in(last_ndays) if kinds and ((NEWS in kinds) or (BLOG in kinds)) else updated_in(last_ndays))
     if tags:
@@ -80,16 +81,19 @@ def _create_filter(categories: str|tuple[str], tags: str|tuple[str], kinds: str|
         filter.update({K_TAGS: {"$in": [tags] if isinstance(tags, str) else list(tags)}})
     if kinds:
         filter.update({K_KIND: {"$in": [kinds] if isinstance(kinds, str) else list(kinds)}})
-    if categories == UNCATEGORIZED:
-        filter.update({
-            "$or": [
-                {K_CATEGORIES: {"$exists": False}},
-                {K_CATEGORIES: None}
-            ]
-        })
-    elif categories:
+    if categories:
         # TODO: update with elemMatch regex
-        filter.update({K_CATEGORIES: {"$in": [categories] if isinstance(categories, str) else list(categories)}})
+        cat_list_filter = {K_CATEGORIES: {"$in": [categories] if isinstance(categories, str) else list(categories)}}
+        if UNCATEGORIZED in categories:
+            filter.update({
+                "$or": [
+                    {K_CATEGORIES: {"$exists": False}},
+                    {K_CATEGORIES: None},
+                    cat_list_filter
+                ]
+            })
+        else:
+            filter.update(cat_list_filter)
     return filter
 
 favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+tldextract.extract(bean.url).registered_domain

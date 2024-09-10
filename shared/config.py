@@ -1,7 +1,7 @@
 import os
 from pybeansack.datamodels import *
 
-APP_NAME="Espresso by Cafecit.io"
+APP_NAME="Espresso by Project Cafecito"
 SLACK = "slack"
 REDDIT = "reddit"
 

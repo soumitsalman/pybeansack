@@ -10,7 +10,7 @@ from shared.config import *
 
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 rounded_number = lambda counter: str(counter) if counter < 100 else str(99)+'+'
-rounded_number_with_max = lambda counter, top: str(counter) if counter <= top else str(top)+'+'
+rounded_number_with_max = lambda counter, top: str(counter) if counter < top else str(top)+'+'
 
 def groupby_date(items: list, date_field):
     flatten_date = lambda item: dt.fromtimestamp(date_field(item)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -111,7 +111,6 @@ class BindableGrid(ui.grid):
     def bind_items_from(self, target_object, target_name: str = 'items', backward = lambda x: x) -> Self:
         bind_from(self, "items", target_object, target_name, backward)
         return self
-    
 
 class HighlightableItem(ui.item):
     highlight = BindableProperty(
@@ -130,6 +129,19 @@ class HighlightableItem(ui.item):
     def bind_highlight_from(self, target_object, target_name: str = 'highlight', backward = lambda x: x) -> Self:
         bind_from(self, "highlight", target_object, target_name, backward)
         return self
+    
+class ExpandButton(ui.button):
+    def __init__(self, icon="keyboard_arrow_down", expanded_icon="keyboard_arrow_up", *args, **kwargs):        
+        self.value = False
+        self.expanded_icon = expanded_icon
+        self.unexpanded_icon = icon
+        super().__init__(*args, **kwargs)
+        self.props("icon-right="+self.unexpanded_icon).on_click(self.toggle)
+    
+    def toggle(self):
+        self.value = not self.value
+        self.props("icon-right="+(self.expanded_icon if self.value else self.unexpanded_icon))
+      
     
 _page_count = lambda item_count: min(MAX_PAGES, -(-item_count//MAX_ITEMS_PER_PAGE)) if item_count else 0
 

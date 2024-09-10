@@ -1,6 +1,9 @@
 from icecream import ic
-from connectors import redditor
-from shared import espressops
+
+def embed(text: str):
+    # TODO: implement this
+    # utils.truncate(query, EMBEDDER_CTX)
+    return [0]*1024
 
 # # using deepinfra to get support on rate limits
 # digest_llm = ChatDeepInfra(

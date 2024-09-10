@@ -14,51 +14,52 @@ SAVE_DELAY = 60
 save_timer = threading.Timer(0, lambda: None)
 save_lock = threading.Lock()
 
+# shows everything that came in within the last 24 hours
 def render_home(settings, user):
-    render_shell(settings, user, "Home")    
     categories = tuple(settings['search']['topics']) if user else None
-    # pull in everything that came in within the last 24 hours
 
-    background_tasks.create_lazy(_load_and_render_trending_tags(ui.element(), categories, None, MIN_WINDOW, DEFAULT_LIMIT), name="home-tags")
-    render_separator()
-    
-    for section in TRENDING_TABS:
-        ui.label(section['label']).classes('text-h5 w-full')
-        background_tasks.create_lazy(_load_and_render_trending_beans(render_skeleton_beans(count=2), categories, section['kinds'], MIN_WINDOW, MAX_ITEMS_PER_PAGE), name=f"home-trending-{section['label']}")
+    with render_shell(settings, user, "Home"): 
+        background_tasks.create_lazy(_load_and_render_trending_tags(ui.element(), categories, None, MIN_WINDOW, DEFAULT_LIMIT), name="home-tags")
+        render_separator()
+        
+        for section in TRENDING_TABS:
+            ui.label(section['label']).classes('text-h5 w-full')
+            background_tasks.create_lazy(_load_and_render_trending_beans(user, render_skeleton_beans(count=2), categories, section['kinds'], MIN_WINDOW, MAX_ITEMS_PER_PAGE), name=f"home-trending-{section['label']}")
+            render_separator()
+
+        render_settings_as_text(settings['search']) 
+        ui.label("Click on 📈 button for more trending stories by topics.\n\nClick on ⚙️ button to change topics and time window.").classes('text-caption')
         render_separator()
 
-    render_settings_as_text(settings['search']) 
-    ui.label("Click on 📈 button for more trending stories by topics.\n\nClick on ⚙️ button to change topics and time window.").classes('text-caption')
-    render_separator()
+        with ui.row(align_items="center").classes("text-caption w-full").style("justify-content: center;"):
+            ui.markdown("[[Project Cafecito](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
+            ui.markdown("[[Espresso](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
+            ui.markdown("[[About Us](https://github.com/soumitsalman/espresso/blob/main/documents/about-us.md)]")
 
-    with ui.row(align_items="center").classes("text-caption").style("self-align: center; text-align: center;"):
-        ui.markdown("[[Project Cafecito](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
-        ui.markdown("[[Espresso](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
-        ui.markdown("[[About Us](https://github.com/soumitsalman/espresso/blob/main/documents/about-us.md)]")
 
 def render_trending(settings, user, category: str, last_ndays: int):
-    render_shell(settings, user, "Trending")
-    render_text_banner(category)
+    with render_shell(settings, user, "Trending"):
+        render_text_banner(category)
 
-    background_tasks.create_lazy(_load_and_render_trending_tags(ui.element(), category, None, last_ndays, DEFAULT_LIMIT), name=f"trending-tags-{category}")
-    render_separator()
+        background_tasks.create_lazy(_load_and_render_trending_tags(ui.element(), category, None, last_ndays, DEFAULT_LIMIT), name=f"trending-tags-{category}")
+        render_separator()
 
-    with ui.tabs().props("dense").classes("w-full") as tab_headers:
-        for tab in TRENDING_TABS:
-            with ui.tab(name=tab['name'], label=""):
-                with ui.row(wrap=False, align_items="stretch"):
-                    ui.label(tab['label'])
-                    count = beanops.count_beans(None, category, None, tab['kinds'], last_ndays, MAX_LIMIT)
-                    if count:
-                        ui.badge(rounded_number(count)).props("transparent")
+        with ui.tabs().props("dense").classes("w-full") as tab_headers:
+            for tab in TRENDING_TABS:
+                with ui.tab(name=tab['name'], label=""):
+                    with ui.row(wrap=False, align_items="stretch"):
+                        ui.label(tab['label'])
+                        count = beanops.count_beans(None, category, None, tab['kinds'], last_ndays, MAX_LIMIT)
+                        if count:
+                            ui.badge(rounded_number_with_max(count, 50)).props("transparent")
 
-    with ui.tab_panels(tabs=tab_headers, animated=True, value=TRENDING_TABS[0]['name']).props("swipeable").classes("w-full h-full m-0 p-0"):
-        for tab in TRENDING_TABS:
-            with ui.tab_panel(name=tab['name']).classes("w-full h-full m-0 p-0"):    
-                background_tasks.create_lazy(
-                    _load_and_render_trending_beans(render_skeleton_beans(3), category, tab['kinds'], last_ndays, MAX_LIMIT), 
-                    name=f"trending-{tab['name']}"
-                )    
+        with ui.tab_panels(tabs=tab_headers, animated=True, value=TRENDING_TABS[0]['name']).props("swipeable").classes("w-full h-full m-0 p-0"):
+            for tab in TRENDING_TABS:
+                with ui.tab_panel(name=tab['name']).classes("w-full h-full m-0 p-0"):    
+                    background_tasks.create_lazy(
+                        _load_and_render_trending_beans(user, render_skeleton_beans(3), category, tab['kinds'], last_ndays, MAX_LIMIT), 
+                        name=f"trending-{tab['name']}"
+                    )    
                 
 async def _load_and_render_trending_tags(holder: ui.element, categories, kinds, last_ndays, topn):
     tags = await run.io_bound(beanops.trending_tags, categories, kinds, last_ndays, topn)    
@@ -67,7 +68,7 @@ async def _load_and_render_trending_tags(holder: ui.element, categories, kinds, 
         if tags:
             render_tags([tag.tags for tag in tags ])
 
-async def _load_and_render_trending_beans(holder: ui.element, categories, kinds, last_ndays, topn):     
+async def _load_and_render_trending_beans(user, holder: ui.element, categories, kinds, last_ndays, topn):     
     total = beanops.count_beans(None, categories, None, kinds, last_ndays, topn) 
     if not total:     
         holder.clear()  
@@ -76,16 +77,16 @@ async def _load_and_render_trending_beans(holder: ui.element, categories, kinds,
         return  
     
     is_article = (NEWS in kinds) or (BLOG in kinds)    
-    def _render_beans_page(beans: list[Bean], panel: ui.list):
+    def render_page(beans: list[Bean], panel: ui.list):
         with panel:        
             for bean in beans:                
                 with ui.item().classes(bean_item_class(is_article)).style(bean_item_style):
-                    render_expandable_bean(bean, True)
+                    render_expandable_bean(user, bean, True)
 
     async def next_page():
         nonlocal start_index, more_button
         with disable_button(more_button):
-            _render_beans_page(
+            render_page(
                 beanops.trending(None, categories, None, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE),
                 beans_panel)        
 
@@ -97,29 +98,29 @@ async def _load_and_render_trending_beans(holder: ui.element, categories, kinds,
     holder.clear()
     with holder:        
         beans_panel = ui.list().props("dense" if is_article else "separator").classes("w-full")        
-        _render_beans_page(beans, beans_panel)
+        render_page(beans, beans_panel)
         start_index = len(beans)
         if start_index < total:
             more_button = ui.button("More Stories", on_click=next_page).props("unelevated icon-right=chevron_right")
 
 def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: int):
-    render_shell(settings, user, "Search") 
-
     process_prompt = lambda: _trigger_search(settings, prompt_input.value)   
-    with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
-        .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
-        ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
-    
-    banner = query or keyword    
-    if banner:
-        # means there can be a search result
-        render_text_banner(banner)            
-        background_tasks.create_lazy(_search_and_render_beans(render_skeleton_beans(count=3), query, keyword, tuple(kinds) if kinds else None, last_ndays), name=f"search-{banner}")
+    banner = query or keyword 
 
-async def _search_and_render_beans(holder: ui.element, query, keyword, kinds, last_ndays):         
+    with render_shell(settings, user, "Search"):
+        with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
+            .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
+            ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
+        prompt_input.disable()
+ 
+        if banner: # means there can be a search result            
+            render_text_banner(banner)            
+            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, keyword, tuple(kinds) if kinds else None, last_ndays), name=f"search-{banner}")
+
+async def _search_and_render_beans(user: dict, holder: ui.element, query, keyword, kinds, last_ndays):         
     count = 0
     if query:            
-        result = await run.cpu_bound(beanops.search, query=query, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=0, topn=MAX_LIMIT)
+        result = await run.io_bound(beanops.search, query=query, categories=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=0, topn=MAX_LIMIT)
         count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
     elif keyword:
         count, beans_iter = beanops.count_beans(query=None, categories=None, tags=keyword, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
@@ -130,7 +131,7 @@ async def _search_and_render_beans(holder: ui.element, query, keyword, kinds, la
         if not count:
             ui.label(NOTHING_FOUND)
             return
-        render_beans_as_paginated_list(count, beans_iter)
+        render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
 
 def _trigger_search(settings, prompt):   
     result = prompt_parser.console_parser.parse(prompt, settings['search'])
@@ -142,10 +143,6 @@ def _trigger_search(settings, prompt):
         ui.navigate.to(make_navigation_target("/trending", q=result.query, category=result.category, days=result.last_ndays))
 
 def render_shell(settings, user, current_tab="Home"):
-    # set themes  
-    # ui.colors(secondary=SECONDARY_COLOR)
-    # ui.add_css(content=CSS)
-    
     def render_topics_menu(topic):
         return (
             topic, 
@@ -172,10 +169,12 @@ def render_shell(settings, user, current_tab="Home"):
             ui.tab(name="Search", label="", icon="search").tooltip("Search")
 
         ui.space()
-
+        ui.label(APP_NAME).classes("text-bold app-name")
         with ui.button_group().props('flat color=white').classes("self-right"):
             _render_login(settings, user)
             ui.button(on_click=settings_drawer.toggle, icon="settings").tooltip("Settings")
+
+    return ui.column(align_items="start").classes("responsive-container")
 
 def _render_login(settings, user): 
     if user:
@@ -237,7 +236,8 @@ def _render_settings(settings: dict, user: dict):
         ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
 def render_user_registration(settings, temp_user, success_func: Callable, failure_func: Callable):
-    render_header()
+    with render_header():
+        ui.label(APP_NAME).classes("text-bold app-name")
 
     if not temp_user:
         ui.label("You really thought I wouldn't check for this?!")
@@ -284,7 +284,8 @@ def render_user_registration(settings, temp_user, success_func: Callable, failur
                 ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
 
 def render_login_failed(success_forward, failure_forward):
-    render_header()
+    with render_header():
+        ui.label(APP_NAME).classes("text-bold app-name")
     with ui.card():
         ui.label("Welp! That didn't work").classes("self-center")
         with ui.row(align_items="stretch").classes("w-full center"):

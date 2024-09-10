@@ -155,9 +155,9 @@ def trending(category: str=None, days: int=config.DEFAULT_WINDOW):
     web_ui.pages.render_trending(settings, logged_in_user(), category, days)
 
 def initialize_server():
-    embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
-    beanops.initiatize(config.db_connection_str(), embedder)
-    espressops.initialize(config.db_connection_str(), embedder)
+    # embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
+    beanops.initiatize(config.db_connection_str())
+    espressops.initialize(config.db_connection_str())
     oauth.register(
         name=config.REDDIT,
         client_id=config.reddit_client_id(),
