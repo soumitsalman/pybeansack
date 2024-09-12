@@ -1,9 +1,31 @@
+import logging
+from cachetools import TTLCache, cached
 from icecream import ic
+from openai import OpenAI, OpenAIError
+from retry import retry
+from shared import config
+from pybeansack import utils
 
+EMBEDDING_MODEL = "thenlper/gte-large"
+FAILED_EMBEDDING = [0.0]*1024
+llm_client: OpenAI = None
+
+@cached(TTLCache(maxsize=config.CACHE_SIZE, ttl=config.ONE_HOUR))
 def embed(text: str):
-    # TODO: implement this
-    # utils.truncate(query, EMBEDDER_CTX)
-    return [0]*1024
+    try:
+        return _embed(text)
+    except:
+        return FAILED_EMBEDDING
+
+@retry(tries=5, delay=10, max_delay=30, logger=logging.getLogger("EMBEDDER"))
+def _embed(text: str):
+    global llm_client
+    if not llm_client:
+        llm_client = OpenAI(api_key=config.llm_api_key(), base_url=config.llm_base_url())
+    if text:
+        embedding = llm_client.embeddings.create(model=EMBEDDING_MODEL, input=utils.truncate(text, 496), encoding_format="float")
+        return embedding.data[0].embedding
+    
 
 # # using deepinfra to get support on rate limits
 # digest_llm = ChatDeepInfra(

@@ -1,7 +1,9 @@
 from itertools import chain
+import re
 import time
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 from pymongo.collection import Collection
+from pybeansack import utils
 from shared import llmops
 from shared.config import *
 from cachetools import TTLCache, cached
@@ -16,6 +18,7 @@ SYSTEM = "__SYSTEM__"
 SOURCE = "source"
 ID = "_id"
 NAME = "name"
+IMAGE_URL = "image_url"
 SOURCE_ID = "id_in_source"
 TOPICS = "topics"
 TEXT = "text"
@@ -34,6 +37,9 @@ def initialize(conn_str: str):
 
 userid_filter = lambda user: {ID: user[ID]} if ID in user else {f"{CONNECTIONS}.{user[SOURCE]}": user.get(SOURCE_ID)}
 
+def convert_new_userid(userid):
+    return re.sub(r'[^a-zA-Z0-9]', '-', userid)
+
 def _get_userid(user: dict) -> str:
     if ID not in user:
         user = users.find_one(userid_filter(user), projection={ID: 1})
@@ -45,7 +51,8 @@ def get_user(user: dict):
 def register_user(user, preferences) -> dict:
     if user:
         new_user = {
-            ID: f"{user[NAME]}@{user[SOURCE]}",
+            ID: convert_new_userid(user[ID] if ID in user else f"{user[NAME]}@{user[SOURCE]}"),
+            IMAGE_URL: user.get(IMAGE_URL),
             CONNECTIONS: {
                 user[SOURCE]: user[SOURCE_ID]
             },
@@ -54,26 +61,27 @@ def register_user(user, preferences) -> dict:
             }            
         }
         users.insert_one(new_user)
-        update_topics(new_user, preferences['topics'])
+        update_categories(new_user, preferences['topics'])
         return new_user
 
 def unregister_user(user) -> bool:
     userid = _get_userid(user)
-    categories.delete_many({SOURCE: userid})
+    update_categories(user, [])
+    channels.delete_many({SOURCE: userid})
     users.delete_one({ID: userid})
- 
-def get_topics(user: dict):
+    
+def get_categories(user: dict):
     return list(categories.find(filter={SOURCE:_get_userid(user)}, sort={TEXT: 1}, projection={ID: 1, TEXT: 1}))
 
-# @cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
-def get_system_topics():
-    return get_topics({ID: SYSTEM})
+@cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
+def get_system_categories():
+    return get_categories({ID: SYSTEM})
 
 @cached(TTLCache(maxsize=100, ttl=ONE_HOUR)) 
 def get_preferences(user: dict):
     userdata = get_user(user)
     return {
-        "topics": get_topics(user),
+        "topics": get_categories(user),
         "last_ndays": userdata[PREFERENCES]['last_ndays']        
     } if userdata else None
 
@@ -86,14 +94,26 @@ def update_preferences(user: dict, preferences: dict):
                     PREFERENCES: {'last_ndays': preferences['last_ndays']} 
                 }
             })
-        update_topics(user, preferences['topics'])
+        update_categories(user, preferences['topics'])
 
-def update_topics(user: dict, topics: list[str]):
+def update_categories(user: dict, new_categories: list[str]):
     userid = _get_userid(user)
     if userid:
-        # TODO: enable later
-        return
-        categories.insert_many([{TEXT: topic, CATEGORIES: [topic], SOURCE: userid} for topic in topics], ordered=False)
+        updates = []   
+        query = {
+            "$or": [
+                {ID: {"$in": new_categories}},
+                {SOURCE: userid}
+            ]
+        }     
+        for existing in categories.find(query, {ID: 1, SOURCE: 1}):
+            sources = existing[SOURCE] if isinstance(existing[SOURCE], list) else [existing[SOURCE]]
+            sources.append(userid) if existing[ID] in new_categories else sources.remove(userid)                
+            updates.append(UpdateOne(
+                filter = {ID: existing[ID]}, 
+                update = {"$set": { SOURCE: list(set(sources))}}
+            ))            
+        categories.bulk_write(updates, ordered=False)
 
 def add_connection(user: dict, connection: dict):
     users.update_one(
@@ -114,27 +134,29 @@ def category_label(id: str):
     if id:
         res = categories.find_one(filter = {ID: id}, projection={TEXT: 1})
         return res[TEXT] if res else None
-    # return UNCATEGORIZED
 
-def match_categories(content):    
-    pipeline = [
-        {
-            "$search": {
-                "cosmosSearch": {
-                    "vector": llmops.embed(content),
-                    "path":   EMBEDDING,
-                    "k":      20,
-                    "filter": {SOURCE: SYSTEM}
-                },
-                "returnStoredSource": True
-            }
-        },
-        {"$addFields": { "search_score": {"$meta": "searchScore"} }},
-        {"$match": { "search_score": {"$gte": 0.79} }}, # TODO: play with this number later
-        {"$project": {EMBEDDING: 0}}
-    ] 
-    matches = categories.aggregate(pipeline)
-    return list(set(chain(*(cat[CATEGORIES] for cat in matches))))
+def match_categories(content):
+    cats = []
+    for chunk in utils.chunk(content, 496):   
+        pipeline = [
+            {
+                "$search": {
+                    "cosmosSearch": {
+                        "vector": llmops.embed(chunk),
+                        "path":   EMBEDDING,
+                        "k":      20,
+                        "filter": {SOURCE: SYSTEM}
+                    },
+                    "returnStoredSource": True
+                }
+            },
+            {"$addFields": { "search_score": {"$meta": "searchScore"} }},
+            {"$match": { "search_score": {"$gte": 0.79} }}, # TODO: play with this number later
+            {"$project": {EMBEDDING: 0}}
+        ] 
+        [cats.extend(cat["related"]+[cat[ID]]) for cat in categories.aggregate(pipeline)]
+    return list(set(cats))    
+    
 
 def publish(user: dict, url: str):
     userid = _get_userid(user)

@@ -36,7 +36,7 @@ def session_settings(userid):
         if registered_user:
             sessions[userid] = {
                 "search": {
-                    "topics": espressops.get_topics(registered_user),
+                    "topics": espressops.get_categories(registered_user),
                     "last_ndays": registered_user[espressops.PREFERENCES]['last_ndays']
                 },
                 "user": registered_user

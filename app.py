@@ -1,3 +1,4 @@
+import logging
 import os
 from icecream import ic
 from dotenv import load_dotenv
@@ -59,9 +60,7 @@ def log_out_user():
 @app.get("/slack/oauth-redirect")
 @app.get("/slack/install")
 async def receive_slack_app_events(req: Request):
-    # ic(req.base_url, req.path_params, req.query_params, req.state, req.url, await req.body())
     res = await handler.handle(req, addition_context_properties={"TEST":"TEST"})
-    # ic(str(res.body))
     return res
 
 @app.get("/slack/login")
@@ -74,9 +73,9 @@ async def slack_web_redirect(request: Request):
     try:
         token = await oauth.slack.authorize_access_token(request)
         user = (await oauth.slack.get('https://slack.com/api/users.identity', token=token)).json()    
-        return _redirect_after_auth(user['user']['name'], user['user']['id'], "slack", token)
+        return _redirect_after_auth(user['user']['name'], user['user']['id'], user['user'].get('image_72'), config.SLACK, token)
     except Exception as err:
-        ic(err)
+        logging.warning(err)
         return RedirectResponse("/login-failed?source=slack")
 
 @app.get("/reddit/login")
@@ -89,33 +88,34 @@ async def reddit_redirect(request: Request):
     try:
         token = await oauth.reddit.authorize_access_token(request)
         user = (await oauth.reddit.get('https://oauth.reddit.com/api/v1/me', token=token)).json()
-        return _redirect_after_auth(user['name'], user['id'], "reddit", token)
+        return _redirect_after_auth(user['name'], user['id'], user.get('icon_img'), config.REDDIT, token)
     except Exception as err:
-        ic(err)
+        logging.warning(err)
         return RedirectResponse("/login-failed?source=reddit")
 
-def _redirect_after_auth(name, id, source, token):
+def _redirect_after_auth(name, id, image_url, source, token):
     authenticated_user = {
         espressops.NAME: name,
         espressops.SOURCE_ID: id,
         espressops.SOURCE: source,
+        espressops.IMAGE_URL: image_url,
         **token
     }
-    current_user = ic(logged_in_user())
-    registered_user = ic(espressops.get_user(authenticated_user))
     # if a user is already logged in then add this as a connection
+    current_user = logged_in_user()
     if current_user:
         espressops.add_connection(current_user, authenticated_user)
         current_user[espressops.CONNECTIONS][source]=name
         return RedirectResponse(last_page())
-    # else no user is logged in but there is an registered user with this cred then log-in that user    
-    elif registered_user:
+        
+    # if no user is logged in but there is an registered user with this cred then log-in that user    
+    registered_user = espressops.get_user(authenticated_user)
+    if registered_user:
         set_logged_in_user(registered_user)
         return RedirectResponse(last_page()) 
-    # or else this is new session log registration
-    else:
-        set_temp_user(authenticated_user)
-        return RedirectResponse("/user-registration")
+
+    set_temp_user(authenticated_user)
+    return RedirectResponse("/user-registration")
 
 @app.get('/logout')
 def logout():
@@ -180,7 +180,7 @@ def initialize_server():
         user_agent=config.APP_NAME,
         authorize_url='https://slack.com/oauth/authorize',
         access_token_url='https://slack.com/api/oauth.access',
-        client_kwargs={'scope': 'identity.basic'},
+        client_kwargs={'scope': 'identity.basic,identity.avatar'},
     )
 
 initialize_server()

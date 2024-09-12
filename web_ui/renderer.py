@@ -84,7 +84,7 @@ def render_text_banner(banner: str):
         ui.separator().style("margin-top: 5px;")
     return view
 
-def render_message(msg: str):
+def render_text(msg: str):
     return ui.label(msg).classes("text-h5 self-center text-center")
 
 def render_header():

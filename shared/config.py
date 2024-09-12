@@ -92,6 +92,9 @@ def reddit_client_secret():
 def db_connection_str():
     return os.getenv("DB_CONNECTION_STRING")
 def llm_api_key():
-    return os.getenv("GROQ_API_TOKEN")
+    return os.getenv("LLM_API_KEY")
+def llm_base_url():
+    return os.getenv("LLM_BASE_URL")
+
 def host_url():
     return os.getenv("HOST_URL")
