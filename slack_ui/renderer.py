@@ -57,7 +57,7 @@ def render_connections(settings):
         {
             "type": "actions",
             "elements": [
-                render_button("delete-account", "Delete Account", "danger") if "user" in settings else render_button("register-account", "Sign Up", "primary")
+                render_button("delete-account", "Delete Account", style="danger") if "user" in settings else render_button("register-account", "Sign Up", style="primary")
             ]
         }
     ] 
@@ -67,12 +67,12 @@ def render_settings(settings):
         render_text_banner("Topics of Interest", True, False),
         {
             "type": "actions",
-            "elements": [render_button("category", cat) for cat in settings['search']['topics']]
+            "elements": [render_button("category", cat, label = espressops.category_label(cat)) for cat in settings['search']['topics']]
         },
         {
             "type": "actions",
             "elements": [
-                render_button("update", "Update Interests", "primary")
+                render_button("update", "Update Interests", style = "primary")
             ]
         }
     ]
@@ -83,12 +83,12 @@ def render_tags(tags: list[str]):
         "elements": [render_button("keyword", tag) for tag in tags]
     }
     
-def render_button(action_type, value, style = None): 
+def render_button(action_type, value, label = None, style = None): 
     button = {        
         "type": "button",
         "text": {
             "type": "plain_text",
-            "text": value,
+            "text": label or value,
             "emoji": True
         },
         "value": f"{value}",

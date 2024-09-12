@@ -23,28 +23,28 @@ ONE_DAY = 86400
 ONE_WEEK = 604800
 CACHE_SIZE = 100
 
+# decommissioning this for now
+# UNCATEGORIZED = {K_ID:"uncategoried", K_TEXT: "Yo Momma"}
 # category settings
-UNCATEGORIZED = "Yo Momma"
 DEFAULT_CATEGORIES = [
-    "Artificial Intelligence (AI)", 
-    "Automotive & Logistics",
-    "Aviation & Aerospace", 
-    "Business & Finance", 
-    "Career & Professional Development", 
-    "Cryptocurrency & Blockchain", 
-    "Cybersecurity", 
-    "Entrepreneurship & StartUps", 
-    "Environment & Clean Energy", 
-    "Food & Health", 
-    "Gadgets & IoT", 
-    "Government & Politics", 
-    "HPC & Datacenters",
-    "Management & Leadership", 
-    "Robotics & Manufacturing", 
-    "Science & Mathematics", 
-    "Software Engineering", 
-    "Video Games & Virtual Reality",
-    UNCATEGORIZED
+    "artificial-intelligence-ai", 
+    "automotive-logistics",
+    "aviation-aerospace", 
+    "business-finance", 
+    "career-professional-development", 
+    "cryptocurrency-blockchain", 
+    "cybersecurity", 
+    "entrepreneurship-startups", 
+    "environment-clean-energy", 
+    "food-health", 
+    "gadgets-iot", 
+    "government-politics", 
+    "hpc-datacenters",
+    "management-leadership", 
+    "robotics-manufacturing", 
+    "science-mathematics", 
+    "software-engineering", 
+    "video-games-virtual-reality"
 ]
 
 TRENDING_TABS = [

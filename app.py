@@ -47,7 +47,7 @@ def set_logged_in_user(registered_user):
     settings = session_settings() 
     if espressops.PREFERENCES in registered_user:        
         settings['search']['last_ndays'] = registered_user[espressops.PREFERENCES]['last_ndays']
-    settings['search']['topics'] = espressops.get_topics(registered_user) or settings['search']['topics']
+    settings['search']['topics'] = web_ui.pages._get_user_topic_values(registered_user) or settings['search']['topics']
 
 def log_out_user():
     if 'logged_in_user' in app.storage.user:
@@ -101,8 +101,8 @@ def _redirect_after_auth(name, id, source, token):
         espressops.SOURCE: source,
         **token
     }
-    current_user = logged_in_user()
-    registered_user = espressops.get_user(authenticated_user)
+    current_user = ic(logged_in_user())
+    registered_user = ic(espressops.get_user(authenticated_user))
     # if a user is already logged in then add this as a connection
     if current_user:
         espressops.add_connection(current_user, authenticated_user)
@@ -141,18 +141,23 @@ def home():
     web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
-def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=config.DEFAULT_WINDOW):  
-    days = min(days, config.MAX_WINDOW)
+def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=config.DEFAULT_WINDOW):
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword = keyword, kind = kind, days = days) 
-    web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, days)
+    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword=keyword, kind=kind, days=days) 
+    web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, min(days, config.MAX_WINDOW))
 
-@ui.page("/trending")
-def trending(category: str=None, days: int=config.DEFAULT_WINDOW):  
-    days = min(days, config.MAX_WINDOW) 
+@ui.page("/trending/{category}")
+def trending(category: str, days: int=config.DEFAULT_WINDOW):      
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target("/trending", category=category, days=days) 
-    web_ui.pages.render_trending(settings, logged_in_user(), category, days)
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/trending/{category}", days=days) 
+    web_ui.pages.render_trending(settings, logged_in_user(), category.lower(), min(days, config.MAX_WINDOW) )
+
+@ui.page("/channel/{channel_id}")
+def channel(channel_id: str, days: int=config.DEFAULT_WINDOW):
+    settings = session_settings()
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/channel/{channel_id}", days=days) 
+    web_ui.pages.render_channel(settings, logged_in_user(), channel_id, min(days, config.MAX_WINDOW))
+
 
 def initialize_server():
     # embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)

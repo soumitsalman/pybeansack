@@ -21,13 +21,13 @@ def run_console():
     while True:        
         result = prompt_parser.console_parser.parse(input("You: "), settings['search'])        
         if not result.task:
-            beans = beanops.search(query=result.query, categories=None, tags=None, kinds=None, last_ndays=None, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)   
+            beans = beanops.search(query=result.query, tags=None, kinds=None, last_ndays=None, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)   
             
         if result.task in ["lookfor", "search"]: 
-            beans = beanops.search(query=result.query, categories=tuple(result.category) if result.category else None, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)       
+            beans = beanops.search(query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)       
             
         if result.task in ["trending"]: 
-            beans = beanops.trending(query=result.query, categories=tuple(result.category) if result.category else None, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)        
+            beans = beanops.trending(query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)        
             
         if result.task == "exit":
             print("Exiting...")

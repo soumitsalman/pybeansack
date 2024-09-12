@@ -9,14 +9,22 @@ from shared.messages import *
 
 # themes
 CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Quicksand&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bree+Serif&display=swap');
     
 body {
-    font-family: 'Open Sans', sans-serif;
-    color: #1D1D1D;        
+    font-family: 'Quicksand', serif;
+    font-style: normal;
+    color: #0D0D0D;        
 }
 
 .text-caption { color: gray; }
+
+.bean-header {
+    font-weight: bold;
+    word-wrap: break-word; 
+    overflow-wrap: break-word;
+}
 
 .responsive-container {
     width: 100%;
@@ -28,6 +36,7 @@ body {
 .app-name {
     display: block;
     font-size: 1.3rem;
+    justify-content: center;
 }
 
 .header-container {
@@ -65,7 +74,7 @@ def make_navigation_target(target, **kwargs):
     return str(url_val)
 
 def render_settings_as_text(settings: dict):
-    return ui.markdown("Currently showing news, blogs and social media posts on %s." % (", ".join([f"**{topic}**" for topic in settings['topics']])))
+    return ui.markdown("Currently showing news, blogs and social media posts on %s." % (", ".join([f"**{espressops.category_label(topic)}**" for topic in settings['topics']])))
 
 def render_separator():
     return ui.separator().style("height: 5px;").classes("w-full m-0 p-0 gap-0")
@@ -75,12 +84,15 @@ def render_text_banner(banner: str):
         ui.separator().style("margin-top: 5px;")
     return view
 
+def render_message(msg: str):
+    return ui.label(msg).classes("text-h5 self-center text-center")
+
 def render_header():
     ui.colors(secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
 
     with ui.header().classes(replace="row", add="header-container") as header:
-        with ui.avatar(square=True, color="transparent").tooltip("Espresso by Cafecit.io"):
+        with ui.avatar(square=True, color="transparent").style("justify-content: left;").tooltip("Espresso by Cafecit.io"):
             ui.image("images/cafecito.png")
     return header
 
@@ -100,7 +112,7 @@ def render_bean_tags_as_chips(bean: Bean):
     return view
     
 def render_bean_title(bean: Bean):
-    return ui.label(bean.title).classes("text-bold").style("word-wrap: break-word; overflow-wrap: break-word;")
+    return ui.label(bean.title).classes("bean-header")
 
 def render_bean_body(bean: Bean):
     if bean.summary:
@@ -128,7 +140,8 @@ def render_bean_banner(bean: Bean):
             with ui.element():   
                 ui.image(bean.image_url).classes(IMAGE_DIMENSIONS)   
                 render_bean_stats(bean, stack=True) 
-        with render_bean_title(bean):    
+        with ui.element():
+            render_bean_title(bean) 
             if not bean.image_url:        
                 render_bean_stats(bean, stack=False)    
     return view
@@ -140,7 +153,7 @@ def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
     async def publish():
         msg = LOGIN_FIRST
         if user:
-            msg = DONE if espressops.publish(user, bean.url) else UNKNOWN_ERROR
+            msg = PUBLISHED if espressops.publish(user, bean.url) else UNKNOWN_ERROR
         ui.notify(msg)
 
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):

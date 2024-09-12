@@ -63,13 +63,11 @@ def unregister_user(user) -> bool:
     users.delete_one({ID: userid})
  
 def get_topics(user: dict):
-    items=categories.distinct(CATEGORIES, {SOURCE:_get_userid(user)})
-    items.sort()
-    return items
+    return list(categories.find(filter={SOURCE:_get_userid(user)}, sort={TEXT: 1}, projection={ID: 1, TEXT: 1}))
 
-@cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
+# @cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
 def get_system_topics():
-    return get_topics({ID: SYSTEM})+[UNCATEGORIZED]
+    return get_topics({ID: SYSTEM})
 
 @cached(TTLCache(maxsize=100, ttl=ONE_HOUR)) 
 def get_preferences(user: dict):
@@ -90,14 +88,12 @@ def update_preferences(user: dict, preferences: dict):
             })
         update_topics(user, preferences['topics'])
 
-def update_topics(user: dict, topics: list[str]|dict[str, str]):
+def update_topics(user: dict, topics: list[str]):
     userid = _get_userid(user)
     if userid:
-        categories.delete_many({SOURCE: userid})
-        if isinstance(topics, dict):
-            categories.insert_many([{TEXT: topic, CATEGORIES: description.split(","), DESCRIPTION: description, SOURCE: userid } for topic, description in topics.items()], ordered=False)
-        elif isinstance(topics, list) and isinstance(topics[0], str):
-            categories.insert_many([{TEXT: topic, CATEGORIES: [topic], SOURCE: userid} for topic in topics], ordered=False)
+        # TODO: enable later
+        return
+        categories.insert_many([{TEXT: topic, CATEGORIES: [topic], SOURCE: userid} for topic in topics], ordered=False)
 
 def add_connection(user: dict, connection: dict):
     users.update_one(
@@ -112,8 +108,15 @@ def remove_connection(user: dict, source):
         update = {
             "$unset": { f"{CONNECTIONS}.{source}": "" } 
         })
+    
+@cached(TTLCache(maxsize=1000, ttl=ONE_WEEK)) 
+def category_label(id: str):
+    if id:
+        res = categories.find_one(filter = {ID: id}, projection={TEXT: 1})
+        return res[TEXT] if res else None
+    # return UNCATEGORIZED
 
-def search_categories(content):    
+def match_categories(content):    
     pipeline = [
         {
             "$search": {
@@ -141,4 +144,7 @@ def publish(user: dict, url: str):
         res = channels.update_one(filter = {K_ID: id}, update = {"$setOnInsert": entry}, upsert=True).acknowledged
         # TODO: push url to index-queue
         return res
+
+def channel_content(channel_id: dict):
+    return channels.distinct(K_URL, filter = {K_SOURCE: channel_id})
     

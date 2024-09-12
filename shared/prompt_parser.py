@@ -19,19 +19,17 @@ class ContentType(str, Enum):
 class ParseResult (BaseModel):
     task: Optional[str] = None
     query: Optional[str] = None
-    category: Optional[str|list[str]] = None
     keyword: Optional[str] = None
     kind: Optional[str] = None
     last_ndays: Optional[int] = None
     topn: Optional[int] = None
-    channel: Optional[str|list[str]] = None
+    source: Optional[str|list[str]] = None
 
 class InteractiveInputParser:
     def __init__(self):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('task', help='The main task')
         self.parser.add_argument('-q', '--query', help='The search query')
-        self.parser.add_argument('-c', '--category', help='The category of the content')
         self.parser.add_argument('-k', '--keyword', help='The keyword to search with')
         self.parser.add_argument('-t', '--type', help='The type of content to search or to create.')    
         self.parser.add_argument('-d', '--ndays', help='The last N days of data to retrieve. N should be between 1 - 30')
@@ -45,12 +43,10 @@ class InteractiveInputParser:
             return ParseResult(
                 task=args.task, 
                 query=args.query, 
-                category=args.category or defaults.get('topics'),
                 keyword=args.keyword,
-                # kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
+                kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
                 last_ndays=int(args.ndays or defaults.get('last_ndays')), 
-                # topn=int(args.topn or 0),
-                channel=args.source)
+                source=args.source)
         except:
             return ParseResult(task=None, query=prompt)
 
