@@ -48,7 +48,7 @@ def set_logged_in_user(registered_user):
     settings = session_settings() 
     if espressops.PREFERENCES in registered_user:        
         settings['search']['last_ndays'] = registered_user[espressops.PREFERENCES]['last_ndays']
-    settings['search']['topics'] = web_ui.pages._get_user_topic_values(registered_user) or settings['search']['topics']
+    settings['search']['topics'] = web_ui.pages.get_user_topic_values(registered_user) or settings['search']['topics']
 
 def log_out_user():
     if 'logged_in_user' in app.storage.user:
@@ -141,21 +141,21 @@ def home():
     web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
-def search(q: str=None, keyword: str=None, kind: str|list[str]=None, days: int=config.DEFAULT_WINDOW):
+def search(q: str=None, tag: str=None, kind: str=None, days: int=config.DEFAULT_WINDOW, acc: float=config.DEFAULT_ACCURACY):
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword=keyword, kind=kind, days=days) 
-    web_ui.pages.render_search(settings, logged_in_user(), q, keyword, kind, min(days, config.MAX_WINDOW))
+    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword=tag, kind=kind, days=days, acc=acc) 
+    web_ui.pages.render_search(settings, logged_in_user(), q, tag, kind, min(days, config.MAX_WINDOW), accuracy=acc)
 
-@ui.page("/trending/{category}")
+@ui.page("/c/{category}")
 def trending(category: str, days: int=config.DEFAULT_WINDOW):      
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/trending/{category}", days=days) 
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/c/{category}", days=days) 
     web_ui.pages.render_trending(settings, logged_in_user(), category.lower(), min(days, config.MAX_WINDOW) )
 
-@ui.page("/channel/{channel_id}")
+@ui.page("/u/{channel_id}")
 def channel(channel_id: str, days: int=config.DEFAULT_WINDOW):
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/channel/{channel_id}", days=days) 
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/u/{channel_id}", days=days) 
     web_ui.pages.render_channel(settings, logged_in_user(), channel_id, min(days, config.MAX_WINDOW))
 
 

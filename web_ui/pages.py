@@ -116,26 +116,33 @@ async def _load_and_render_trending_beans(holder: ui.element, urls, categories, 
         if more:
             more_button = ui.button("More Stories", on_click=next_page).props("unelevated icon-right=chevron_right")
 
-def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: int):
+def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: int, accuracy: float):
     def _render():
-        process_prompt = lambda: _trigger_search(settings, prompt_input.value)   
+        process_prompt = lambda: ui.navigate.to(make_navigation_target("/search", q=prompt_input.value, kinds=kinds_panel.value, acc=accuracy_panel.value)) 
         banner = query or keyword 
         with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
             .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
-            ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense").tooltip("WE'LL BE RIGHT BACK")
+            ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
+        with ui.expansion(text="Knobs").props("expand-icon=tune expanded-icon=tune").classes("w-full text-right text-caption"):
+            with ui.row(wrap=False, align_items="stretch").classes("w-full border-[1px]").style("border-radius: 5px; padding-left: 1rem;"):                
+                with ui.label("Accuracy").classes("w-full text-left"):
+                    accuracy_panel=ui.slider(min=0.1, max=1.0, step=0.05, value=(accuracy or DEFAULT_ACCURACY)).props("label-always")
+                kinds_panel = ui.toggle(options={NEWS:"News", BLOG:"Blogs", POST:"Posts", None:"All"}).props("unelevated no-caps")
+        
         if banner: # means there can be a search result            
             render_text_banner(banner)            
-            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, keyword, tuple(kinds) if kinds else None, last_ndays), name=f"search-{banner}")
+            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, keyword, tuple(kinds) if kinds else None, last_ndays, accuracy), name=f"search-{banner}")
+    
     render_shell(settings, user, "Search", _render)
 
-async def _search_and_render_beans(user: dict, holder: ui.element, query, keyword, kinds, last_ndays):         
+async def _search_and_render_beans(user: dict, holder: ui.element, query, keyword, kinds, last_ndays, accuracy):         
     count = 0
     if query:            
-        result = await run.io_bound(beanops.search, query=query, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=0, topn=MAX_LIMIT)
+        result = await run.io_bound(beanops.search, query=query, tags=keyword, kinds=kinds, last_ndays=last_ndays, min_score=accuracy or DEFAULT_ACCURACY, start_index=0, topn=MAX_LIMIT)
         count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
     elif keyword:
         count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=keyword, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
-            lambda start: beanops.search(query=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, start_index=start, topn=MAX_ITEMS_PER_PAGE)
+            lambda start: beanops.search(query=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, min_score=None, start_index=start, topn=MAX_ITEMS_PER_PAGE)
 
     holder.clear()
     with holder:
@@ -144,18 +151,18 @@ async def _search_and_render_beans(user: dict, holder: ui.element, query, keywor
             return
         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
 
-def _trigger_search(settings, prompt):   
-    result = prompt_parser.console_parser.parse(prompt, settings['search'])
-    if not result.task:
-        ui.navigate.to(make_navigation_target("/search", q=result.query))
-    if result.task in ["lookfor", "search"]:
-        ui.navigate.to(make_navigation_target("/search", q=result.query, days=result.last_ndays))
-    if result.task in ["trending"]:
-        ui.navigate.to(make_navigation_target("/trending", q=result.query, days=result.last_ndays))
+# def _trigger_search(settings, prompt):   
+#     result = prompt_parser.console_parser.parse(prompt, settings['search'])
+#     if not result.task:
+#         ui.navigate.to(make_navigation_target("/search", q=result.query))
+#     if result.task in ["lookfor", "search"]:
+#         ui.navigate.to(make_navigation_target("/search", q=result.query, days=result.last_ndays))
+#     if result.task in ["trending"]:
+#         ui.navigate.to(make_navigation_target("/c", q=result.query, days=result.last_ndays))
         
 def render_shell(settings, user, current_tab: str, render_func: Callable):
     def render_topics_menu(topic):
-        return (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/trending/{topic}", days=settings['search']['last_ndays'])))
+        return (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/c/{topic}", days=settings['search']['last_ndays'])))
 
     def navigate(selected_tab):
         if selected_tab == "Home":
@@ -168,18 +175,17 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
         _render_settings(settings, user)
 
     # header
-    with render_header(): 
-        ui.label(APP_NAME).classes("text-bold app-name")
-        ui.space()       
-        with ui.tabs(on_change=lambda e: navigate(e.sender.value), value=current_tab):
+    with render_header():  
+        with ui.tabs(on_change=lambda e: navigate(e.sender.value), value=current_tab).style("margin-right: auto"):
             ui.tab(name="Home", label="", icon="home").tooltip("Home")           
             settings['search']['topics'] = sorted(settings['search']['topics'])
             with ui.tab(name="Trending", label="", icon='trending_up').tooltip("Trending News & Posts"):
                 BindableNavigationMenu(render_topics_menu).bind_items_from(settings['search'], 'topics') 
-            ui.tab(name="Search", label="", icon="search").tooltip("Search")          
-        ui.button(icon = "settings", on_click=settings_drawer.toggle).props('flat stretch color='+("white" if user else "secondary")).tooltip("Settings")
+            ui.tab(name="Search", label="", icon="search").tooltip("Search")         
+        ui.label(APP_NAME).classes("text-bold app-name")
+        ui.button(icon="settings", on_click=settings_drawer.toggle).props("flat stretch color=white").style("margin-left: auto").tooltip("Settings")
 
-    with ui.column(align_items="start").classes("responsive-container"):
+    with ui.column(align_items="stretch").classes("responsive-container"):
         render_func()
         render_separator()
         with ui.row(align_items="center").classes("text-caption w-full").style("justify-content: center;"):
@@ -190,31 +196,7 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
         ui.label("Copyright © 2024 Project Cafecito. All rights reserved.").classes("text-caption w-full text-center")
 
 def _render_login_status(settings: dict, user: dict):
-    if user:
-        with ui.row(wrap=False, align_items="start").classes("w-full"):            
-            ui.link("/"+user[K_ID], target=f"/channel/{user[K_ID]}").classes("text-bold")
-            with ui.column():
-                _render_user_image(user)
-                ui.button(text="Log out", icon="logout", color="negative", on_click=lambda: ui.navigate.to("/logout")).props("dense unelevated size=sm")
-    else:
-        with ui.label("Sign-up/Log-in").classes("text-subtitle1"):
-            _render_login_buttons(settings, user)
-    ui.separator()    
-
-def _render_login_buttons(settings, user):
-    with ui.row(wrap=False, align_items="center") as view:
-        with ui.button(color="orange-10", on_click=lambda: ui.navigate.to("/reddit/login")).props("outline").tooltip("Continue with Reddit"):
-            ui.avatar("img:https://www.redditinc.com/assets/images/site/Reddit_Icon_FullColor-1_2023-11-29-161416_munx.jpg", size="md", color="transparent")
-        with ui.button(color="purple-10", on_click=lambda: ui.navigate.to('/slack/login')).props("outline").tooltip("Continue with Slack"):
-            ui.avatar("img:https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png", square=True, size="md", color="transparent")
-    return view
-
-def _render_settings(settings: dict, user: dict):  
-    async def delete_user():     
-        # TODO: add a warning dialog   
-        if user:
-            espressops.unregister_user(user)
-            ui.navigate.to("/logout")
+    user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
 
     def update_connection(source, connect):        
         if user and not connect:
@@ -223,6 +205,33 @@ def _render_settings(settings: dict, user: dict):
             del user[espressops.CONNECTIONS][source]
         else:
             ui.navigate.to(f"/{source}/login")
+
+    if user:
+        ui.link("u/"+user[K_ID], target=f"/u/{user[K_ID]}").classes("text-bold")
+        with ui.row(wrap=False, align_items="stretch").classes("w-full gap-0"):  
+            with ui.column(align_items="stretch"):
+                # sequencing of bind_value and on_value_change is important.
+                # otherwise the value_change function will be called every time the page loads
+                ui.switch(text="Reddit", value=user_connected(REDDIT), on_change=lambda e: update_connection(REDDIT, e.sender.value)).tooltip("Link/Unlink Connection")
+                ui.switch(text="Slack", value=user_connected(SLACK), on_change=lambda e: update_connection(SLACK, e.sender.value)).tooltip("Link/Unlink Connection")
+            ui.space()
+            with ui.column(align_items="stretch").classes("gap-1"):
+                _render_user_image(user)
+                ui.button(text="Log out", icon="logout", color="negative", on_click=lambda: ui.navigate.to("/logout")).props("dense unelevated size=sm")
+    else:
+        with ui.label("Sign-up/Log-in").classes("text-subtitle1"):
+            with ui.row(wrap=False, align_items="center"):
+                with ui.button(color="orange-10", on_click=lambda: ui.navigate.to("/reddit/login")).props("outline").tooltip("Continue with Reddit"):
+                    ui.avatar("img:https://www.redditinc.com/assets/images/site/Reddit_Icon_FullColor-1_2023-11-29-161416_munx.jpg", size="md", color="transparent")
+                with ui.button(color="purple-10", on_click=lambda: ui.navigate.to('/slack/login')).props("outline").tooltip("Continue with Slack"):
+                    ui.avatar("img:https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png", square=True, size="md", color="transparent")    
+
+def _render_settings(settings: dict, user: dict):  
+    async def delete_user():     
+        # TODO: add a warning dialog   
+        if user:
+            espressops.unregister_user(user)
+            ui.navigate.to("/logout")
 
     async def save_session_settings():
         global save_lock, save_timer
@@ -234,32 +243,26 @@ def _render_settings(settings: dict, user: dict):
                 save_timer.start()
 
     _render_login_status(settings, user)
+    ui.separator()
 
     ui.label('Preferences').classes("text-subtitle1")
     # sequencing of bind_value and on_value_change is important.
     # otherwise the value_change function will be called every time the page loads
-    with ui.label().bind_text_from(settings['search'], "last_ndays", lambda x: f"Last {x} days").classes("w-full"):
-        ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays").on_value_change(save_session_settings)        
+    with ui.label().bind_text_from(settings['search'], "last_ndays", lambda x: f"Time Window: Last {x} Days").classes("w-full"):
+        ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays").on_value_change(save_session_settings)     
     ui.select(
         label="Topics of Interest", 
-        options=_get_system_topic_options(), 
+        options=get_system_topic_options(), 
         multiple=True,
         with_input=True).bind_value(settings['search'], 'topics').on_value_change(save_session_settings).props("use-chips filled").classes("w-full")
     
-    ui.separator()
-
-    ui.label('Accounts').classes("text-subtitle1")
-    user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
-    reddit_connect = ui.switch(text="Reddit", value=user_connected(REDDIT)).on_value_change(lambda: update_connection(REDDIT, reddit_connect.value)).tooltip("Link/Unlink Connection")
-    slack_connect = ui.switch(text="Slack", value=user_connected(SLACK)).on_value_change(lambda: update_connection(SLACK, slack_connect.value)).tooltip("Link/Unlink Connection")
-
     if user:
         ui.space()
         ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
 def render_user_registration(settings: dict, temp_user: dict, success_func: Callable, failure_func: Callable):
     with render_header():
-        ui.label(APP_NAME).classes("text-bold app-name")
+        ui.label(APP_NAME).classes("text-bold")
 
     if not temp_user:
         ui.label("You really thought I wouldn't check for this?!")
@@ -294,9 +297,8 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
         with ui.step("Tell Me Your Dreams") :
             ui.label("Personalization").classes("text-h6")
             with ui.row(wrap=False, align_items="center").classes("w-full"):
-                ui.label("User ID")
                 temp_user[K_ID] = espressops.convert_new_userid(f"{temp_user['name']}@{temp_user[K_SOURCE]}")
-                ui.input().bind_value(temp_user, K_ID).props("outlined").tooltip("We are saving this one") 
+                ui.input(label = "User ID").bind_value(temp_user, K_ID).props("outlined")
                 _render_user_image(temp_user)        
             ui.label("Your Interests")      
             if temp_user['source'] == "reddit":     
@@ -304,7 +306,7 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
                 ui.label("- or -").classes("text-caption self-center")                         
             ui.select(
                 label="Topics", with_input=True, multiple=True, 
-                options=_get_system_topic_options()
+                options=get_system_topic_options()
             ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
 
             with ui.stepper_navigation():
@@ -313,19 +315,19 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
 
 def _render_user_image(user):  
     if user and user.get(espressops.IMAGE_URL):
-        ui.image(user.get(espressops.IMAGE_URL)).classes("w-28 h-28")
+        ui.image(user.get(espressops.IMAGE_URL))
 
 def render_login_failed(success_forward, failure_forward):
     with render_header():
-        ui.label(APP_NAME).classes("text-bold app-name")
+        ui.label(APP_NAME).classes("text-bold")
 
     ui.label("Welp! That didn't work").classes("self-center")
     with ui.row(align_items="stretch").classes("w-full").style("justify-content: center;"):
         ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
         ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
 
-def _get_system_topic_options():    
+def get_system_topic_options():    
     return {topic[K_ID]: topic[K_TEXT] for topic in espressops.get_system_categories()}
 
-def _get_user_topic_values(registered_user):
+def get_user_topic_values(registered_user):
     return [topic[K_ID] for topic in espressops.get_categories(registered_user)]

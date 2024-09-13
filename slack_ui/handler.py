@@ -72,19 +72,19 @@ def _process_prompt(prompt, userid, say):
         _new_message_queue(
             settings,
             beanops.search(
-                query=result.query, tags=None, kinds=None, last_ndays=None, start_index=0, topn=LOCAL_MAX_LIMIT))   
+                query=result.query, tags=None, kinds=None, last_ndays=None, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))   
         beans, left = _dequeue_message(settings)
     if result.task in ["lookfor", "search"]: 
         _new_message_queue(
             settings,
             beanops.search(
-                query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=LOCAL_MAX_LIMIT))        
+                query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))        
         beans, left = _dequeue_message(settings)
     if result.task in ["trending"]: 
         _new_message_queue(
             settings,
             beanops.trending(
-                query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=LOCAL_MAX_LIMIT))        
+                urls=None, categories=result.query, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=LOCAL_MAX_LIMIT))        
         beans, left = _dequeue_message(settings)
     if result.task == "more":
         beans, left = _dequeue_message(settings)
@@ -101,7 +101,7 @@ def handle_trending_in_category(ack, action, body, say):
     settings = session_settings(body['user']['id'])
     _new_message_queue(
         settings,
-        beanops.trending(None, action['value'], None, DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
+        beanops.trending(None, action['value'], DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
     _say_beans(beans, left, say, body['user']['id'])
     
@@ -111,7 +111,7 @@ def handle_trending_in_keyword(ack, action, body, say):
     settings = session_settings(body['user']['id'])
     _new_message_queue(
         settings,
-        beanops.trending(None, None, action['value'], DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
+        beanops.search(None, action['value'], DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
     _say_beans(beans, left, say, body['user']['id'])
    

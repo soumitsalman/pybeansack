@@ -35,11 +35,11 @@ def trending_tags(urls: tuple[str], categories: str|tuple[str], kinds: str|tuple
     return beansack.query_top_tags(filter=_create_filter(urls, categories, None, kinds, last_ndays), limit=topn)
     
 @cached(TTLCache(maxsize=CACHE_SIZE, ttl=ONE_HOUR))
-def search(query: str, tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int, start_index: int, topn: int):
+def search(query: str, tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int, min_score: float, start_index: int, topn: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(None, None, tags, kinds, last_ndays)
     if query:
-        return beansack.vector_search_beans(embedding=llmops.embed(query), filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
+        return beansack.vector_search_beans(embedding=llmops.embed(query), min_score=min_score, filter=filter, sort_by=TRENDING_AND_LATEST, limit=topn, projection=PROJECTION)
     else:
         return beansack.query_unique_beans(filter=filter, sort_by=TRENDING_AND_LATEST, skip=start_index, limit=topn)
     

@@ -52,7 +52,7 @@ body {
     }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 680px) {
     .app-name {
       display: none;
     }
@@ -91,8 +91,8 @@ def render_header():
     ui.colors(secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
 
-    with ui.header().classes(replace="row", add="header-container") as header:
-        with ui.avatar(square=True, color="transparent").style("justify-content: left;").tooltip("Espresso by Cafecit.io"):
+    with ui.header().classes(replace="row", add="header-container").classes("w-full") as header:        
+        with ui.avatar(square=True, color="transparent").tooltip("Espresso by Cafecit.io"):
             ui.image("images/cafecito.png")
     return header
 

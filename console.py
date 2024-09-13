@@ -27,7 +27,7 @@ def run_console():
             beans = beanops.search(query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)       
             
         if result.task in ["trending"]: 
-            beans = beanops.trending(query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)        
+            beans = beanops.trending(urls=None, categories=result.query, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=config.MAX_ITEMS_PER_PAGE)        
             
         if result.task == "exit":
             print("Exiting...")
