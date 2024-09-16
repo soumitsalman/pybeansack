@@ -28,28 +28,28 @@ def render_trending(settings, user, category: str, last_ndays: int):
     def _render():
         cat_label = espressops.category_label(category)
         if not cat_label:
-            render_text(INVALID_INPUT)
+            render_error_text(UNKNOWN)
             return
         _render_beans_page(user, banner=cat_label, urls=None, categories=category, last_ndays=last_ndays)
     render_shell(settings, user, "Trending", _render)
 
-def render_channel(settings, user, channel_id: str, last_ndays: int):
+def render_user_channel(settings, user, channel_id: str, last_ndays: int):
     def _render():
         if not espressops.get_user({K_ID: channel_id}):
-            render_text(CHANNEL_NOT_FOUND)
+            render_error_text(CHANNEL_NOT_FOUND)
             return
         urls = espressops.channel_content(channel_id)
         if urls:
             _render_beans_page(user, banner=channel_id, urls=urls, categories=None, last_ndays=last_ndays)
         else:
-            render_text(NOTHING_FOUND)
+            render_error_text(NOTHING_FOUND)
     render_shell(settings, user, "Trending", _render)
 
 def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int):
     urls = tuple(urls) if isinstance(urls, list) else urls
     categories =  tuple(categories) if isinstance(categories, list) else categories
     if banner:
-        render_text_banner(banner)
+        render_banner_text(banner)
 
     background_tasks.create_lazy(_load_and_render_trending_tags(ui.element(), urls, categories, None, last_ndays, DEFAULT_LIMIT), name=f"trending-tags-{categories}")
     render_separator()
@@ -116,10 +116,10 @@ async def _load_and_render_trending_beans(holder: ui.element, urls, categories, 
         if more:
             more_button = ui.button("More Stories", on_click=next_page).props("unelevated icon-right=chevron_right")
 
-def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: int, accuracy: float):
+def render_search(settings, user, query: str, tag: str, kinds, last_ndays: int, accuracy: float):
     def _render():
         process_prompt = lambda: ui.navigate.to(make_navigation_target("/search", q=prompt_input.value, kinds=kinds_panel.value, acc=accuracy_panel.value)) 
-        banner = query or keyword 
+        banner = query or tag 
         with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
             .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
             ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
@@ -130,19 +130,19 @@ def render_search(settings, user, query: str, keyword: str, kinds, last_ndays: i
                 kinds_panel = ui.toggle(options={NEWS:"News", BLOG:"Blogs", POST:"Posts", None:"All"}).props("unelevated no-caps")
         
         if banner: # means there can be a search result            
-            render_text_banner(banner)            
-            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, keyword, tuple(kinds) if kinds else None, last_ndays, accuracy), name=f"search-{banner}")
+            render_banner_text(banner)            
+            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, tag, tuple(kinds) if kinds else None, last_ndays, accuracy), name=f"search-{banner}")
     
     render_shell(settings, user, "Search", _render)
 
-async def _search_and_render_beans(user: dict, holder: ui.element, query, keyword, kinds, last_ndays, accuracy):         
+async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, kinds, last_ndays, accuracy):         
     count = 0
     if query:            
-        result = await run.io_bound(beanops.search, query=query, tags=keyword, kinds=kinds, last_ndays=last_ndays, min_score=accuracy or DEFAULT_ACCURACY, start_index=0, topn=MAX_LIMIT)
+        result = await run.io_bound(beanops.search, query=query, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=accuracy or DEFAULT_ACCURACY, start_index=0, topn=MAX_LIMIT)
         count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
-    elif keyword:
-        count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=keyword, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
-            lambda start: beanops.search(query=None, tags=keyword, kinds=kinds, last_ndays=last_ndays, min_score=None, start_index=start, topn=MAX_ITEMS_PER_PAGE)
+    elif tag:
+        count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=tag, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
+            lambda start: beanops.search(query=None, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=None, start_index=start, topn=MAX_ITEMS_PER_PAGE)
 
     holder.clear()
     with holder:
@@ -151,18 +151,18 @@ async def _search_and_render_beans(user: dict, holder: ui.element, query, keywor
             return
         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
 
-# def _trigger_search(settings, prompt):   
-#     result = prompt_parser.console_parser.parse(prompt, settings['search'])
-#     if not result.task:
-#         ui.navigate.to(make_navigation_target("/search", q=result.query))
-#     if result.task in ["lookfor", "search"]:
-#         ui.navigate.to(make_navigation_target("/search", q=result.query, days=result.last_ndays))
-#     if result.task in ["trending"]:
-#         ui.navigate.to(make_navigation_target("/c", q=result.query, days=result.last_ndays))
-        
+def render_document(settings, user, document):
+    def _render():
+        filepath = f"./documents/{document}.md"
+        if not os.path.exists(filepath):
+            return render_error_text(UNKNOWN)
+        with open(filepath, 'r') as file:
+            return ui.markdown(file.read())
+    render_shell(settings, user, None, _render)
+       
 def render_shell(settings, user, current_tab: str, render_func: Callable):
     def render_topics_menu(topic):
-        return (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/c/{topic}", days=settings['search']['last_ndays'])))
+        return (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/t/{topic}", days=settings['search']['last_ndays'])))
 
     def navigate(selected_tab):
         if selected_tab == "Home":
@@ -188,12 +188,7 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
     with ui.column(align_items="stretch").classes("responsive-container"):
         render_func()
         render_separator()
-        with ui.row(align_items="center").classes("text-caption w-full").style("justify-content: center;"):
-            ui.markdown("[[Terms & Conditions](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
-            ui.markdown("[[Security & Privacy Policy](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
-            ui.markdown("[[Project Cafecito](https://github.com/soumitsalman/espresso/blob/main/README.md)]")
-            ui.markdown("[[About Us](https://github.com/soumitsalman/espresso/blob/main/documents/about-us.md)]")
-        ui.label("Copyright © 2024 Project Cafecito. All rights reserved.").classes("text-caption w-full text-center")
+        render_footer_text() #.style("justify-content: center;")
 
 def _render_login_status(settings: dict, user: dict):
     user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
@@ -284,12 +279,13 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
             settings['search']['topics'] = new_topics
             sender.props(":loading=false")
     
-    render_text_banner("You Look New! Let's Get You Signed-up.")
+    render_banner_text("You Look New! Let's Get You Signed-up.")
     with ui.stepper().props("vertical").classes("w-full") as stepper:
         with ui.step("Sign Your Life Away") :
             ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
-            ui.link("What is Espresso", "https://github.com/soumitsalman/espresso/blob/main/README.md", new_tab=True)
-            ui.link("Usage Terms & Policy", "https://github.com/soumitsalman/espresso/blob/main/documents/user-policy.md", new_tab=True)
+            ui.link("What is Espresso", "/docs/espresso", new_tab=True)
+            ui.link("Terms of Use", "/docs/terms-of-use", new_tab=True)
+            ui.link("Privacy Policy", "/docs/privacy-policy", new_tab=True)
             user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
             with ui.stepper_navigation():
                 ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")

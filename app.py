@@ -143,21 +143,24 @@ def home():
 @ui.page("/search")
 def search(q: str=None, tag: str=None, kind: str=None, days: int=config.DEFAULT_WINDOW, acc: float=config.DEFAULT_ACCURACY):
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, keyword=tag, kind=kind, days=days, acc=acc) 
+    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, tag=tag, kind=kind, days=days, acc=acc) 
     web_ui.pages.render_search(settings, logged_in_user(), q, tag, kind, min(days, config.MAX_WINDOW), accuracy=acc)
 
-@ui.page("/c/{category}")
+@ui.page("/t/{category}")
 def trending(category: str, days: int=config.DEFAULT_WINDOW):      
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/c/{category}", days=days) 
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/t/{category}", days=days) 
     web_ui.pages.render_trending(settings, logged_in_user(), category.lower(), min(days, config.MAX_WINDOW) )
 
-@ui.page("/u/{channel_id}")
-def channel(channel_id: str, days: int=config.DEFAULT_WINDOW):
+@ui.page("/u/{userid}")
+def user_channel(userid: str, days: int=config.DEFAULT_WINDOW):
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/u/{channel_id}", days=days) 
-    web_ui.pages.render_channel(settings, logged_in_user(), channel_id, min(days, config.MAX_WINDOW))
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/u/{userid}", days=days) 
+    web_ui.pages.render_user_channel(settings, logged_in_user(), userid, min(days, config.MAX_WINDOW))
 
+@ui.page("/docs/{doc}")
+def document(doc):
+    web_ui.pages.render_document(session_settings(), logged_in_user(), doc)
 
 def initialize_server():
     # embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
@@ -184,4 +187,4 @@ def initialize_server():
     )
 
 initialize_server()
-ui.run(title=config.APP_NAME, favicon="images/cafecito-ico.ico", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3)
+ui.run(title=config.APP_NAME, favicon="images/favicon.jpg", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3, dark=True)

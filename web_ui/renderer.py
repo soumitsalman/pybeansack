@@ -7,6 +7,15 @@ from icecream import ic
 from yarl import URL
 from shared.messages import *
 
+#b59475 → #604934 (Light Beige/Brown)
+#b49374 → #604933 (Beige/Brown)
+#9d7456 → #4e392a (Deep Coffee Brown)
+#b79579 → #624935 (Warm Beige)
+#b69478 → #624934 (Soft Brown) 
+
+PRIMARY_COLOR = "#9d7456"
+SECONDARY_COLOR = "#604933" #"#ADD8E6"
+
 # themes
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Quicksand&display=swap');
@@ -14,11 +23,11 @@ CSS = """
     
 body {
     font-family: 'Quicksand', serif;
-    font-style: normal;
-    color: #0D0D0D;        
+    font-style: normal;  
+    color: #604934 
 }
 
-.text-caption { color: gray; }
+.text-caption { color: #624934; }
 
 .bean-header {
     font-weight: bold;
@@ -58,12 +67,12 @@ body {
     }
 }
 """
-SECONDARY_COLOR = "#ADD8E6"
+
 IMAGE_DIMENSIONS = "w-32 h-24"
 
 bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
 bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
-tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", keyword=tag))
+tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", tag=tag))
 ellipsis_text = lambda text, cap: text if len(text)<=cap else f"{text[:cap-3]}..."
 is_bean_title_too_long = lambda bean: len(bean.title) >= 175
 
@@ -79,16 +88,20 @@ def render_settings_as_text(settings: dict):
 def render_separator():
     return ui.separator().style("height: 5px;").classes("w-full m-0 p-0 gap-0")
 
-def render_text_banner(banner: str):
+def render_banner_text(banner: str):
     with ui.label(banner).classes("text-h5") as view:
         ui.separator().style("margin-top: 5px;")
     return view
 
-def render_text(msg: str):
+def render_error_text(msg: str):
     return ui.label(msg).classes("text-h5 self-center text-center")
 
+def render_footer_text():
+    text = "[[Terms of Use](/docs/terms-of-use)]   [[Privacy Policy](/docs/privacy-policy)]   [[Espresso](/docs/espresso)]   [[Project Cafecito](/docs/project-cafecito)]\n\nCopyright © 2024 Project Cafecito. All rights reserved."
+    return ui.markdown(text).classes("w-full text-caption text-center")
+
 def render_header():
-    ui.colors(secondary=SECONDARY_COLOR)
+    ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
 
     with ui.header().classes(replace="row", add="header-container").classes("w-full") as header:        
@@ -104,7 +117,7 @@ def render_tags(tags: list[str]):
 def render_bean_tags_as_hashtag(bean: Bean):
     format_tag = lambda tag: "#"+"".join(item for item in tag.split())
     if bean.tags:
-        return [ui.link(ellipsis_text(format_tag(tag), 30), target=make_navigation_target("/search", keyword=tag)).classes('text-caption') for tag in bean.tags[:3]]
+        return [ui.link(ellipsis_text(format_tag(tag), 30), target=make_navigation_target("/search", tag=tag)).classes('text-caption') for tag in bean.tags[:3]]
 
 def render_bean_tags_as_chips(bean: Bean):
     with ui.row().classes("gap-0") as view:
@@ -131,7 +144,7 @@ def render_bean_stats(bean: Bean, stack: bool):
 def render_bean_source(bean: Bean):
     with ui.row(wrap=False, align_items="center").classes("gap-0") as view:
         ui.avatar("img:"+beanops.favicon(bean), size="xs", color="transparent")
-        ui.link(ellipsis_text(bean.source, 30), bean.url)
+        ui.link(ellipsis_text(bean.source, 30), bean.url, new_tab=True)
     return view
 
 def render_bean_banner(bean: Bean):
@@ -156,14 +169,15 @@ def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
             msg = PUBLISHED if espressops.publish(user, bean.url) else UNKNOWN_ERROR
         ui.notify(msg)
 
+    ACTION_BUTTON_PROPS = f"flat size=sm no-caps"
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
         render_bean_source(bean)
         ui.space()
-        with ui.button_group().props("unelevated dense flat text-color=gray size=sm"):            
-            ui.button(icon="publish", on_click=publish).props("flat text-color=gray size=sm").tooltip("Publish")
-            ui.button(icon="share", on_click=lambda: ui.notify(NO_ACTION)).props("flat text-color=gray size=sm").tooltip("Share")  
+        with ui.button_group().props(f"unelevated dense flat"):            
+            ui.button(icon="publish", on_click=publish).props(ACTION_BUTTON_PROPS).tooltip("Publish")
+            ui.button(icon="share", on_click=lambda: ui.notify(NO_ACTION)).props(ACTION_BUTTON_PROPS).tooltip("Share")  
             if show_related_items and related_count:
-                ExpandButton(text=count_label).on_click(lambda e: show_related_items(e.sender.value)).props("flat text-color=gray size=sm no-caps")
+                ExpandButton(text=count_label).on_click(lambda e: show_related_items(e.sender.value)).props(ACTION_BUTTON_PROPS)
 
 def render_whole_bean(user, bean: Bean):
     with ui.element() as view:
@@ -221,7 +235,7 @@ def render_beans_as_list(beans: list[Bean], render_articles: bool, bean_render_f
 def render_beans_as_carousel(beans: list[Bean], bean_render_func: Callable):
     with ui.carousel(animated=True, arrows=True).props(f"swipeable control-color=primary").classes("h-full") as view:          
         for bean in beans:
-            with ui.carousel_slide(name=bean.url).style('background-color: lightgray; border-radius: 10px;').classes("h-full"):
+            with ui.carousel_slide(name=bean.url).style(f'background-color: {SECONDARY_COLOR}; border-radius: 10px;').classes("h-full"):
                 bean_render_func(bean)
     return view
 

@@ -23,5 +23,3 @@ Today, Espresso doesn’t track per-user engagement or fine-tune itself based on
 Join us on this journey as we brew the perfect cup of content just for you.
 
 **Espresso** — Stay ahead, effortlessly.
-
-[Terms of Use](/docs/terms-of-use) | [Privacy Policy](/docs/privacy-policy) | [Project Cafecito](/docs/project-cafecito) | [About Us](/docs/about-us) | [Architecture & Design](/docs/architecture-design) | [Blogs on Lessons Learnt](https://medium.com/@soumitsr)

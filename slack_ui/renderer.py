@@ -80,7 +80,7 @@ def render_settings(settings):
 def render_tags(tags: list[str]):
     return {
         "type": "actions",
-        "elements": [render_button("keyword", tag) for tag in tags]
+        "elements": [render_button("tag", tag) for tag in tags]
     }
     
 def render_button(action_type, value, label = None, style = None): 

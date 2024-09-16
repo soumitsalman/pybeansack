@@ -8,6 +8,7 @@ from typing import Callable
 from icecream import ic
 from shared.config import *
 
+# TODO: add humanize
 date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 rounded_number = lambda counter: str(counter) if counter < 100 else str(99)+'+'
 rounded_number_with_max = lambda counter, top: str(counter) if counter <= top else str(top)+'+'
