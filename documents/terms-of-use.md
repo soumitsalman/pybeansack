@@ -1,4 +1,4 @@
-# Terms of Use
+# Terms of Service
 
 **Effective Date:** September 16, 2024
 
