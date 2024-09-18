@@ -8,12 +8,11 @@ load_dotenv()
 logger = utils.create_logger("Espresso")
 
 from authlib.integrations.starlette_client import OAuth
-from starlette.config import Config
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
-from pybeansack.embedding import BeansackEmbeddings
 from nicegui import app, ui
-from shared import beanops, config, espressops
+from fastapi.responses import FileResponse, Response
+from shared import beanops, config, espressops, messages
 import web_ui.pages
 import web_ui.renderer
 from slack_bolt.adapter.fastapi import SlackRequestHandler
@@ -122,6 +121,13 @@ def logout():
     log_out_user()
     return RedirectResponse(last_page())
 
+@app.get("/images/{name}")
+async def image(name: str):
+    path = "./images/"+name
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/png")
+    return Response(content=messages.UNKNOWN, status_code=404)
+
 @ui.page('/login-failed')
 async def login_failed(source: str):
     web_ui.pages.render_login_failed(f'/{source}/login', last_page())
@@ -159,8 +165,11 @@ def user_channel(userid: str, days: int=config.DEFAULT_WINDOW):
     web_ui.pages.render_user_channel(settings, logged_in_user(), userid, min(days, config.MAX_WINDOW))
 
 @ui.page("/docs/{doc}")
-def document(doc):
-    web_ui.pages.render_document(session_settings(), logged_in_user(), doc)
+async def document(doc: str):
+    path = f"./documents/{doc}.md"
+    if not os.path.exists(path):
+        return Response(content=messages.UNKNOWN, status_code=404)
+    web_ui.pages.render_document(session_settings(), logged_in_user(), path)        
 
 def initialize_server():
     # embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)

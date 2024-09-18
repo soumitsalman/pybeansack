@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 from pybeansack.datamodels import *
-from shared import beanops, espressops
+from shared import beanops, config, espressops
 from web_ui.custom_ui import *
 from nicegui import ui
 from icecream import ic
-from yarl import URL
+from urllib.parse import urlencode
 from shared.messages import *
 
 #b59475 → #604934 (Light Beige/Brown)
@@ -13,8 +13,8 @@ from shared.messages import *
 #b79579 → #624935 (Warm Beige)
 #b69478 → #624934 (Soft Brown) 
 
-PRIMARY_COLOR = "#9d7456"
-SECONDARY_COLOR = "#604933" #"#ADD8E6"
+PRIMARY_COLOR = "#4e392a"
+SECONDARY_COLOR = "#b79579"
 
 # themes
 CSS = """
@@ -23,11 +23,11 @@ CSS = """
     
 body {
     font-family: 'Quicksand', serif;
-    font-style: normal;  
-    color: #604934 
+    font-style: normal; 
+    color: #BBBBBB;
 }
 
-.text-caption { color: #624934; }
+.text-caption { color: #999999; }
 
 .bean-header {
     font-weight: bold;
@@ -70,17 +70,27 @@ body {
 
 IMAGE_DIMENSIONS = "w-32 h-24"
 
+REDDIT_ICON_URL = "img:/images/reddit.png"
+SLACK_ICON_URL = "img:/images/slack.png"
+TWITTER_ICON_URL = "img:/images/twitter-x.png"
+LINKEDIN_ICON_URL = "img:/images/linkedin.png"
+ESPRESSO_ICON_URL = "img:/images/cafecito.png"
+
+go_to = lambda url: ui.navigate.to(url, new_tab=True)
+reddit_share_url = lambda bean: make_navigation_target("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
+twitter_share_url = lambda bean: make_navigation_target("https://x.com/intent/tweet", url=bean.url, text=bean.title)
+linkedin_share_url = lambda bean: make_navigation_target("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, source=config.host_url(), mini=True)
+
 bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
 bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
 tag_route = lambda tag: ui.navigate.to(make_navigation_target("/search", tag=tag))
 ellipsis_text = lambda text, cap: text if len(text)<=cap else f"{text[:cap-3]}..."
 is_bean_title_too_long = lambda bean: len(bean.title) >= 175
 
-def make_navigation_target(target, **kwargs):
-    url_val = URL().with_path(target)    
+def make_navigation_target(base_url, **kwargs):
     if kwargs:
-        url_val = url_val.with_query({key:value for key, value in kwargs.items() if value})
-    return str(url_val)
+        return base_url+"?"+urlencode(query={key:value for key, value in kwargs.items() if value})
+    return base_url
 
 def render_settings_as_text(settings: dict):
     return ui.markdown("Currently showing news, blogs and social media posts on %s." % (", ".join([f"**{espressops.category_label(topic)}**" for topic in settings['topics']])))
@@ -103,15 +113,13 @@ def render_footer_text():
 def render_header():
     ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)
     ui.add_css(content=CSS)
-
-    with ui.header().classes(replace="row", add="header-container").classes("w-full") as header:        
-        with ui.avatar(square=True, color="transparent").tooltip("Espresso by Cafecit.io"):
-            ui.image("images/cafecito.png")
+    with ui.header().classes(replace="row", add="header-container").classes("w-full") as header:     
+        ui.image("images/cafecito.png").props("width=3rem height=3rem")
     return header
 
 def render_tags(tags: list[str]):
     with ui.row().classes("gap-0") as view:
-        [ui.chip(text, on_click=lambda text=text: tag_route(text)).props('outline dense') for text in tags]
+        [ui.chip(text, color="secondary", on_click=lambda text=text: tag_route(text)).props('outline dense') for text in tags]
     return view
 
 def render_bean_tags_as_hashtag(bean: Bean):
@@ -121,7 +129,7 @@ def render_bean_tags_as_hashtag(bean: Bean):
 
 def render_bean_tags_as_chips(bean: Bean):
     with ui.row().classes("gap-0") as view:
-        [ui.chip(ellipsis_text(text, 30), on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]] if bean.tags else None
+        [ui.chip(ellipsis_text(text, 30), color="secondary", on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]] if bean.tags else None
     return view
     
 def render_bean_title(bean: Bean):
@@ -153,29 +161,38 @@ def render_bean_banner(bean: Bean):
             with ui.element():   
                 ui.image(bean.image_url).classes(IMAGE_DIMENSIONS)   
                 render_bean_stats(bean, stack=True) 
-        with ui.element():
+        with ui.element().classes("w-full"):
             render_bean_title(bean) 
             if not bean.image_url:        
                 render_bean_stats(bean, stack=False)    
     return view
 
+async def publish(user, bean: Bean):
+    msg = LOGIN_FIRST
+    if user:
+        msg = PUBLISHED if espressops.publish(user, bean.url) else UNKNOWN_ERROR
+    ui.notify(msg)
+
+def render_bean_shares(user, bean: Bean):
+    share_button = lambda url_func, icon: ui.button(on_click=lambda: go_to(url_func(bean)), icon=icon).props("flat")
+    with ui.button_group().props("unelevated").classes("gap-0 m-0 p-0") as view:
+        share_button(reddit_share_url, REDDIT_ICON_URL)
+        share_button(linkedin_share_url, LINKEDIN_ICON_URL).tooltip("Share on LinkedIn")
+        share_button(twitter_share_url, TWITTER_ICON_URL).tooltip("Share on X")
+        ui.button(on_click=lambda: publish(user, bean), icon=ESPRESSO_ICON_URL).props("flat").tooltip("Publish on Espresso")
+    return view
+
 def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
     related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)
     count_label = rounded_number_with_max(related_count, 5)+" related "+("story" if related_count<=1 else "stories")
-    
-    async def publish():
-        msg = LOGIN_FIRST
-        if user:
-            msg = PUBLISHED if espressops.publish(user, bean.url) else UNKNOWN_ERROR
-        ui.notify(msg)
 
-    ACTION_BUTTON_PROPS = f"flat size=sm no-caps"
+    ACTION_BUTTON_PROPS = f"flat size=sm no-caps color=secondary"
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
         render_bean_source(bean)
         ui.space()
-        with ui.button_group().props(f"unelevated dense flat"):            
-            ui.button(icon="publish", on_click=publish).props(ACTION_BUTTON_PROPS).tooltip("Publish")
-            ui.button(icon="share", on_click=lambda: ui.notify(NO_ACTION)).props(ACTION_BUTTON_PROPS).tooltip("Share")  
+        with ui.button_group().props(f"unelevated dense flat"):  
+            with ui.dropdown_button(icon="share").props(ACTION_BUTTON_PROPS):
+                render_bean_shares(user, bean)
             if show_related_items and related_count:
                 ExpandButton(text=count_label).on_click(lambda e: show_related_items(e.sender.value)).props(ACTION_BUTTON_PROPS)
 
@@ -211,7 +228,6 @@ def render_expandable_bean(user, bean: Bean, show_related: bool = True):
     return view
 
 def render_beans_as_paginated_list(get_beans: Callable, items_count: int, bean_render_func: Callable):
-    # page_index = {"page_index": 1}
     page_count = min(MAX_PAGES, -(-items_count//MAX_ITEMS_PER_PAGE))
 
     @ui.refreshable
@@ -235,7 +251,7 @@ def render_beans_as_list(beans: list[Bean], render_articles: bool, bean_render_f
 def render_beans_as_carousel(beans: list[Bean], bean_render_func: Callable):
     with ui.carousel(animated=True, arrows=True).props(f"swipeable control-color=primary").classes("h-full") as view:          
         for bean in beans:
-            with ui.carousel_slide(name=bean.url).style(f'background-color: {SECONDARY_COLOR}; border-radius: 10px;').classes("h-full"):
+            with ui.carousel_slide(name=bean.url).style(f'background-color: #333333; border-radius: 10px;').classes("h-full"):
                 bean_render_func(bean)
     return view
 

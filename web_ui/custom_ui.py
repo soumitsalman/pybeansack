@@ -132,7 +132,7 @@ class HighlightableItem(ui.item):
         return self
     
 class ExpandButton(ui.button):
-    def __init__(self, icon="keyboard_arrow_down", expanded_icon="keyboard_arrow_up", *args, **kwargs):        
+    def __init__(self, icon="arrow_drop_down", expanded_icon="arrow_drop_up", *args, **kwargs):        
         self.value = False
         self.expanded_icon = expanded_icon
         self.unexpanded_icon = icon

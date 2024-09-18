@@ -151,12 +151,9 @@ async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, k
             return
         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
 
-def render_document(settings, user, document):
+def render_document(settings, user, docpath):
     def _render():
-        filepath = f"./documents/{document}.md"
-        if not os.path.exists(filepath):
-            return render_error_text(UNKNOWN)
-        with open(filepath, 'r') as file:
+        with open(docpath, 'r') as file:
             return ui.markdown(file.read())
     render_shell(settings, user, None, _render)
        
@@ -181,7 +178,8 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
             settings['search']['topics'] = sorted(settings['search']['topics'])
             with ui.tab(name="Trending", label="", icon='trending_up').tooltip("Trending News & Posts"):
                 BindableNavigationMenu(render_topics_menu).bind_items_from(settings['search'], 'topics') 
-            ui.tab(name="Search", label="", icon="search").tooltip("Search")         
+            ui.tab(name="Search", label="", icon="search").tooltip("Search")
+                 
         ui.label(APP_NAME).classes("text-bold app-name")
         ui.button(icon="settings", on_click=settings_drawer.toggle).props("flat stretch color=white").style("margin-left: auto").tooltip("Settings")
 
@@ -216,10 +214,8 @@ def _render_login_status(settings: dict, user: dict):
     else:
         with ui.label("Sign-up/Log-in").classes("text-subtitle1"):
             with ui.row(wrap=False, align_items="center"):
-                with ui.button(color="orange-10", on_click=lambda: ui.navigate.to("/reddit/login")).props("outline").tooltip("Continue with Reddit"):
-                    ui.avatar("img:https://www.redditinc.com/assets/images/site/Reddit_Icon_FullColor-1_2023-11-29-161416_munx.jpg", size="md", color="transparent")
-                with ui.button(color="purple-10", on_click=lambda: ui.navigate.to('/slack/login')).props("outline").tooltip("Continue with Slack"):
-                    ui.avatar("img:https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png", square=True, size="md", color="transparent")    
+                ui.button(icon=REDDIT_ICON_URL, color="orange-10", on_click=lambda: ui.navigate.to("/reddit/login")).props("outline").tooltip("Continue with Reddit")
+                ui.button(icon=SLACK_ICON_URL, color="purple-10", on_click=lambda: ui.navigate.to('/slack/login')).props("outline").tooltip("Continue with Slack")
 
 def _render_settings(settings: dict, user: dict):  
     async def delete_user():     
@@ -286,7 +282,7 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
             ui.link("What is Espresso", "/docs/espresso", new_tab=True)
             ui.link("Terms of Use", "/docs/terms-of-use", new_tab=True)
             ui.link("Privacy Policy", "/docs/privacy-policy", new_tab=True)
-            user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above.").tooltip("We are legally obligated to ask you this question.")
+            user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above. And I agree to selling to the terms and conditions.").tooltip("We are legally obligated to ask you this question.")
             with ui.stepper_navigation():
                 ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
                 ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
