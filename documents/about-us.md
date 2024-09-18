@@ -14,11 +14,11 @@ Soumit has been a key member in the inception of multiple bleeding edge technolo
 **Daniel Oliver Vidaud**  
 [LinkedIn](https://www.linkedin.com/in/dvidaud/) | [Blog]([Blog - Personalized Transformations](https://personalizedtransformations.com/blog/))
 
-Daniel is a Cuban-American aerospace engineer, pilot, and polymath with a unique approach to improving corporate operations, governance, and strategic change. He is known for identifying small, counter-intuitive changes within complex organizations that lead to disproportionately large and sustainable returns, even at scale.
+Daniel is a Cuban-American aerospace engineer, pilot, and polymath who has worked to improve corporate operations, integrated governance, organizational ergonomics, and strategic change implementation. He is known for identifying small, counter-intuitive changes within complex organizations that result in disproportionally large and sustainable returns that remain stable at scale.
 
-A graduate of the University of Michigan with a degree in Aerospace Engineering, Daniel further expanded his knowledge through three rounds of graduate studies, earning two master’s degrees in business and organizational leadership. His diverse background includes licenses and certifications in HR, change management, project management, and executive coaching.
+He earned a bachelor's degree in Aerospace Engineering from the University of Michigan and went on to graduate school three times, publishing research in nanotechnology, teaching programming, and earning two master's degrees in business and organizational leadership. He maintains licenses and certifications in human resources, change management, traditional and agile project management, and executive coaching.
 
-Daniel began his career at Boeing as a propulsion aerodynamicist and led major cross-functional design and manufacturing integrations for the 777X airplane. In 2018, he ventured out as a consultant, applying his knowledge across diverse fields such as cybersecurity, food production, and digital marketing. Daniel is currently working on his first book, which explores the integration of neuropsychology, theology, fractal systems, music, and art in understanding the meaning of life and love.
+Daniel began his career in research and product development as a propulsion aerodynamicist for Boeing in Seattle, where he facilitated major, cross-functional design and manufacturing integrations as the lead project engineer for propulsion on the 777X airplane. In 2018, he left Boeing to start his own business to demonstrate that similar patterns existed across domains including cybersecurity, food production, digital marketing start-ups, among others.
 
 ### **Our Vision**
 
