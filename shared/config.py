@@ -92,6 +92,8 @@ def reddit_client_secret():
 
 def db_connection_str():
     return os.getenv("DB_CONNECTION_STRING")
+def sb_connection_str():
+    return os.getenv("SB_CONNECTION_STRING")
 def llm_api_key():
     return os.getenv("LLM_API_KEY")
 def llm_base_url():

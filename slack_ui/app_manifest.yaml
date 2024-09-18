@@ -1,22 +1,18 @@
 display_information:
   name: Espresso
   description: Expresso by Cafecit.io is an LLM powered news app
-  background_color: "#5c2600"
-  long_description: "Espresso by Cafecit.io is an LLM powered news app. Its aim is to bring to you the trending contents across media for that day and week. Espresso primarily focuses on technology news and their intersection with business and politics. \r
+  background_color: "#4e392a"
+  long_description: "Espresso: Your Daily Shot of Curated Insights \r
+    _How do I find stuff that is interesting?_ That was the question that sparked the creation of Espresso. It all began one breezy October evening, over cigars and some dubious moonshine shared with my long-time partner in questionable decisions, Danny. Among all the topics that came up, this one stuck: _How do we help people discover content that truly matters to them?_ Espresso, a product of Project Cafecito, is our attempt to answer that question. It’s a news and social media aggregator designed to deliver only the content that you care about.
+    
+    Espresso currently comes in a mobile-friendly web interface and as a Slack bot, designed to fit seamlessly into your daily workflow. While it’s still in the alpha phase, and yes, you might occasionally come across random texts like baa-baa-baananaaaa or bizarre categorizations that defy reason, we’re continuously refining our AI models to make it better. The slack app is focused ONLY on last 24 hours of news. For better visualization and more configurability, use the web version https://espresso.cafecito.tech which also includes social media feeds.
 
-    Espresso scrapes through different news sources and social media to collect the content and uses a suite of various small language models to create a digest of the contents for you.\r
+    Espresso is not a new social media platform, nor do we have any intention of making it one. The original content is hosted on various external sources (that are not us!). What we offer are AI-generated digests of this content, giving you a quick snapshot so you can decide whether the original is worth diving into. Our goal is to save you from wasting time on clickbait and shallow content.
 
-    Espresso is current in pre-alpha experimental phase and completely free to use. Privacy and Security is still a work in progress. We are currently in active development to add capabilities and fine-tuning your experience for efficient daily news consumption.\r
+    Today, Espresso doesn’t track per-user engagement or fine-tune itself based on your personal preferences — but that’s coming soon. We’re hard at work to make Espresso a smarter, more personalized tool so that every session feels like a quick, invigorating shot of espresso tailored to your tastes. Join us on this journey as we brew the perfect cup of content just for you.
 
-    Give it a try and follow our journey that literally started with optimizing our drive to an amaze-balls Cuban coffee shop in Miami.\r
+    Espresso — Stay ahead, effortlessly."
 
-    \r
-
-    -- \r
-
-    Soumit & Danny (AKA Manolo y Cabeza de Huevo)\r
-
-    Co-founders and Chaos Monkeys of Project Cafecito"
 features:
   app_home:
     home_tab_enabled: true
@@ -27,14 +23,14 @@ features:
     always_online: true
   slash_commands:
     - command: /espresso
-      url: https://espresso-app.azurewebsites.net/slack/commands
+      url: https://espresso.cafecito.tech/slack/commands
       description: Call Espresso bot from any channel in your workspace
       usage_hint: "trending -q 'top 10 stocks'"
       should_escape: false
 oauth_config:
   redirect_urls:
-    - https://espresso-app.azurewebsites.net/slack/oauth-redirect
-    - https://espresso-app.azurewebsites.net/slack/web/oauth-redirect
+    - https://espresso.cafecito.tech/slack/oauth-redirect
+    - https://espresso.cafecito.tech/slack/web/oauth-redirect
   scopes:
     bot:
       - app_mentions:read
@@ -50,7 +46,7 @@ oauth_config:
       - mpim:history
 settings:
   event_subscriptions:
-    request_url: https://espresso-app.azurewebsites.net/slack/events
+    request_url: https://espresso.cafecito.tech/slack/events
     bot_events:
       - app_home_opened
       - app_mention
@@ -60,7 +56,7 @@ settings:
       - message.mpim
   interactivity:
     is_enabled: true
-    request_url: https://espresso-app.azurewebsites.net/slack/actions
+    request_url: https://espresso.cafecito.tech/slack/actions
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

@@ -47,7 +47,7 @@ def set_logged_in_user(registered_user):
     settings = session_settings() 
     if espressops.PREFERENCES in registered_user:        
         settings['search']['last_ndays'] = registered_user[espressops.PREFERENCES]['last_ndays']
-    settings['search']['topics'] = web_ui.pages.get_user_topic_values(registered_user) or settings['search']['topics']
+    settings['search']['topics'] = espressops.get_user_category_ids(registered_user) or settings['search']['topics']
 
 def log_out_user():
     if 'logged_in_user' in app.storage.user:
@@ -126,7 +126,7 @@ async def image(name: str):
     path = "./images/"+name
     if os.path.exists(path):
         return FileResponse(path, media_type="image/png")
-    return Response(content=messages.UNKNOWN, status_code=404)
+    return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
 
 @ui.page('/login-failed')
 async def login_failed(source: str):
@@ -153,13 +153,19 @@ def search(q: str=None, tag: str=None, kind: str=None, days: int=config.DEFAULT_
     web_ui.pages.render_search(settings, logged_in_user(), q, tag, kind, min(days, config.MAX_WINDOW), accuracy=acc)
 
 @ui.page("/t/{category}")
-def trending(category: str, days: int=config.DEFAULT_WINDOW):      
+def trending(category: str, days: int=config.DEFAULT_WINDOW):    
+    if not web_ui.pages.category_exists(category):
+        return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
+    
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target(f"/t/{category}", days=days) 
     web_ui.pages.render_trending(settings, logged_in_user(), category.lower(), min(days, config.MAX_WINDOW) )
 
 @ui.page("/u/{userid}")
 def user_channel(userid: str, days: int=config.DEFAULT_WINDOW):
+    if not web_ui.pages.channel_exists(userid):
+        return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
+    
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target(f"/u/{userid}", days=days) 
     web_ui.pages.render_user_channel(settings, logged_in_user(), userid, min(days, config.MAX_WINDOW))
@@ -168,13 +174,13 @@ def user_channel(userid: str, days: int=config.DEFAULT_WINDOW):
 async def document(doc: str):
     path = f"./documents/{doc}.md"
     if not os.path.exists(path):
-        return Response(content=messages.UNKNOWN, status_code=404)
+        return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
     web_ui.pages.render_document(session_settings(), logged_in_user(), path)        
 
 def initialize_server():
     # embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
     beanops.initiatize(config.db_connection_str())
-    espressops.initialize(config.db_connection_str())
+    espressops.initialize(config.db_connection_str(), config.sb_connection_str())
     oauth.register(
         name=config.REDDIT,
         client_id=config.reddit_client_id(),

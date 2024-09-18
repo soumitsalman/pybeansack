@@ -18,34 +18,43 @@ class ContentType(str, Enum):
 
 class ParseResult (BaseModel):
     task: Optional[str] = None
+    urls: Optional[list[str]] = None
     query: Optional[str] = None
-    keyword: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[str|tuple[str]] = None
     kind: Optional[str] = None
     last_ndays: Optional[int] = None
     topn: Optional[int] = None
-    source: Optional[str|list[str]] = None
+    min_score: Optional[float] = None
+    source: Optional[str] = None
 
 class InteractiveInputParser:
     def __init__(self):
-        self.parser = argparse.ArgumentParser()
+        self.parser = argparse.ArgumentParser()        
         self.parser.add_argument('task', help='The main task')
-        self.parser.add_argument('-q', '--query', help='The search query')
-        self.parser.add_argument('-k', '--keyword', help='The keyword to search with')
-        self.parser.add_argument('-t', '--type', help='The type of content to search or to create.')    
+        self.parser.add_argument('urls', nargs='*', help='List of URLs to publish')
+        self.parser.add_argument('-q', '--query', help='The search query or category')
+        self.parser.add_argument('-t', '--tags', nargs='*', help='The type of content to search or to create.')
         self.parser.add_argument('-d', '--ndays', help='The last N days of data to retrieve. N should be between 1 - 30')
         self.parser.add_argument('-n', '--topn', help='The top N items to retrieve. Must be a positive int')
+        self.parser.add_argument('-a', '--acc', help="Precision score for search between 0 - 1")
         self.parser.add_argument('-s', '--source', help='Data source to pull from')
+        
         self.parser.format_help()
         
     def parse(self, prompt: str, defaults: dict): 
         try:
             args = self.parser.parse_args(shlex.split(prompt.lower()))
             return ParseResult(
-                task=args.task, 
+                task=args.task,
+                urls=args.urls,                 
                 query=args.query, 
-                keyword=args.keyword,
-                kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
+                category=args.query,
+                tags=(args.tags if isinstance(args.tags, str) else tuple(args.tags)) if args.tags else None,
+                # kind=_translate_ctype(getattr(ContentType, args.type.upper(), None)) if args.type else None,
                 last_ndays=int(args.ndays or defaults.get('last_ndays')), 
+                topn=int(args.topn) if args.topn else None,
+                min_score=min(1, max(0, float(args.acc))) if args.acc else None,
                 source=args.source)
         except:
             return ParseResult(task=None, query=prompt)

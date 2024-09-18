@@ -36,7 +36,7 @@ def session_settings(userid):
         if registered_user:
             sessions[userid] = {
                 "search": {
-                    "topics": espressops.get_categories(registered_user),
+                    "topics": espressops.get_user_category_ids(registered_user),
                     "last_ndays": registered_user[espressops.PREFERENCES]['last_ndays']
                 },
                 "user": registered_user
@@ -68,28 +68,34 @@ def _process_prompt(prompt, userid, say):
     settings = session_settings(userid)
     beans, left, response = None, None, None
     result = prompt_parser.console_parser.parse(prompt, settings['search'])
-    if not result.task:
-        _new_message_queue(
-            settings,
-            beanops.search(
-                query=result.query, tags=None, kinds=None, last_ndays=None, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))   
-        beans, left = _dequeue_message(settings)
     if result.task in ["lookfor", "search"]: 
         _new_message_queue(
             settings,
             beanops.search(
-                query=result.query, tags=result.keyword, kinds=result.kind, last_ndays=result.last_ndays, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))        
+                query=result.query, tags=result.tags, kinds=result.kind, last_ndays=result.last_ndays, min_score=result.min_score or DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))        
         beans, left = _dequeue_message(settings)
-    if result.task in ["trending"]: 
+    elif result.task in ["trending"]: 
         _new_message_queue(
             settings,
             beanops.trending(
                 urls=None, categories=result.query, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=LOCAL_MAX_LIMIT))        
         beans, left = _dequeue_message(settings)
-    if result.task == "more":
+    elif result.task == "more":
         beans, left = _dequeue_message(settings)
-    if result.task == "publish":
-        response = NO_ACTION        
+    elif result.task == "publish":
+        if 'user' in settings:
+            # the urls get enclosed within < > in slack. so removing them
+            res = espressops.publish(settings['user'], [url.strip('<>') for url in result.urls])
+            response = PUBLISHED if res else UNKNOWN_ERROR
+        else:
+            response =  LOGIN_FIRST      
+    else:
+        say(UNKNOWN_INPUT%result.query)
+        _new_message_queue(
+            settings,
+            beanops.search(
+                query=result.query, tags=None, kinds=None, last_ndays=None, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))   
+        beans, left = _dequeue_message(settings)
 
     _say_beans(beans, left, say, None)
     if response:
@@ -105,13 +111,13 @@ def handle_trending_in_category(ack, action, body, say):
     beans, left = _dequeue_message(settings)
     _say_beans(beans, left, say, body['user']['id'])
     
-@slack_app.action(re.compile("^keyword:*"))
+@slack_app.action(re.compile("^tag:*"))
 def handle_trending_in_keyword(ack, action, body, say):
     ack()
     settings = session_settings(body['user']['id'])
     _new_message_queue(
         settings,
-        beanops.search(None, action['value'], DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
+        beanops.search(None, action['value'], DEFAULT_KIND, MIN_WINDOW, DEFAULT_ACCURACY, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
     _say_beans(beans, left, say, body['user']['id'])
    
@@ -122,7 +128,7 @@ def _say_beans(beans, left, say, channel_id):
             text=f"Showing {len(beans)} stories",
             channel=channel_id)
         
-    response = (MORE_BEANS_LEFT if left else None) if beans else NOTHING_FOUND
+    response = (MORE_BEANS if left else None) if beans else BEANS_NOT_FOUND
     if response:
         say(response, channel=channel_id)
 
@@ -155,6 +161,47 @@ def trigger_update_preference(ack, action, body, say):
 def update_account(ack, action, body, say):
     ack()
     say(NO_ACTION, channel=body['user']['id'])
+
+@slack_app.action("trigger:Sign Up")
+def show_registration_modal(ack, body, client):
+    ack()
+    client.views_open(
+        trigger_id=body["trigger_id"],
+        view=SIGN_UP_MODAL
+    )
+
+@slack_app.view("register-account")
+def handle_register_account(ack, body, view, client):
+    ack()
+    userid = body["user"]["id"]
+    settings = session_settings(userid)
+    state_values = view["state"]["values"]
+    
+    if "agree_terms" in state_values and state_values["agree_terms"]["agree"]["selected_options"]:
+        # User agreed to the terms, register the user
+        user = {
+            espressops.NAME: body["user"]["name"],
+            espressops.SOURCE: SLACK,
+            espressops.SOURCE_ID: userid
+        }
+        settings['user'] = espressops.register_user(user, settings['search'])
+    # Refresh the home page
+    _render_home_tab(userid, client)
+
+@slack_app.action("trigger:Delete Account")
+def handle_delete_account(ack, body, client):
+    ack()
+    userid = body["user"]["id"]
+    user = {
+        espressops.NAME: body['user']['name'],
+        espressops.SOURCE: SLACK,
+        espressops.SOURCE_ID: userid
+    }
+    espressops.unregister_user(user)
+    del session_settings(userid)['user']
+    # Refresh the home page
+    _render_home_tab(userid, client)
+
 
 # @slack_app.view("new_interest_input")
 # def new_interests(ack, body, view, client):

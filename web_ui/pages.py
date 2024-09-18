@@ -19,30 +19,31 @@ def render_home(settings, user):
     def _render():
         _render_beans_page(user, banner=None, urls=None, categories=settings['search']['topics'], last_ndays=MIN_WINDOW)
         render_separator()
-        render_settings_as_text(settings['search']) 
+        # render_settings_as_text(settings['search']) 
         ui.label("Click on 📈 button for more trending stories by topics.\n\nClick on ⚙️ button to change topics.").classes('text-caption')
 
     render_shell(settings, user, "Home", _render)
 
+def category_exists(category: str):
+    return espressops.category_label(category)
+
 def render_trending(settings, user, category: str, last_ndays: int):
-    def _render():
-        cat_label = espressops.category_label(category)
-        if not cat_label:
-            render_error_text(UNKNOWN)
-            return
-        _render_beans_page(user, banner=cat_label, urls=None, categories=category, last_ndays=last_ndays)
-    render_shell(settings, user, "Trending", _render)
+    render_shell(
+        settings, 
+        user, 
+        "Trending", 
+        lambda: _render_beans_page(user, banner=espressops.category_label(category), urls=None, categories=category, last_ndays=last_ndays))
+
+def channel_exists(channel_id: str):
+    return espressops.get_user({K_ID: channel_id})
 
 def render_user_channel(settings, user, channel_id: str, last_ndays: int):
     def _render():
-        if not espressops.get_user({K_ID: channel_id}):
-            render_error_text(CHANNEL_NOT_FOUND)
-            return
         urls = espressops.channel_content(channel_id)
         if urls:
             _render_beans_page(user, banner=channel_id, urls=urls, categories=None, last_ndays=last_ndays)
         else:
-            render_error_text(NOTHING_FOUND)
+            render_error_text(BEANS_NOT_FOUND)
     render_shell(settings, user, "Trending", _render)
 
 def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int):
@@ -109,7 +110,7 @@ async def _load_and_render_trending_beans(holder: ui.element, urls, categories, 
     holder.clear()
     with holder:   
         if not beans:
-            ui.label(NOTHING_TRENDING_IN%last_ndays)
+            ui.label(BEANS_NOT_FOUND)
             return             
         beans_panel = ui.list().props("dense" if is_article else "separator").classes("w-full")       
         render_beans(beans, beans_panel)
@@ -147,7 +148,7 @@ async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, k
     holder.clear()
     with holder:
         if not count:
-            ui.label(NOTHING_FOUND)
+            ui.label(BEANS_NOT_FOUND)
             return
         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
 
@@ -243,7 +244,7 @@ def _render_settings(settings: dict, user: dict):
         ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays").on_value_change(save_session_settings)     
     ui.select(
         label="Topics of Interest", 
-        options=get_system_topic_options(), 
+        options=espressops.get_system_topic_id_label(), 
         multiple=True,
         with_input=True).bind_value(settings['search'], 'topics').on_value_change(save_session_settings).props("use-chips filled").classes("w-full")
     
@@ -298,7 +299,7 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
                 ui.label("- or -").classes("text-caption self-center")                         
             ui.select(
                 label="Topics", with_input=True, multiple=True, 
-                options=get_system_topic_options()
+                options=espressops.get_system_topic_id_label()
             ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
 
             with ui.stepper_navigation():
@@ -317,9 +318,3 @@ def render_login_failed(success_forward, failure_forward):
     with ui.row(align_items="stretch").classes("w-full").style("justify-content: center;"):
         ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
         ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
-
-def get_system_topic_options():    
-    return {topic[K_ID]: topic[K_TEXT] for topic in espressops.get_system_categories()}
-
-def get_user_topic_values(registered_user):
-    return [topic[K_ID] for topic in espressops.get_categories(registered_user)]

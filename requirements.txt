@@ -16,3 +16,4 @@ authlib
 praw
 tldextract
 openai
+azure-servicebus

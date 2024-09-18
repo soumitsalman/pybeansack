@@ -1,4 +1,5 @@
 from itertools import chain
+from shared import config
 from shared.config import *
 from shared import espressops, beanops, messages
 from icecream import ic
@@ -6,7 +7,7 @@ import logging
 from datetime import datetime as dt
 
 DEFAULT_KIND = (NEWS, BLOG)
-UPDATE_INTEREST_VIEW={
+UPDATE_INTEREST_MODAL={
     "type": "modal",
     "callback_id": "new_interest_input",
     "title": {"type": "plain_text", "text": "Espresso by Cafecit.io"},
@@ -26,6 +27,49 @@ UPDATE_INTEREST_VIEW={
         }
     ]
 }
+SIGN_UP_MODAL = {
+    "type": "modal",
+    "callback_id": "register-account",
+    "title": {"type": "plain_text", "text": "Sign-up for Espresso"},
+    "blocks": [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn", 
+                "text": f"Please review our <{config.host_url()}/docs/terms-of-use|Terms of Use> and <{config.host_url()}/docs/privacy-policy|Privacy Policy>."
+            }
+        },
+        {
+            "type": "input",
+            "block_id": "agree_terms",
+            "element": {
+                "type": "checkboxes",
+                "options": [
+                    {
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "I agree to the Terms of Use and Privacy Policy"
+                        },
+                        "value": "agree"
+                    }
+                ],
+                "action_id": "agree"
+            },
+            "label": {
+                "type": "plain_text",
+                "text": "Agreement"
+            }
+        }
+    ],
+    "submit": {
+        "type": "plain_text",
+        "text": "Register"
+    },
+    "close": {
+        "type": "plain_text",
+        "text": "Hell No!"
+    }
+}
 DIVIDER = {"type": "divider"}
 
 logging.basicConfig(format="[%(asctime)s]: %(levelname)s - %(message)s",  datefmt='%d/%b/%Y %H:%M:%S')
@@ -36,13 +80,13 @@ def render_home_blocks(settings):
     blocks.append(DIVIDER)
 
     categories = tuple(settings['search']['topics'])
-    tags = beanops.trending_tags(categories, None, MIN_WINDOW, DEFAULT_LIMIT)    
+    tags = beanops.trending_tags(None, categories, None, MIN_WINDOW, DEFAULT_LIMIT)    
     if tags:
         blocks.append(render_text_banner("Trending Tags", True))
         blocks.append(render_tags([tag.tags for tag in tags]))
         blocks.append(DIVIDER)
     
-    beans = beanops.trending(None, categories, None, DEFAULT_KIND, MIN_WINDOW, 0, MAX_ITEMS_PER_PAGE)
+    beans = beanops.trending(None, categories, DEFAULT_KIND, MIN_WINDOW, 0, MAX_ITEMS_PER_PAGE)
     if beans:
         blocks.append(render_text_banner("Trending News & Articles", True))    
         blocks.extend(chain(*(render_bean_digest(bean) for bean in beans)))
@@ -57,7 +101,9 @@ def render_connections(settings):
         {
             "type": "actions",
             "elements": [
-                render_button("delete-account", "Delete Account", style="danger") if "user" in settings else render_button("register-account", "Sign Up", style="primary")
+                render_button("trigger", "Delete Account", style="danger") \
+                    if "user" in settings else \
+                        render_button("trigger", "Sign Up", style="primary")
             ]
         }
     ] 
