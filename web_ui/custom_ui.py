@@ -6,10 +6,9 @@ from datetime import datetime as dt
 from itertools import groupby
 from typing import Callable
 from icecream import ic
+from shared import beanops
 from shared.config import *
 
-# TODO: add humanize
-date_to_str = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 rounded_number = lambda counter: str(counter) if counter < 100 else str(99)+'+'
 rounded_number_with_max = lambda counter, top: str(counter) if counter <= top else str(top)+'+'
 
@@ -38,13 +37,13 @@ class BindableTimeline(ui.timeline):
                     date = self.date_field(item)
                     with ui.timeline_entry(
                         title=self.header_field(item), 
-                        subtitle=(date_to_str(date) if isinstance(date, (int, float)) else date)):
+                        subtitle=(beanops.naturalday(date) if isinstance(date, (int, float)) else date)):
                         self.render_item(item)
             else:                
                 for date, group in groupby_date(items, self.date_field).items():
                     with ui.timeline_entry(
                         title=", ".join(self.header_field(item) for item in group), 
-                        subtitle=(date_to_str(date) if isinstance(date, (int, float)) else date)):
+                        subtitle=(beanops.naturalday(date) if isinstance(date, (int, float)) else date)):
                         for item in group:
                             self.render_item(item)
 
@@ -132,7 +131,7 @@ class HighlightableItem(ui.item):
         return self
     
 class ExpandButton(ui.button):
-    def __init__(self, icon="arrow_drop_down", expanded_icon="arrow_drop_up", *args, **kwargs):        
+    def __init__(self, icon="unfold_more", expanded_icon="unfold_less", *args, **kwargs):        
         self.value = False
         self.expanded_icon = expanded_icon
         self.unexpanded_icon = icon

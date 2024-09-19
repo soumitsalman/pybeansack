@@ -20,6 +20,7 @@ SECONDARY_COLOR = "#b79579"
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Quicksand&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Bree+Serif&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200')
     
 body {
     font-family: 'Quicksand', serif;
@@ -141,7 +142,7 @@ def render_bean_body(bean: Bean):
 
 def render_bean_stats(bean: Bean, stack: bool): 
     with (ui.column(align_items="stretch").classes(add="gap-0") if stack else ui.row(align_items="baseline")).classes(add="text-caption").style("margin-top: 1px;") as view:  
-        ui.label(date_to_str(bean.created or bean.updated))
+        ui.label(beanops.naturalday(bean.created or bean.updated))
         with ui.row():
             if bean.comments:
                 ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")
@@ -175,26 +176,28 @@ async def publish(user, bean: Bean):
 
 def render_bean_shares(user, bean: Bean):
     share_button = lambda url_func, icon: ui.button(on_click=lambda: go_to(url_func(bean)), icon=icon).props("flat")
-    with ui.button_group().props("unelevated").classes("gap-0 m-0 p-0") as view:
-        share_button(reddit_share_url, REDDIT_ICON_URL)
-        share_button(linkedin_share_url, LINKEDIN_ICON_URL).tooltip("Share on LinkedIn")
-        share_button(twitter_share_url, TWITTER_ICON_URL).tooltip("Share on X")
-        ui.button(on_click=lambda: publish(user, bean), icon=ESPRESSO_ICON_URL).props("flat").tooltip("Publish on Espresso")
+    with ui.button(icon="share") as view:
+        with ui.menu():
+            with ui.row(wrap=False, align_items="stretch").classes("gap-0 m-0 p-0"):
+                share_button(reddit_share_url, REDDIT_ICON_URL)
+                share_button(linkedin_share_url, LINKEDIN_ICON_URL).tooltip("Share on LinkedIn")
+                share_button(twitter_share_url, TWITTER_ICON_URL).tooltip("Share on X")
+                ui.button(on_click=lambda: publish(user, bean), icon=ESPRESSO_ICON_URL).props("flat").tooltip("Publish on Espresso")
     return view
 
 def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
     related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)
-    count_label = rounded_number_with_max(related_count, 5)+" related "+("story" if related_count<=1 else "stories")
+    # count_label = rounded_number_with_max(related_count, 5)+" related "+("story" if related_count<=1 else "stories")
 
-    ACTION_BUTTON_PROPS = f"flat size=sm no-caps color=secondary"
+    ACTION_BUTTON_PROPS = f"flat size=sm color=secondary"
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
         render_bean_source(bean)
         ui.space()
         with ui.button_group().props(f"unelevated dense flat"):  
-            with ui.dropdown_button(icon="share").props(ACTION_BUTTON_PROPS):
-                render_bean_shares(user, bean)
+            render_bean_shares(user, bean).props(ACTION_BUTTON_PROPS)
             if show_related_items and related_count:
-                ExpandButton(text=count_label).on_click(lambda e: show_related_items(e.sender.value)).props(ACTION_BUTTON_PROPS)
+                with ExpandButton().on_click(lambda e: show_related_items(e.sender.value)).props(ACTION_BUTTON_PROPS):
+                    ui.badge(rounded_number_with_max(related_count, 5)).props("transparent")
 
 def render_whole_bean(user, bean: Bean):
     with ui.element() as view:
@@ -249,9 +252,9 @@ def render_beans_as_list(beans: list[Bean], render_articles: bool, bean_render_f
     return view
 
 def render_beans_as_carousel(beans: list[Bean], bean_render_func: Callable):
-    with ui.carousel(animated=True, arrows=True).props(f"swipeable control-color=primary").classes("h-full") as view:          
+    with ui.carousel(animated=True, arrows=True).props("swipeable vertical control-color=secondary").classes("h-full rounded-borders").style("background-color: #333333;") as view:          
         for bean in beans:
-            with ui.carousel_slide(name=bean.url).style(f'background-color: #333333; border-radius: 10px;').classes("h-full"):
+            with ui.carousel_slide(name=bean.url).classes("column no-wrap"):
                 bean_render_func(bean)
     return view
 
@@ -270,7 +273,7 @@ def _render_bean_banner(bean: Bean, display_media_stats=True):
     with ui.column().classes('text-caption') as view:
         with ui.row(align_items="center"): 
             if bean.created:
-                ui.label(f"📅 {date_to_str(bean.created)}") 
+                ui.label(f"📅 {beanops.naturalday(bean.created)}") 
             if bean.source:
                 ui.markdown(f"🔗 [{bean.source}]({bean.url})")
             if display_media_stats:

@@ -17,3 +17,4 @@ praw
 tldextract
 openai
 azure-servicebus
+humanize

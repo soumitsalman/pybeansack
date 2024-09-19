@@ -73,7 +73,6 @@ SIGN_UP_MODAL = {
 DIVIDER = {"type": "divider"}
 
 logging.basicConfig(format="[%(asctime)s]: %(levelname)s - %(message)s",  datefmt='%d/%b/%Y %H:%M:%S')
-render_date = lambda date: dt.fromtimestamp(date).strftime('%a, %b %d')
 
 def render_home_blocks(settings):   
     blocks = render_settings(settings)
@@ -109,7 +108,10 @@ def render_connections(settings):
     ] 
 
 def render_settings(settings):
-    return [
+    contents = []
+    if "user" in settings:
+        contents = [render_text_banner(f"*Channel*: <{config.host_url()}/u/{settings['user'][K_ID]}|u/{settings['user'][K_ID]}>", False, None)]
+    return contents + [        
         render_text_banner("Topics of Interest", True, False),
         {
             "type": "actions",
@@ -161,7 +163,7 @@ def render_text_banner(text: str, as_header: bool, image_url: str = None):
     return banner
 
 def render_bean_digest(bean: Bean):
-    banner_text = f"{render_date(bean.created or bean.updated)}: *<{bean.url}|{bean.title}>*"    
+    banner_text = f"{beanops.naturalday(bean.created or bean.updated)}: *<{bean.url}|{bean.title}>*"    
     context = ""       
     if bean.comments:
         context += f"  💬 {bean.comments}"
@@ -175,7 +177,7 @@ def render_whole_bean(bean: Bean):
     context = [
         {
             "type": "plain_text",
-            "text": render_date(bean.created or bean.updated)
+            "text": beanops.naturalday(bean.created or bean.updated)
         },
         {
             "type": "image",

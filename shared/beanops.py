@@ -1,3 +1,4 @@
+import humanize
 from icecream import ic
 import tldextract
 from pybeansack.beansack import *
@@ -70,7 +71,11 @@ def count_related(cluster_id: str, url: str, last_ndays: int, topn: int) -> int:
     return beansack.beanstore.count_documents(filter=filter, limit=topn)
     
 def _create_filter(urls: tuple[str], categories: str|tuple[str], tags: str|tuple[str], kinds: str|tuple[str], last_ndays: int) -> dict:
-    filter = {K_CLUSTER_ID: {"$exists": True}}
+    filter = {
+        K_CLUSTER_ID: {"$exists": True},
+        K_SUMMARY: {"$exists": True},
+        K_SUMMARY: {"$ne": None}        
+    }
     if urls:
         filter.update({K_URL: {"$in": list(urls)}})
     if last_ndays:        
@@ -95,3 +100,4 @@ def _create_filter(urls: tuple[str], categories: str|tuple[str], tags: str|tuple
     return filter
 
 favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+tldextract.extract(bean.url).registered_domain
+naturalday = lambda date_val: humanize.naturalday(datetime.fromtimestamp(date_val), format="%a, %b %d")

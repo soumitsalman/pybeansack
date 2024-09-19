@@ -41,7 +41,7 @@ def render_user_channel(settings, user, channel_id: str, last_ndays: int):
     def _render():
         urls = espressops.channel_content(channel_id)
         if urls:
-            _render_beans_page(user, banner=channel_id, urls=urls, categories=None, last_ndays=last_ndays)
+            _render_beans_page(user, banner=channel_id, urls=urls, categories=None, last_ndays=None)
         else:
             render_error_text(BEANS_NOT_FOUND)
     render_shell(settings, user, "Trending", _render)

@@ -96,10 +96,11 @@ def _process_prompt(prompt, userid, say):
             beanops.search(
                 query=result.query, tags=None, kinds=None, last_ndays=None, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))   
         beans, left = _dequeue_message(settings)
-
-    _say_beans(beans, left, say, None)
+    
     if response:
         say(response)
+    else:
+        say_beans(beans, left, say, None)
 
 @slack_app.action(re.compile("^category:*"))
 def handle_trending_in_category(ack, action, body, say):
@@ -109,7 +110,7 @@ def handle_trending_in_category(ack, action, body, say):
         settings,
         beanops.trending(None, action['value'], DEFAULT_KIND, MIN_WINDOW, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
-    _say_beans(beans, left, say, body['user']['id'])
+    say_beans(beans, left, say, body['user']['id'])
     
 @slack_app.action(re.compile("^tag:*"))
 def handle_trending_in_keyword(ack, action, body, say):
@@ -119,18 +120,19 @@ def handle_trending_in_keyword(ack, action, body, say):
         settings,
         beanops.search(None, action['value'], DEFAULT_KIND, MIN_WINDOW, DEFAULT_ACCURACY, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
-    _say_beans(beans, left, say, body['user']['id'])
+    say_beans(beans, left, say, body['user']['id'])
    
-def _say_beans(beans, left, say, channel_id):
+def say_beans(beans, left, say, channel_id):
     if beans:
         say(
             blocks=list(chain(*(render_whole_bean(bean) for bean in beans))), 
             text=f"Showing {len(beans)} stories",
             channel=channel_id)
+    say(MORE_BEANS if left else NO_MORE_BEANS, channel=channel_id)
         
-    response = (MORE_BEANS if left else None) if beans else BEANS_NOT_FOUND
-    if response:
-        say(response, channel=channel_id)
+    # response = (MORE_BEANS if left else None) if beans else BEANS_NOT_FOUND
+    # if response:
+    #     say(response, channel=channel_id)
 
 def _new_message_queue(settings, beans):
     if not beans:
