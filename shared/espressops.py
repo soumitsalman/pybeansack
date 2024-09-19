@@ -178,15 +178,10 @@ def publish(user: dict, urls: str|list[str]):
     userid = _get_userid(user)
     if userid and urls:
         urls = [urls] if isinstance(urls, str) else urls
-        entries = []
-        for url in urls:
-            id = f"{userid}:{url}"
-            entry = {K_ID: id, K_SOURCE: userid, K_URL: url, K_UPDATED: int(time.time())}
-            entries.append(UpdateOne(filter={K_ID: id}, update={"$setOnInsert": entry}, upsert=True))
-        res = channels.bulk_write(entries, ordered=False).acknowledged
-        send_to_index_queue(userid, urls)
+        entries = [{K_ID: f"{userid}:{url}", K_SOURCE: userid, K_URL: url, K_CREATED: int(time.time())} for url in urls]
+        # save to the user's channged
+        res = channels.bulk_write([UpdateOne(filter={K_ID: entry[K_ID]}, update={"$setOnInsert": entry}, upsert=True) for entry in entries], ordered=False).acknowledged
+        index_queue.send_messages([ServiceBusMessage(json.dumps(entry)) for entry in entries])
         return res
     
-def send_to_index_queue(userid, urls):
-    messages = [ServiceBusMessage(json.dumps({"user": userid, "url": url, "collected": int(time.time())})) for url in urls]
-    index_queue.send_messages(messages)
+    
