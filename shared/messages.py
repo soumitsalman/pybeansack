@@ -2,7 +2,7 @@
 NO_INTERESTS_MESSAGE = "Is there anything under god's green earth that you find interesting? Just do some clickittyclack and tell us what floats your boat."
 NO_MORE_BEANS = "Thass'it ... Se acabo! Go get some :coffee:"
 MORE_BEANS = "More stories in the queue. Type 'more' for loading the next page."
-NO_ACTION = "I don't really do much. I just sit here and look pretty."
+NOT_IMPLEMENTED = "I don't really do much. I just sit here and look pretty."
 LOGIN_FIRST = "Imma' need you to Login first"
 
 BEANS_NOT_FOUND = "Couldn't find anything"

@@ -74,6 +74,7 @@ IMAGE_DIMENSIONS = "w-32 h-24"
 REDDIT_ICON_URL = "img:/images/reddit.png"
 SLACK_ICON_URL = "img:/images/slack.png"
 TWITTER_ICON_URL = "img:/images/twitter-x.png"
+WHATSAPP_ICON_URL = "img:/images/whatsapp.png"
 LINKEDIN_ICON_URL = "img:/images/linkedin.png"
 ESPRESSO_ICON_URL = "img:/images/cafecito.png"
 
@@ -81,6 +82,8 @@ go_to = lambda url: ui.navigate.to(url, new_tab=True)
 reddit_share_url = lambda bean: make_navigation_target("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
 twitter_share_url = lambda bean: make_navigation_target("https://x.com/intent/tweet", url=bean.url, text=bean.title)
 linkedin_share_url = lambda bean: make_navigation_target("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, source=config.host_url(), mini=True)
+whatsapp_share_url = lambda bean: make_navigation_target("https://wa.me/", text=f"{bean.title}\n{bean.url}")
+slack_share_url = lambda bean: make_navigation_target("https://slack.com/share/url", url=bean.url, text=bean.title)
 
 bean_item_class = lambda is_article: "w-full border-[1px]" if is_article else "w-full"
 bean_item_style = "border-radius: 5px; margin-bottom: 5px; padding: 0px;"
@@ -118,20 +121,31 @@ def render_header():
         ui.image("images/cafecito.png").props("width=3rem height=3rem")
     return header
 
-def render_tags(tags: list[str]):
-    with ui.row().classes("gap-0") as view:
-        [ui.chip(text, color="secondary", on_click=lambda text=text: tag_route(text)).props('outline dense') for text in tags]
+def render_ids_as_chips(items: list[str]|dict[str, str], on_click: Callable = None):
+    if not items:
+        return
+    if isinstance(items[0], str):
+        items = [{item: item} for item in items]
+    with ui.row(align_items="center").classes("gap-0") as view:
+        [ui.chip(ellipsis_text(text, 30), color="secondary", on_click=lambda id=id: on_click(id)).props('outline dense') for id, text in items.items()]
     return view
 
-def render_bean_tags_as_hashtag(bean: Bean):
-    format_tag = lambda tag: "#"+"".join(item for item in tag.split())
+def render_tags_as_chips(tags: list[str], on_click: Callable = None, on_select: Callable = None):
+    if tags:
+        return [
+            ui.chip(
+                ellipsis_text(tag, 30), 
+                color="secondary",
+                on_click=(lambda e: on_click(e.sender.text)) if on_click else None,
+                selectable=bool(on_select),
+                on_selection_change=(lambda e: on_select(e.sender.text, e.sender.selected)) if on_select else None).props('outline dense') \
+            for tag in tags]
+            
+def render_bean_tags(bean: Bean):
     if bean.tags:
-        return [ui.link(ellipsis_text(format_tag(tag), 30), target=make_navigation_target("/search", tag=tag)).classes('text-caption') for tag in bean.tags[:3]]
-
-def render_bean_tags_as_chips(bean: Bean):
-    with ui.row().classes("gap-0") as view:
-        [ui.chip(ellipsis_text(text, 30), color="secondary", on_click=lambda text=text: tag_route(text)).props('outline dense') for text in  bean.tags[:MAX_TAGS_PER_BEAN]] if bean.tags else None
-    return view
+        with ui.row(align_items="center").classes("gap-0") as view:
+            render_tags_as_chips([tag for tag in bean.tags[:MAX_TAGS_PER_BEAN]], on_click=tag_route)
+        return view
     
 def render_bean_title(bean: Bean):
     return ui.label(bean.title).classes("bean-header")
@@ -179,15 +193,16 @@ def render_bean_shares(user, bean: Bean):
     with ui.button(icon="share") as view:
         with ui.menu():
             with ui.row(wrap=False, align_items="stretch").classes("gap-0 m-0 p-0"):
-                share_button(reddit_share_url, REDDIT_ICON_URL)
+                share_button(reddit_share_url, REDDIT_ICON_URL).tooltip("Share on Reddit")
                 share_button(linkedin_share_url, LINKEDIN_ICON_URL).tooltip("Share on LinkedIn")
                 share_button(twitter_share_url, TWITTER_ICON_URL).tooltip("Share on X")
+                share_button(whatsapp_share_url, WHATSAPP_ICON_URL).tooltip("Share on WhatsApp")
+                # share_button(slack_share_url, SLACK_ICON_URL).tooltip("Share on Slack") 
                 ui.button(on_click=lambda: publish(user, bean), icon=ESPRESSO_ICON_URL).props("flat").tooltip("Publish on Espresso")
     return view
 
 def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
     related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)
-    # count_label = rounded_number_with_max(related_count, 5)+" related "+("story" if related_count<=1 else "stories")
 
     ACTION_BUTTON_PROPS = f"flat size=sm color=secondary"
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
@@ -202,7 +217,7 @@ def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
 def render_whole_bean(user, bean: Bean):
     with ui.element() as view:
         render_bean_banner(bean)
-        render_bean_tags_as_chips(bean)
+        render_bean_tags(bean)
         render_bean_body(bean)
         render_bean_actions(user, bean, None)
     return view
@@ -216,12 +231,12 @@ def render_expandable_bean(user, bean: Bean, show_related: bool = True):
         render_beans_as_carousel(related_beans, lambda bean: render_whole_bean(user, bean)).set_visibility(show_items)    
     
     CONTENT_STYLE = 'padding: 0px; margin: 0px; word-wrap: break-word; overflow-wrap: break-word;'
-    with ui.expansion().props("dense hide-expand-icon") as view:
+    with ui.expansion().props("dense hide-expand-icon").classes("w-full") as view:
         with view.add_slot("header"):
             render_bean_banner(bean)
 
-        with ui.element():                        
-            render_bean_tags_as_chips(bean)
+        with ui.element().classes("w-full"):                        
+            render_bean_tags(bean)
             render_bean_body(bean)
             render_bean_actions(user, bean, render_related_beans.refresh if show_related else None)
             if show_related:
@@ -258,6 +273,9 @@ def render_beans_as_carousel(beans: list[Bean], bean_render_func: Callable):
                 bean_render_func(bean)
     return view
 
+def render_skeleton_tags(count = 3):    
+    return [ui.skeleton("QChip").props("outline") for _ in range(count)]
+
 def render_skeleton_beans(count = 3):
     with ui.element().classes("w-full") as holder:
         for _ in range(count):
@@ -268,24 +286,6 @@ def render_skeleton_beans(count = 3):
                         ui.skeleton("text", width="100%")
                         ui.skeleton("text", width="20%")     
     return holder 
-
-def _render_bean_banner(bean: Bean, display_media_stats=True):
-    with ui.column().classes('text-caption') as view:
-        with ui.row(align_items="center"): 
-            if bean.created:
-                ui.label(f"📅 {beanops.naturalday(bean.created)}") 
-            if bean.source:
-                ui.markdown(f"🔗 [{bean.source}]({bean.url})")
-            if display_media_stats:
-                if bean.author:
-                    ui.label(f"✍️ {ellipsis_text(bean.author, 30)}")
-                if bean.comments:
-                    ui.label(f"💬 {bean.comments}")
-                if bean.likes:
-                    ui.label(f"👍 {bean.likes}")
-        with ui.row():
-            render_bean_tags_as_hashtag(bean)
-    return view
 
 @contextmanager
 def disable_button(button: ui.button):

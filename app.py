@@ -3,6 +3,7 @@ import os
 from icecream import ic
 from dotenv import load_dotenv
 from pybeansack import utils
+from pybeansack.embedding import RemoteEmbeddings
 
 load_dotenv()
 logger = utils.create_logger("Espresso")
@@ -178,9 +179,9 @@ async def document(doc: str):
     web_ui.pages.render_document(session_settings(), logged_in_user(), path)        
 
 def initialize_server():
-    # embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
-    beanops.initiatize(config.db_connection_str())
-    espressops.initialize(config.db_connection_str(), config.sb_connection_str())
+    embedder = RemoteEmbeddings(config.llm_base_url(), config.llm_api_key(), "thenlper/gte-large", 496)
+    beanops.initiatize(config.db_connection_str(), embedder)
+    espressops.initialize(config.db_connection_str(), config.sb_connection_str(), embedder)
     oauth.register(
         name=config.REDDIT,
         client_id=config.reddit_client_id(),

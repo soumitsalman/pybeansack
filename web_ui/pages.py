@@ -1,5 +1,7 @@
 import asyncio
 import threading
+
+from sqlalchemy import true
 from connectors import redditor
 from shared.config import *
 from shared.messages import *
@@ -47,39 +49,79 @@ def render_user_channel(settings, user, channel_id: str, last_ndays: int):
     render_shell(settings, user, "Trending", _render)
 
 def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int):
-    urls = tuple(urls) if isinstance(urls, list) else urls
-    categories =  tuple(categories) if isinstance(categories, list) else categories
+    selected_tags = []    
+    async def on_tag_select(tag: str, selected: bool):
+        selected_tags.append(tag) if selected else selected_tags.remove(tag)
+        load_beans() 
+
     if banner:
         render_banner_text(banner)
 
-    background_tasks.create_lazy(_load_and_render_trending_tags(ui.element(), urls, categories, None, last_ndays, DEFAULT_LIMIT), name=f"trending-tags-{categories}")
+    tags_holder = ui.row(align_items="center").classes("w-full gap-0")   
     render_separator()
 
+    count_holders, bean_holders = [], []
     with ui.tabs().props("dense").classes("w-full") as tab_headers:
         for tab in TRENDING_TABS:
             with ui.tab(name=tab['name'], label=""):
                 with ui.row(wrap=False, align_items="stretch"):
-                    ui.label(tab['label'])
-                    count = beanops.count_beans(None, urls, categories, None, tab['kinds'], last_ndays, MAX_LIMIT+1)
-                    if count:
-                        ui.badge(rounded_number_with_max(count, MAX_LIMIT)).props("transparent")
-
-    with ui.tab_panels(tabs=tab_headers, animated=True, value=TRENDING_TABS[0]['name']).props("swipeable").classes("w-full h-full m-0 p-0"):
+                    ui.label(tab['label'])                    
+                    count_holders.append(ui.badge("...").props("transparent"))
+    with ui.tab_panels(tabs=tab_headers, animated=True, value=TRENDING_TABS[0]['name']).props("swipeable").classes("w-full h-full m-0 p-0"):  
         for tab in TRENDING_TABS:
-            with ui.tab_panel(name=tab['name']).classes("w-full h-full m-0 p-0"):    
-                background_tasks.create_lazy(
-                    _load_and_render_trending_beans(render_skeleton_beans(3), urls, categories, tab['kinds'], last_ndays, user), 
-                    name=f"trending-{tab['name']}"
-                )    
-                
-async def _load_and_render_trending_tags(holder: ui.element, urls, categories, kinds, last_ndays, topn):
-    tags = await run.io_bound(beanops.trending_tags, urls, categories, kinds, last_ndays, topn)    
-    holder.clear()
-    if tags:
-        with holder:
-            render_tags([tag.tags for tag in tags])
+            with ui.tab_panel(name=tab['name']).classes("w-full h-full m-0 p-0") as panel:
+                render_skeleton_beans(3)   
+                bean_holders.append(panel)
 
-async def _load_and_render_trending_beans(holder: ui.element, urls, categories, kinds, last_ndays, for_user):     
+    def load_beans():
+        for i, tab in enumerate(TRENDING_TABS):   
+            background_tasks.create_lazy(
+                _load_counter(count_holders[i], urls, categories, selected_tags, tab['kinds']), 
+                name=f"trending-{tab['name']}-count"
+            ) 
+            background_tasks.create_lazy(
+                _load_trending_beans(bean_holders[i], urls, categories, selected_tags, tab['kinds'], user), 
+                name=f"trending-{tab['name']}-beans"
+            )    
+
+    # load the tags
+    background_tasks.create_lazy(
+        _load_trending_tags(tags_holder, urls, categories, None, on_tag_select), 
+        name=f"trending-tags-{categories}")
+    load_beans()
+ 
+async def _load_counter(badge: ui.badge, urls, categories, tags, kinds):
+    count = beanops.count_beans(None, urls, categories, tags, kinds, None, MAX_LIMIT+1)
+    badge.set_visibility(count > 0)
+    badge.set_text(rounded_number_with_max(count, MAX_LIMIT))
+
+async def _load_trending_tags(tags_panel: ui.element, urls, categories, kinds, on_tag_select):
+    start_index, topn = 0, DEFAULT_LIMIT
+    async def render_more(clear_panel: bool = False):
+        # retrieve 1 more than needed to check for whether to show the 'more' button 
+        # this way I can check if there are more beans left in the pipe
+        # because if there no more beans left no need to show the 'more' button
+        nonlocal start_index
+        tags = await run.io_bound(beanops.trending_tags, urls, categories, kinds, None, start_index, topn+1)
+        start_index += topn
+        # clear the pagen of older stuff
+        if clear_panel:
+            tags_panel.clear()
+        # remove the more_button so that we can insert the new tags
+        if tags_panel.slots['default'].children:
+            tags_panel.slots['default'].children[-1].delete()
+
+        with tags_panel:
+            render_tags_as_chips([tag.tags for tag in tags[:topn]], on_select=on_tag_select)
+            if len(tags) > topn:
+                ui.chip(text="More", icon="more_horiz", on_click=render_more).props("unelevated dense")
+
+    with tags_panel:
+        render_skeleton_tags(3)
+
+    await render_more(True)      
+     
+async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds, for_user):     
     is_article = (NEWS in kinds) or (BLOG in kinds) 
     start_index = 0
     
@@ -88,7 +130,7 @@ async def _load_and_render_trending_beans(holder: ui.element, urls, categories, 
         # retrieve 1 more than needed to check for whether to show the 'more' button 
         # this way I can check if there are more beans left in the pipe
         # because if there no more beans left no need to show the 'more' button
-        beans = beanops.trending(urls, categories, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE+1)
+        beans = beanops.trending(urls, categories, tags, kinds, None, start_index, MAX_ITEMS_PER_PAGE+1)
         start_index += MAX_ITEMS_PER_PAGE
         return beans[:MAX_ITEMS_PER_PAGE], (len(beans) > MAX_ITEMS_PER_PAGE)
 
@@ -112,10 +154,13 @@ async def _load_and_render_trending_beans(holder: ui.element, urls, categories, 
         if not beans:
             ui.label(BEANS_NOT_FOUND)
             return             
-        beans_panel = ui.list().props("dense" if is_article else "separator").classes("w-full")       
+        beans_panel = ui.list().props("dense" if is_article else "separator").classes("w-full")      
         render_beans(beans, beans_panel)
-        if more:
-            more_button = ui.button("More Stories", on_click=next_page).props("unelevated icon-right=chevron_right")
+        with ui.row(wrap=False, align_items="stretch").classes("w-full"):
+            if more:
+                more_button = ui.button("More Stories", on_click=next_page).props("unelevated icon-right=chevron_right")
+            if for_user:
+                ui.button("Follow", on_click=lambda: ui.notify(NOT_IMPLEMENTED)).props("icon-right=add")
 
 def render_search(settings, user, query: str, tag: str, kinds, last_ndays: int, accuracy: float):
     def _render():
@@ -124,6 +169,7 @@ def render_search(settings, user, query: str, tag: str, kinds, last_ndays: int, 
         with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
             .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
             ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
+        # TODO: include categories, include keywords
         with ui.expansion(text="Knobs").props("expand-icon=tune expanded-icon=tune").classes("w-full text-right text-caption"):
             with ui.row(wrap=False, align_items="stretch").classes("w-full border-[1px]").style("border-radius: 5px; padding-left: 1rem;"):                
                 with ui.label("Accuracy").classes("w-full text-left"):
@@ -139,11 +185,11 @@ def render_search(settings, user, query: str, tag: str, kinds, last_ndays: int, 
 async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, kinds, last_ndays, accuracy):         
     count = 0
     if query:            
-        result = await run.io_bound(beanops.search, query=query, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=accuracy or DEFAULT_ACCURACY, start_index=0, topn=MAX_LIMIT)
+        result = await run.io_bound(beanops.search, query=query, urls=None, categories=None, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=accuracy or DEFAULT_ACCURACY, start_index=0, topn=MAX_LIMIT)
         count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
     elif tag:
         count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=tag, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
-            lambda start: beanops.search(query=None, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=None, start_index=start, topn=MAX_ITEMS_PER_PAGE)
+            lambda start: beanops.search(query=None, urls=None, categories=None, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=None, start_index=start, topn=MAX_ITEMS_PER_PAGE)
 
     holder.clear()
     with holder:
@@ -174,7 +220,7 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
 
     # header
     with render_header():  
-        with ui.tabs(on_change=lambda e: navigate(e.sender.value), value=current_tab).style("margin-right: auto"):
+        with ui.tabs(on_change=lambda e: navigate(e.sender.value), value=current_tab).style("margin-right: auto;"):
             ui.tab(name="Home", label="", icon="home").tooltip("Home")           
             settings['search']['topics'] = sorted(settings['search']['topics'])
             with ui.tab(name="Trending", label="", icon='trending_up').tooltip("Trending News & Posts"):
@@ -182,14 +228,24 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
             ui.tab(name="Search", label="", icon="search").tooltip("Search")
                  
         ui.label(APP_NAME).classes("text-bold app-name")
-        ui.button(icon="settings", on_click=settings_drawer.toggle).props("flat stretch color=white").style("margin-left: auto").tooltip("Settings")
+   
+        if not user:
+            with ui.button(icon="login").props("flat stretch color=white").style("margin-left: auto;"):
+                with ui.menu().classes("text-bold"):                       
+                    with ui.menu_item(text="Continue with Reddit", on_click=lambda: ui.navigate.to("/reddit/login")).style("border-radius: 20px; border-color: #FF4500;").classes("border-[1px] m-1"):
+                        ui.avatar(REDDIT_ICON_URL, color="transparent")
+                    with ui.menu_item(text="Continue with Slack", on_click=lambda: ui.navigate.to('/slack/login')).style("border-radius: 20px; border-color: #8E44AD;").classes("border-[1px] m-1"):
+                        ui.avatar(SLACK_ICON_URL, color="transparent")
+            ui.button(on_click=settings_drawer.toggle, icon="settings", color="secondary").props("flat stretch color=white")
+        else:
+            ui.button(on_click=settings_drawer.toggle, icon="img:"+user.get(espressops.IMAGE_URL) if user.get(espressops.IMAGE_URL) else "settings").props("flat stretch color=white").style("margin-left: auto;")
 
     with ui.column(align_items="stretch").classes("responsive-container"):
         render_func()
         render_separator()
         render_footer_text() #.style("justify-content: center;")
 
-def _render_login_status(settings: dict, user: dict):
+def _render_user_profile(settings: dict, user: dict):
     user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
 
     def update_connection(source, connect):        
@@ -199,25 +255,19 @@ def _render_login_status(settings: dict, user: dict):
             del user[espressops.CONNECTIONS][source]
         else:
             ui.navigate.to(f"/{source}/login")
-
-    if user:
-        ui.link("u/"+user[K_ID], target=f"/u/{user[K_ID]}").classes("text-bold")
-        with ui.row(wrap=False, align_items="stretch").classes("w-full gap-0"):  
-            with ui.column(align_items="stretch"):
-                # sequencing of bind_value and on_value_change is important.
-                # otherwise the value_change function will be called every time the page loads
-                ui.switch(text="Reddit", value=user_connected(REDDIT), on_change=lambda e: update_connection(REDDIT, e.sender.value)).tooltip("Link/Unlink Connection")
-                ui.switch(text="Slack", value=user_connected(SLACK), on_change=lambda e: update_connection(SLACK, e.sender.value)).tooltip("Link/Unlink Connection")
-            ui.space()
-            with ui.column(align_items="stretch").classes("gap-1"):
-                _render_user_image(user)
-                ui.button(text="Log out", icon="logout", color="negative", on_click=lambda: ui.navigate.to("/logout")).props("dense unelevated size=sm")
-    else:
-        with ui.label("Sign-up/Log-in").classes("text-subtitle1"):
-            with ui.row(wrap=False, align_items="center"):
-                ui.button(icon=REDDIT_ICON_URL, color="orange-10", on_click=lambda: ui.navigate.to("/reddit/login")).props("outline").tooltip("Continue with Reddit")
-                ui.button(icon=SLACK_ICON_URL, color="purple-10", on_click=lambda: ui.navigate.to('/slack/login')).props("outline").tooltip("Continue with Slack")
-
+    
+    ui.link("u/"+user[K_ID], target=f"/u/{user[K_ID]}").classes("text-bold")
+    with ui.row(wrap=False, align_items="stretch").classes("w-full gap-0"):  
+        with ui.column(align_items="stretch"):
+            # sequencing of bind_value and on_value_change is important.
+            # otherwise the value_change function will be called every time the page loads
+            ui.switch(text="Reddit", value=user_connected(REDDIT), on_change=lambda e: update_connection(REDDIT, e.sender.value)).tooltip("Link/Unlink Connection")
+            ui.switch(text="Slack", value=user_connected(SLACK), on_change=lambda e: update_connection(SLACK, e.sender.value)).tooltip("Link/Unlink Connection")
+        ui.space()
+        with ui.column(align_items="stretch").classes("gap-1"):
+            _render_user_image(user)
+            ui.button(text="Log out", icon="logout", color="negative", on_click=lambda: ui.navigate.to("/logout")).props("dense unelevated size=sm")
+    
 def _render_settings(settings: dict, user: dict):  
     async def delete_user():     
         # TODO: add a warning dialog   
@@ -233,9 +283,9 @@ def _render_settings(settings: dict, user: dict):
                     save_timer.cancel()
                 save_timer=threading.Timer(SAVE_DELAY, function=espressops.update_preferences, args=(user, settings['search']))
                 save_timer.start()
-
-    _render_login_status(settings, user)
-    ui.separator()
+    if user:
+        _render_user_profile(settings, user)
+        ui.separator()
 
     ui.label('Preferences').classes("text-subtitle1")
     # sequencing of bind_value and on_value_change is important.
@@ -261,21 +311,6 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
         ui.button("My Bad!", on_click=failure_func)
         return
     
-    def extract_topics():
-        text = redditor.collect_user_as_text(temp_user['name'], limit=10)     
-        if len(text) >= 100:                       
-            return espressops.match_categories(text)
-
-    async def trigger_reddit_import(sender: ui.element):
-        with disable_button(sender):    
-            sender.props(":loading=true")  
-            new_topics = await run.io_bound(extract_topics)
-            if not new_topics:
-                ui.notify(NO_INTERESTS_MESSAGE)
-                return            
-            settings['search']['topics'] = new_topics
-            sender.props(":loading=false")
-    
     render_banner_text("You Look New! Let's Get You Signed-up.")
     with ui.stepper().props("vertical").classes("w-full") as stepper:
         with ui.step("Sign Your Life Away") :
@@ -285,7 +320,7 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
             ui.link("Privacy Policy", "/docs/privacy-policy", new_tab=True)
             user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above. And I agree to selling to the terms and conditions.").tooltip("We are legally obligated to ask you this question.")
             with ui.stepper_navigation():
-                ui.button('Agreed', on_click=stepper.next).props("outline").bind_enabled_from(user_agreement, "value")
+                ui.button('Agreed', color="primary", on_click=stepper.next).props("unelevated").bind_enabled_from(user_agreement, "value")
                 ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
         with ui.step("Tell Me Your Dreams") :
             ui.label("Personalization").classes("text-h6")
@@ -295,7 +330,7 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
                 _render_user_image(temp_user)        
             ui.label("Your Interests")      
             if temp_user['source'] == "reddit":     
-                ui.button("Analyze From Reddit", on_click=lambda e: trigger_reddit_import(e.sender)).classes("w-full")          
+                ui.button("Analyze From Reddit", on_click=lambda e: trigger_reddit_import(e.sender, temp_user['name'], [settings['search']['topics']])).classes("w-full")          
                 ui.label("- or -").classes("text-caption self-center")                         
             ui.select(
                 label="Topics", with_input=True, multiple=True, 
@@ -303,8 +338,60 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
             ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
 
             with ui.stepper_navigation():
-                ui.button("Done", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("outline")
+                ui.button("Done", color="primary", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("unelevated")
                 ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+
+def render_user_profile_update(settings: dict, user: dict):
+
+    render_banner_text("Update Your Profile")
+    with ui.card().classes("s-full"):
+        _render_user_profile(settings, user)
+
+    with ui.row().classes("w-full"):
+        ui.textarea(label="Your Preference Thoughts").props("outlined").classes("w-full").tooltip("Write your preference thoughts here")        
+        with ui.column().classes("w-full"):
+            ui.input(label="Search").props("outlined").classes("w-full").tooltip("Search for topics")
+            ui.button("Import From Reddit", icon=REDDIT_ICON_URL, on_click=lambda e: trigger_reddit_import(e.sender, user['name'], [settings['search']['topics']])).classes("w-full")
+            ui.button("Import From Medium", icon="import", on_click=lambda e: ui.notify(NOT_IMPLEMENTED)).classes("w-full")
+
+    with ui.row().classes("w-full"):
+        ui.select(
+            label="Select Topics to Follow", with_input=True, multiple=True, 
+            options=espressops.get_system_topic_id_label()
+        ).props("filled use-chips").classes("w-full").tooltip("Select your topics of interest")
+        
+
+    ui.select(
+        label="Select Pages to Follow", with_input=True, multiple=True, 
+        options=espressops.get_system_topic_id_label()
+    ).props("filled use-chips").classes("w-full").tooltip("Select your topics of interest")
+
+    ui.select(
+        label="Select Users to Follow", with_input=True, multiple=True, 
+        options=espressops.get_system_topic_id_label()
+    ).props("filled use-chips").classes("w-full").tooltip("Select your topics of interest")
+    
+    with ui.row().classes("w-full"):
+        ui.button("Update", color="primary").props("outline")
+        ui.button("Cancel", color="negative").props("outline")
+    
+
+
+async def trigger_reddit_import(sender: ui.element, username: str, update_panels):
+    def extract_topics():
+        text = redditor.collect_user_as_text(username, limit=10)     
+        if len(text) >= 100:                       
+            return espressops.match_categories(text)
+        
+    with disable_button(sender):    
+        sender.props(":loading=true")  
+        new_topics = await run.io_bound(extract_topics)
+        if not new_topics:
+            ui.notify(NO_INTERESTS_MESSAGE)
+            return            
+        for panel in update_panels:
+            panel = new_topics
+        sender.props(":loading=false")
 
 def _render_user_image(user):  
     if user and user.get(espressops.IMAGE_URL):

@@ -5,8 +5,7 @@ import time
 from pymongo import MongoClient, UpdateOne
 from pymongo.collection import Collection
 from pybeansack import utils
-from shared import llmops
-from shared import config
+from pybeansack.embedding import Embeddings
 from shared.config import *
 from cachetools import TTLCache, cached
 from azure.servicebus import ServiceBusClient, ServiceBusMessage, ServiceBusSender
@@ -17,6 +16,8 @@ users: Collection = None
 categories: Collection = None
 channels: Collection = None
 index_queue: ServiceBusSender = None
+embedder: Embeddings = None
+
 
 SYSTEM = "__SYSTEM__"
 SOURCE = "source"
@@ -33,7 +34,7 @@ PREFERENCES = "preferences"
 CATEGORIES = "categories"
 INDEX_QUEUE = "index-queue"
 
-def initialize(conn_str: str, sb_conn_str: str):    
+def initialize(conn_str: str, sb_conn_str: str, emb: Embeddings):    
     global users, categories, channels  
     client = MongoClient(conn_str)
     users = client[DB]["users"]
@@ -42,6 +43,9 @@ def initialize(conn_str: str, sb_conn_str: str):
 
     global index_queue
     index_queue = ServiceBusClient.from_connection_string(sb_conn_str).get_queue_sender(INDEX_QUEUE)
+
+    global embedder
+    embedder = emb
 
 userid_filter = lambda user: {ID: user[ID]} if ID in user else {f"{CONNECTIONS}.{user[SOURCE]}": user.get(SOURCE_ID)}
 
@@ -151,12 +155,12 @@ def category_label(id: str):
 
 def match_categories(content):
     cats = []
-    for chunk in utils.chunk(content, 496):   
+    for chunk in utils.chunk(content, embedder.context_len):   
         pipeline = [
             {
                 "$search": {
                     "cosmosSearch": {
-                        "vector": llmops.embed(chunk),
+                        "vector": embedder(chunk),
                         "path":   EMBEDDING,
                         "k":      20,
                         "filter": {SOURCE: SYSTEM}

@@ -5,7 +5,6 @@ pandas
 pydantic
 nicegui
 fastapi
-cachetools
 tiktoken
 llama-cpp-python
 langchain
@@ -18,3 +17,4 @@ tldextract
 openai
 azure-servicebus
 humanize
+memoization

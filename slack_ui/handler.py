@@ -157,12 +157,12 @@ def _dequeue_message(settings) -> tuple[list[Bean], bool]:
 @slack_app.action(re.compile("^update:*"))
 def trigger_update_preference(ack, action, body, say):
     ack()
-    say(NO_ACTION, channel=body['user']['id'])
+    say(NOT_IMPLEMENTED, channel=body['user']['id'])
 
 @slack_app.action(re.compile("^(delete-account|register-account):*"))
 def update_account(ack, action, body, say):
     ack()
-    say(NO_ACTION, channel=body['user']['id'])
+    say(NOT_IMPLEMENTED, channel=body['user']['id'])
 
 @slack_app.action("trigger:Sign Up")
 def show_registration_modal(ack, body, client):

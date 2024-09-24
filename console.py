@@ -39,9 +39,9 @@ def run_console():
 
         render_beans(beans)    
 
-# embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
-beanops.initiatize(config.db_connection_str())
-espressops.initialize(config.db_connection_str(), config.sb_connection_str())
+embedder = BeansackEmbeddings(config.embedder_path(), config.EMBEDDER_CTX)
+beanops.initiatize(config.db_connection_str(), embedder)
+espressops.initialize(config.db_connection_str(), config.sb_connection_str(), embedder)
 run_console()
 
 #  & 'C:\Program Files\ngrok\ngrok.exe' http --domain=workable-feline-deeply.ngrok-free.app 8080
