@@ -53,12 +53,12 @@ TRENDING_TABS = [
     {
         "name": "articles", 
         "label": "📰 News & Articles",
-        "kinds": (NEWS, BLOG)
+        "kinds": [NEWS, BLOG]
     },
     {
         "name": "posts", 
         "label": "🗣️ Social Media",
-        "kinds": (POST, COMMENT)
+        "kinds": [POST, COMMENT]
     }
 ]
 

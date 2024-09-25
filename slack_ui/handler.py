@@ -72,7 +72,7 @@ def _process_prompt(prompt, userid, say):
         _new_message_queue(
             settings,
             beanops.search(
-                query=result.query, tags=result.tags, kinds=result.kind, last_ndays=result.last_ndays, min_score=result.min_score or DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))        
+                query=result.query, tags=result.tag, kinds=result.kind, last_ndays=result.last_ndays, min_score=result.min_score or DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))        
         beans, left = _dequeue_message(settings)
     elif result.task in ["trending"]: 
         _new_message_queue(

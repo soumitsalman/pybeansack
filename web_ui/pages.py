@@ -76,33 +76,33 @@ def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[
     def load_beans():
         for i, tab in enumerate(TRENDING_TABS):   
             background_tasks.create_lazy(
-                _load_counter(count_holders[i], urls, categories, selected_tags, tab['kinds']), 
+                _load_counter(count_holders[i], urls, categories, selected_tags, tab['kinds'], last_ndays), 
                 name=f"trending-{tab['name']}-count"
             ) 
             background_tasks.create_lazy(
-                _load_trending_beans(bean_holders[i], urls, categories, selected_tags, tab['kinds'], user), 
+                _load_trending_beans(bean_holders[i], urls, categories, selected_tags, tab['kinds'], last_ndays, user), 
                 name=f"trending-{tab['name']}-beans"
             )    
 
     # load the tags
     background_tasks.create_lazy(
-        _load_trending_tags(tags_holder, urls, categories, None, on_tag_select), 
+        _load_trending_tags(tags_holder, urls, categories, None, last_ndays, on_tag_select), 
         name=f"trending-tags-{categories}")
     load_beans()
  
-async def _load_counter(badge: ui.badge, urls, categories, tags, kinds):
-    count = beanops.count_beans(None, urls, categories, tags, kinds, None, MAX_LIMIT+1)
+async def _load_counter(badge: ui.badge, urls, categories, tags, kinds, last_ndays):
+    count = beanops.count_beans(None, urls, categories, tags, kinds, last_ndays, MAX_LIMIT+1)
     badge.set_visibility(count > 0)
     badge.set_text(rounded_number_with_max(count, MAX_LIMIT))
 
-async def _load_trending_tags(tags_panel: ui.element, urls, categories, kinds, on_tag_select):
+async def _load_trending_tags(tags_panel: ui.element, urls, categories, kinds, last_ndays, on_tag_select):
     start_index, topn = 0, DEFAULT_LIMIT
     async def render_more(clear_panel: bool = False):
         # retrieve 1 more than needed to check for whether to show the 'more' button 
         # this way I can check if there are more beans left in the pipe
         # because if there no more beans left no need to show the 'more' button
         nonlocal start_index
-        tags = await run.io_bound(beanops.trending_tags, urls, categories, kinds, None, start_index, topn+1)
+        tags = beanops.trending_tags(urls, categories, kinds, last_ndays, start_index, topn+1)
         start_index += topn
         # clear the pagen of older stuff
         if clear_panel:
@@ -121,7 +121,7 @@ async def _load_trending_tags(tags_panel: ui.element, urls, categories, kinds, o
 
     await render_more(True)      
      
-async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds, for_user):     
+async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds, last_ndays, for_user):     
     is_article = (NEWS in kinds) or (BLOG in kinds) 
     start_index = 0
     
@@ -130,7 +130,7 @@ async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds
         # retrieve 1 more than needed to check for whether to show the 'more' button 
         # this way I can check if there are more beans left in the pipe
         # because if there no more beans left no need to show the 'more' button
-        beans = beanops.trending(urls, categories, tags, kinds, None, start_index, MAX_ITEMS_PER_PAGE+1)
+        beans = beanops.trending(urls, categories, tags, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE+1)
         start_index += MAX_ITEMS_PER_PAGE
         return beans[:MAX_ITEMS_PER_PAGE], (len(beans) > MAX_ITEMS_PER_PAGE)
 
@@ -162,22 +162,26 @@ async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds
             if for_user:
                 ui.button("Follow", on_click=lambda: ui.notify(NOT_IMPLEMENTED)).props("icon-right=add")
 
-def render_search(settings, user, query: str, tag: str, kinds, last_ndays: int, accuracy: float):
+def render_search(settings, user, query: str, tag: str, kinds: list[str], last_ndays: int, accuracy: float):
     def _render():
-        process_prompt = lambda: ui.navigate.to(make_navigation_target("/search", q=prompt_input.value, kinds=kinds_panel.value, acc=accuracy_panel.value)) 
-        banner = query or tag 
+        # render the search input
+        process_prompt = lambda: _trigger_new_search(prompt_input.value, kinds_panel.value, accuracy_panel.value, settings)        
         with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
             .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
             ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
-        # TODO: include categories, include keywords
         with ui.expansion(text="Knobs").props("expand-icon=tune expanded-icon=tune").classes("w-full text-right text-caption"):
             with ui.row(wrap=False, align_items="stretch").classes("w-full border-[1px]").style("border-radius: 5px; padding-left: 1rem;"):                
                 with ui.label("Accuracy").classes("w-full text-left"):
                     accuracy_panel=ui.slider(min=0.1, max=1.0, step=0.05, value=(accuracy or DEFAULT_ACCURACY)).props("label-always")
                 kinds_panel = ui.toggle(options={NEWS:"News", BLOG:"Blogs", POST:"Posts", None:"All"}).props("unelevated no-caps")
-        
-        if banner: # means there can be a search result            
-            render_banner_text(banner)            
+
+        # show existing search results if there are any
+        banner = query or tag 
+        if banner:            
+            with ui.row(align_items="stretch").classes("w-full"):
+                render_banner_text(banner) 
+                ui.space()
+                ui.button("Follow", on_click=lambda: ui.notify(NOT_IMPLEMENTED)).props("icon-right=add")           
             background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, tag, tuple(kinds) if kinds else None, last_ndays, accuracy), name=f"search-{banner}")
     
     render_shell(settings, user, "Search", _render)
@@ -197,6 +201,14 @@ async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, k
             ui.label(BEANS_NOT_FOUND)
             return
         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
+
+def _trigger_new_search(prompt: str, kinds: list[str], accuracy: float, settings):
+    result = ic(prompt_parser.console_parser.parse(prompt, settings['search']))
+    if result.task in ["lookfor", "search", "trending"]: 
+        url = make_navigation_target("/search", q=result.query, tag=result.tag, last_ndays=result.last_ndays, kinds=kinds, min_score=accuracy)
+    else:
+        url = make_navigation_target("/search", q=prompt, kinds=kinds,  min_score=accuracy)
+    ui.navigate.to(url)
 
 def render_document(settings, user, docpath):
     def _render():
@@ -243,7 +255,7 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
     with ui.column(align_items="stretch").classes("responsive-container"):
         render_func()
         render_separator()
-        render_footer_text() #.style("justify-content: center;")
+        render_footer_text() 
 
 def _render_user_profile(settings: dict, user: dict):
     user_connected = lambda source: bool(user and (source in user.get(espressops.CONNECTIONS, "")))
@@ -375,17 +387,15 @@ def render_user_profile_update(settings: dict, user: dict):
         ui.button("Update", color="primary").props("outline")
         ui.button("Cancel", color="negative").props("outline")
     
-
-
 async def trigger_reddit_import(sender: ui.element, username: str, update_panels):
-    def extract_topics():
+    async def extract_topics():
         text = redditor.collect_user_as_text(username, limit=10)     
         if len(text) >= 100:                       
             return espressops.match_categories(text)
         
     with disable_button(sender):    
         sender.props(":loading=true")  
-        new_topics = await run.io_bound(extract_topics)
+        new_topics = await extract_topics()
         if not new_topics:
             ui.notify(NO_INTERESTS_MESSAGE)
             return            

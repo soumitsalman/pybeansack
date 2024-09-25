@@ -202,7 +202,7 @@ def render_bean_shares(user, bean: Bean):
     return view
 
 def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
-    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS+1)
+    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, topn=MAX_RELATED_ITEMS+1)
 
     ACTION_BUTTON_PROPS = f"flat size=sm color=secondary"
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
@@ -227,7 +227,7 @@ def render_expandable_bean(user, bean: Bean, show_related: bool = True):
     def render_related_beans(show_items: bool):   
         related_beans, load_beans = ui.state([])
         if show_items and not related_beans:
-            load_beans(beanops.related(cluster_id=bean.cluster_id, url=bean.url, last_ndays=None, topn=MAX_RELATED_ITEMS))     
+            load_beans(beanops.related(cluster_id=bean.cluster_id, url=bean.url, topn=MAX_RELATED_ITEMS))     
         render_beans_as_carousel(related_beans, lambda bean: render_whole_bean(user, bean)).set_visibility(show_items)    
     
     CONTENT_STYLE = 'padding: 0px; margin: 0px; word-wrap: break-word; overflow-wrap: break-word;'
