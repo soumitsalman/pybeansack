@@ -7,9 +7,9 @@ from pymongo.collection import Collection
 from pybeansack import utils
 from pybeansack.embedding import Embeddings
 from shared.config import *
-from cachetools import TTLCache, cached
 from azure.servicebus import ServiceBusClient, ServiceBusMessage, ServiceBusSender
 from icecream import ic
+from memoization import cached
 
 DB = "espresso"
 users: Collection = None
@@ -88,14 +88,14 @@ def get_categories(user: dict):
 def get_user_category_ids(user: dict):
     return [topic[K_ID] for topic in get_categories(user)]
 
-@cached(TTLCache(maxsize=1, ttl=ONE_WEEK)) 
+@cached(max_size=1, ttl=ONE_WEEK) 
 def get_system_categories():
     return get_categories({ID: SYSTEM})
 
 def get_system_topic_id_label():    
     return {topic[K_ID]: topic[K_TEXT] for topic in get_system_categories()}
 
-@cached(TTLCache(maxsize=100, ttl=ONE_HOUR)) 
+@cached(max_size=100, ttl=ONE_HOUR) 
 def get_preferences(user: dict):
     userdata = get_user(user)
     return {
@@ -147,7 +147,7 @@ def remove_connection(user: dict, source):
             "$unset": { f"{CONNECTIONS}.{source}": "" } 
         })
     
-@cached(TTLCache(maxsize=1000, ttl=ONE_WEEK)) 
+@cached(max_size=1000, ttl=ONE_WEEK) 
 def category_label(id: str):
     if id:
         res = categories.find_one(filter = {ID: id}, projection={TEXT: 1})
@@ -175,6 +175,7 @@ def match_categories(content):
         [cats.extend(cat["related"]+[cat[ID]]) for cat in categories.aggregate(pipeline)]
     return list(set(cats))    
 
+@cached(max_size=1000, ttl=ONE_WEEK) 
 def channel_content(channel_id: dict):
     return channels.distinct(K_URL, filter = {K_SOURCE: channel_id})  
 

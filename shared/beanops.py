@@ -4,7 +4,6 @@ from icecream import ic
 import tldextract
 from pybeansack.beansack import *
 from pybeansack.datamodels import *
-from shared import llmops
 from .config import *
 from memoization import cached
 
