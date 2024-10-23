@@ -162,7 +162,7 @@ async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds
             if for_user:
                 ui.button("Follow", on_click=lambda: ui.notify(NOT_IMPLEMENTED)).props("icon-right=add")
 
-def render_search(settings, user, query: str, tag: str, kinds: list[str], last_ndays: int, accuracy: float):
+def render_search(settings, user, query: str, accuracy: float, tag: str, kinds: str|list[str], last_ndays: int):
     def _render():
         # render the search input
         process_prompt = lambda: _trigger_new_search(prompt_input.value, kinds_panel.value, accuracy_panel.value, settings)        
@@ -177,23 +177,22 @@ def render_search(settings, user, query: str, tag: str, kinds: list[str], last_n
 
         # show existing search results if there are any
         banner = query or tag 
-        if banner:            
-            with ui.row(align_items="stretch").classes("w-full"):
-                render_banner_text(banner) 
-                ui.space()
-                ui.button("Follow", on_click=lambda: ui.notify(NOT_IMPLEMENTED)).props("icon-right=add")           
-            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, tag, tuple(kinds) if kinds else None, last_ndays, accuracy), name=f"search-{banner}")
+        if banner:    
+            render_banner_text(banner)      
+            background_tasks.create_lazy(_search_and_render_beans(user, render_skeleton_beans(count=3), query, tag, kinds, last_ndays, accuracy), name=f"search-{banner}")
+            with ui.row():
+                ui.button("Follow", on_click=lambda: ui.notify(NOT_IMPLEMENTED)).props("icon-right=add")
     
     render_shell(settings, user, "Search", _render)
 
 async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, kinds, last_ndays, accuracy):         
     count = 0
     if query:            
-        result = await run.io_bound(beanops.search, query=query, urls=None, categories=None, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=accuracy or DEFAULT_ACCURACY, start_index=0, topn=MAX_LIMIT)
+        result = await run.io_bound(beanops.search, query=query, accuracy=accuracy or DEFAULT_ACCURACY, tags=tag, kinds=kinds, sources=None, last_ndays=last_ndays, start=0, limit=MAX_LIMIT)
         count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
     elif tag:
-        count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=tag, kind=kinds, last_ndays=last_ndays, topn=MAX_LIMIT), \
-            lambda start: beanops.search(query=None, urls=None, categories=None, tags=tag, kinds=kinds, last_ndays=last_ndays, min_score=None, start_index=start, topn=MAX_ITEMS_PER_PAGE)
+        count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=tag, kinds=kinds, last_ndays=last_ndays, limit=MAX_LIMIT), \
+            lambda start: beanops.get(urls=None, tags=tag, kinds=kinds, sources=None, last_ndays=last_ndays,  start=start, limit=MAX_ITEMS_PER_PAGE)
 
     holder.clear()
     with holder:
@@ -203,11 +202,11 @@ async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, k
         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
 
 def _trigger_new_search(prompt: str, kinds: list[str], accuracy: float, settings):
-    result = ic(prompt_parser.console_parser.parse(prompt, settings['search']))
+    result = prompt_parser.console_parser.parse(prompt, settings['search'])
     if result.task in ["lookfor", "search", "trending"]: 
-        url = make_navigation_target("/search", q=result.query, tag=result.tag, last_ndays=result.last_ndays, kinds=kinds, min_score=accuracy)
+        url = make_navigation_target("/search", q=result.query, tag=result.tag, sources=result.source, last_ndays=result.last_ndays, kind=kinds, min_score=accuracy)
     else:
-        url = make_navigation_target("/search", q=prompt, kinds=kinds,  min_score=accuracy)
+        url = make_navigation_target("/search", q=prompt, kind=kinds, min_score=accuracy)
     ui.navigate.to(url)
 
 def render_document(settings, user, docpath):
@@ -217,8 +216,7 @@ def render_document(settings, user, docpath):
     render_shell(settings, user, None, _render)
        
 def render_shell(settings, user, current_tab: str, render_func: Callable):
-    def render_topics_menu(topic):
-        return (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/t/{topic}", days=settings['search']['last_ndays'])))
+    render_topics_menu = lambda topic: (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/page/{topic}", ndays=settings['search']['last_ndays'])))
 
     def navigate(selected_tab):
         if selected_tab == "Home":
@@ -246,7 +244,7 @@ def render_shell(settings, user, current_tab: str, render_func: Callable):
                 with ui.menu().classes("text-bold"):                       
                     with ui.menu_item(text="Continue with Reddit", on_click=lambda: ui.navigate.to("/reddit/login")).style("border-radius: 20px; border-color: #FF4500;").classes("border-[1px] m-1"):
                         ui.avatar(REDDIT_ICON_URL, color="transparent")
-                    with ui.menu_item(text="Continue with Slack", on_click=lambda: ui.navigate.to('/slack/login')).style("border-radius: 20px; border-color: #8E44AD;").classes("border-[1px] m-1"):
+                    with ui.menu_item(text="Continue with Slack", on_click=lambda: ui.navigate.to('/web/slack/login')).style("border-radius: 20px; border-color: #8E44AD;").classes("border-[1px] m-1"):
                         ui.avatar(SLACK_ICON_URL, color="transparent")
             ui.button(on_click=settings_drawer.toggle, icon="settings", color="secondary").props("flat stretch color=white")
         else:
@@ -268,7 +266,7 @@ def _render_user_profile(settings: dict, user: dict):
         else:
             ui.navigate.to(f"/{source}/login")
     
-    ui.link("u/"+user[K_ID], target=f"/u/{user[K_ID]}").classes("text-bold")
+    ui.link("u/"+user[K_ID], target=f"/channel/{user[K_ID]}").classes("text-bold")
     with ui.row(wrap=False, align_items="stretch").classes("w-full gap-0"):  
         with ui.column(align_items="stretch"):
             # sequencing of bind_value and on_value_change is important.
