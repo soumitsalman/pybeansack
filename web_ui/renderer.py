@@ -222,7 +222,7 @@ def render_expandable_bean(user, bean: Bean, show_related: bool = True):
     def render_related_beans(show_items: bool):   
         related_beans, load_beans = ui.state([])
         if show_items and not related_beans:
-            load_beans(beanops.related(cluster_id=bean.cluster_id, url=bean.url, limit=MAX_RELATED_ITEMS))     
+            load_beans(beanops.related(url=bean.url, tags=None, kinds=None, sources=None, last_ndays=None, start=0, limit=MAX_RELATED_ITEMS))     
         render_beans_as_carousel(related_beans, lambda bean: render_whole_bean(user, bean)).set_visibility(show_items)    
     
     CONTENT_STYLE = 'padding: 0px; margin: 0px; word-wrap: break-word; overflow-wrap: break-word;'

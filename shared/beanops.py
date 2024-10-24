@@ -16,18 +16,18 @@ def initiatize(db_conn, embedder: Embeddings):
     global beansack
     beansack=Beansack(db_conn, embedder)
 
-# @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
+@cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def get(urls: str|list[str], tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> Bean:
     filter=_create_filter(urls, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.get_beans(filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit, projection=PROJECTION)
 
-# @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
+@cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def search(query: str, accuracy: float, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(None, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.vector_search_beans(query=query, min_score=accuracy, filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit, projection=PROJECTION)    
 
-# @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
+@cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def unique(tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
     filter=_create_filter(None, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.get_unique_beans(filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit)
@@ -41,7 +41,7 @@ def trending(urls: list[str], categories: str|list[str], tags: str|list[str], ki
         return beansack.get_beans(filter=filter, sort_by=sort_by, skip=start, limit=limit, projection=PROJECTION)    
     return beansack.get_unique_beans(filter=filter, sort_by=sort_by, skip=start, limit=limit)
 
-# @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
+@cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
 def related(url: str, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
     bean = beansack.beanstore.find_one({K_URL: url}, projection=PROJECTION)
     if bean:
@@ -56,6 +56,10 @@ def chatters(urls: str|list[str]):
 @cached(max_size=1, ttl=ONE_WEEK)
 def sources():
     return beansack.beanstore.distinct(K_SOURCE)
+
+@cached(max_size=1, ttl=ONE_DAY)
+def tags():
+    return beansack.beanstore.distinct(K_TAGS)
     
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def trending_tags(urls: list[str], categories: str|list[str], kinds: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
