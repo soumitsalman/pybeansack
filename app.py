@@ -9,29 +9,18 @@ from nicegui import app, ui
 from fastapi.responses import FileResponse, Response
 from icecream import ic
 import env
-
+from shared import config
 ##### LOGGING SETUP SECTION #####
-log_file = f'espresso-app-{time.strftime("%Y-%m-%d", time.localtime())}.log'
-logging.basicConfig(
-    filename=log_file, 
-    level=logging.WARNING,
-    format='%(asctime)s|%(name)s|%(levelname)s|%(message)s', 
-    datefmt='%Y-%m-%d %H:%M:%S')
-logger: logging.Logger = None
 
-def log(function, **kwargs):
+
+def log(function, **kwargs): 
     user = logged_in_user()
     extra = {"user_id": user[espressops.ID] if user else None, "page_id": None, "q": None, "acc": None, "url": None, "tag": None, "kind": None, "ndays": None}
     extra.update(kwargs)
-    global logger
-    if not logger:
-        logger = logging.getLogger("APP")   
-        log_handler = logging.FileHandler(log_file)
-        log_handler.setFormatter(logging.Formatter('%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s', datefmt='%Y-%m-%d %H:%M:%S'))
-        logger.addHandler(log_handler)
-        logger.setLevel(logging.INFO)
     logger.info(function, extra=extra)
 
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s|%(name)s|%(levelname)s|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logger: logging.Logger = config.create_logger("__APP__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s')
 
 ##### SLACK APP SECTION #####
 from slack_bolt.adapter.fastapi import SlackRequestHandler

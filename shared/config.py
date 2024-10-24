@@ -1,3 +1,4 @@
+import logging
 import os
 from pybeansack.datamodels import *
 
@@ -102,3 +103,11 @@ def llm_base_url():
 
 def host_url():
     return os.getenv("HOST_URL")
+
+def create_logger(name, format, filename=None):
+    logger = logging.getLogger(name)
+    log_handler = logging.StreamHandler() if not filename else logging.FileHandler(filename)
+    log_handler.setFormatter(logging.Formatter(format, datefmt='%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(log_handler)
+    logger.setLevel(logging.INFO)
+    return logger

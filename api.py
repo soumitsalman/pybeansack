@@ -3,29 +3,25 @@ from fastapi import FastAPI, HTTPException, Query
 from icecream import ic
 import logging
 
-logging.basicConfig(
-    filename=f'espresso-api-{time.strftime("%Y-%m-%d", time.localtime())}.log',
-    level=logging.WARNING,
-    format='%(asctime)s|%(name)s|%(levelname)s|%(user_id)s|%(message)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s', 
-    datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger("API")
-logger.setLevel(logging.INFO)
 app = FastAPI(title="Espresso API", version="0.0.1", description="API for Espresso (Alpha)", root_path="/api")
 
 from pybeansack.datamodels import *
 from pybeansack.embedding import *
 from shared import beanops, config
 import env
+from shared import config
+logging.basicConfig(level=logging.WARNING, datefmt='%Y-%m-%d %H:%M:%S')    
+logger: logging.Logger = config.create_logger("__API__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s', filename="api.log")
+
+def log(function, **kwargs):    
+    extra = {"user_id": None, "q": None, "acc": None, "url": None, "tag": None, "kind": None, "source": None, "ndays": None, "start": None, "limit": None, "num_items": None}
+    extra.update(kwargs)
+    logger.info(function, extra=extra)
 
 def respond(res, error_msg: str):
     if res is None:
         raise HTTPException(status_code=404, detail=error_msg)
     return res
-
-def log(function, **kwargs):
-    extra = {"user_id": None, "q": None, "acc": None, "url": None, "tag": None, "kind": None, "source": None, "ndays": None, "start": None, "limit": None, "num_items": None}
-    extra.update(kwargs)
-    logger.info(function, extra=extra)
 
 @app.get("/beans", response_model=list[Bean])
 async def get_beans(
