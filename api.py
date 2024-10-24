@@ -1,6 +1,5 @@
 import time
 from fastapi import FastAPI, HTTPException, Query
-import env
 from icecream import ic
 import logging
 
@@ -16,6 +15,7 @@ app = FastAPI(title="Espresso API", version="0.0.1", description="API for Espres
 from pybeansack.datamodels import *
 from pybeansack.embedding import *
 from shared import beanops, config
+import env
 
 def respond(res, error_msg: str):
     if res is None:

@@ -10,25 +10,52 @@ from fastapi.responses import FileResponse, Response
 from icecream import ic
 import env
 
+##### LOGGING SETUP SECTION #####
+log_file = f'espresso-app-{time.strftime("%Y-%m-%d", time.localtime())}.log'
 logging.basicConfig(
-    filename=f'espresso-web-{time.strftime("%Y-%m-%d", time.localtime())}.log',
+    filename=log_file, 
     level=logging.WARNING,
-    format='%(asctime)s|%(name)s|%(levelname)s|%(user_id)s|%(message)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s', 
+    format='%(asctime)s|%(name)s|%(levelname)s|%(message)s', 
     datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger("WEB")
-logger.setLevel(logging.INFO)
-oauth = OAuth()
-
-from pybeansack.embedding import *
-from shared import beanops, config, espressops, messages
-import web_ui.pages
-import web_ui.renderer
+logger: logging.Logger = None
 
 def log(function, **kwargs):
     user = logged_in_user()
     extra = {"user_id": user[espressops.ID] if user else None, "page_id": None, "q": None, "acc": None, "url": None, "tag": None, "kind": None, "ndays": None}
     extra.update(kwargs)
+    global logger
+    if not logger:
+        logger = logging.getLogger("APP")   
+        log_handler = logging.FileHandler(log_file)
+        log_handler.setFormatter(logging.Formatter('%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        logger.addHandler(log_handler)
+        logger.setLevel(logging.INFO)
     logger.info(function, extra=extra)
+
+
+##### SLACK APP SECTION #####
+from slack_bolt.adapter.fastapi import SlackRequestHandler
+from slack_ui.handler import slack_app
+
+handler = SlackRequestHandler(slack_app)
+
+@app.post("/slack/events")
+@app.post("/slack/commands")
+@app.post("/slack/actions")
+@app.get("/slack/oauth-redirect")
+@app.get("/slack/install")
+async def receive_slack_app_events(req: Request):
+    res = await handler.handle(req)
+    return res
+
+
+##### WEB APP SECTION #####
+from pybeansack.embedding import *
+from shared import beanops, config, espressops, messages
+import web_ui.pages
+import web_ui.renderer
+
+oauth = OAuth()
 
 def session_settings() -> dict:
     if 'settings' not in app.storage.user:

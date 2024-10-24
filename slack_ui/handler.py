@@ -17,7 +17,7 @@ LOCAL_MAX_ITEMS_PER_PAGE = 3
 SCOPES = ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "groups:history", "groups:read", "groups:write", "im:history", "im:read"]
 # set up the initial app
 slack_app = App(
-    token=slack_bot_token(),
+    # token=slack_bot_token(),
     signing_secret=slack_signing_secret(),
     oauth_settings=OAuthSettings(
         client_id=slack_client_id(),
