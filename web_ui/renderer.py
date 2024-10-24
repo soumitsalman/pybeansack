@@ -71,12 +71,12 @@ body {
 
 IMAGE_DIMENSIONS = "w-32 h-24"
 
-REDDIT_ICON_URL = "img:/images/reddit.png"
-SLACK_ICON_URL = "img:/images/slack.png"
-TWITTER_ICON_URL = "img:/images/twitter-x.png"
-WHATSAPP_ICON_URL = "img:/images/whatsapp.png"
-LINKEDIN_ICON_URL = "img:/images/linkedin.png"
-ESPRESSO_ICON_URL = "img:/images/cafecito.png"
+REDDIT_ICON_URL = "img:https://www.reddit.com/favicon.ico"
+LINKEDIN_ICON_URL = "img:https://www.linkedin.com/favicon.ico"
+SLACK_ICON_URL = "img:https://www.slack.com/favicon.ico"
+TWITTER_ICON_URL = "img:https://www.x.com/favicon.ico"
+WHATSAPP_ICON_URL = "img:https://www.whatsapp.com/favicon.ico"
+ESPRESSO_ICON_URL = "img:/images/favicon.jpg"
 
 go_to = lambda url: ui.navigate.to(url, new_tab=True)
 reddit_share_url = lambda bean: make_navigation_target("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
@@ -111,7 +111,7 @@ def render_error_text(msg: str):
     return ui.label(msg).classes("text-h5 self-center text-center")
 
 def render_footer_text():
-    text = "[[Terms of Use](/docs/terms-of-use)]   [[Privacy Policy](/docs/privacy-policy)]   [[Espresso](/docs/espresso)]   [[Project Cafecito](/docs/project-cafecito)]\n\nCopyright © 2024 Project Cafecito. All rights reserved."
+    text = "[[Terms of Use](/doc/terms-of-use)]   [[Privacy Policy](/doc/privacy-policy)]   [[Espresso](/doc/espresso)]   [[Project Cafecito](/doc/project-cafecito)]\n\nCopyright © 2024 Project Cafecito. All rights reserved."
     return ui.markdown(text).classes("w-full text-caption text-center")
 
 def render_header():
@@ -121,16 +121,11 @@ def render_header():
         ui.image("images/cafecito.png").props("width=3rem height=3rem")
     return header
 
-def render_ids_as_chips(items: list[str]|dict[str, str], on_click: Callable = None):
-    if not items:
-        return
-    if isinstance(items[0], str):
-        items = [{item: item} for item in items]
-    with ui.row(align_items="center").classes("gap-0") as view:
-        [ui.chip(ellipsis_text(text, 30), color="secondary", on_click=lambda id=id: on_click(id)).props('outline dense') for id, text in items.items()]
-    return view
-
 def render_tags_as_chips(tags: list[str], on_click: Callable = None, on_select: Callable = None):
+    async def on_selection_changed(sender):
+        sender.props(remove="outline") if sender.selected else sender.props(add="outline")
+        await on_select(sender.text, sender.selected)
+
     if tags:
         return [
             ui.chip(
@@ -138,7 +133,7 @@ def render_tags_as_chips(tags: list[str], on_click: Callable = None, on_select: 
                 color="secondary",
                 on_click=(lambda e: on_click(e.sender.text)) if on_click else None,
                 selectable=bool(on_select),
-                on_selection_change=(lambda e: on_select(e.sender.text, e.sender.selected)) if on_select else None).props('outline dense') \
+                on_selection_change=(lambda e: on_selection_changed(e.sender)) if on_select else None).props('outline dense') \
             for tag in tags]
             
 def render_bean_tags(bean: Bean):
@@ -202,7 +197,7 @@ def render_bean_shares(user, bean: Bean):
     return view
 
 def render_bean_actions(user, bean: Bean, show_related_items: Callable = None):
-    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, topn=MAX_RELATED_ITEMS+1)
+    related_count = beanops.count_related(cluster_id=bean.cluster_id, url=bean.url, limit=MAX_RELATED_ITEMS+1)
 
     ACTION_BUTTON_PROPS = f"flat size=sm color=secondary"
     with ui.row(align_items="center", wrap=False).classes("text-caption w-full"):
@@ -227,7 +222,7 @@ def render_expandable_bean(user, bean: Bean, show_related: bool = True):
     def render_related_beans(show_items: bool):   
         related_beans, load_beans = ui.state([])
         if show_items and not related_beans:
-            load_beans(beanops.related(cluster_id=bean.cluster_id, url=bean.url, topn=MAX_RELATED_ITEMS))     
+            load_beans(beanops.related(cluster_id=bean.cluster_id, url=bean.url, limit=MAX_RELATED_ITEMS))     
         render_beans_as_carousel(related_beans, lambda bean: render_whole_bean(user, bean)).set_visibility(show_items)    
     
     CONTENT_STYLE = 'padding: 0px; margin: 0px; word-wrap: break-word; overflow-wrap: break-word;'

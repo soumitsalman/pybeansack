@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+RUN apt update && apt install -y \
+    cmake \
+    make \
+    g++ \
+    build-essential \
+    wget
+
+WORKDIR /app 
+COPY . . 
+RUN pip install -r requirements.txt
+RUN mkdir .models
+RUN wget -O ./.models/gte-large-Q4.gguf https://huggingface.co/ChristianAzinn/gte-large-gguf/resolve/main/gte-large.Q4_K_M.gguf
+
+ENV EMBEDDER_MODEL=/app/.models/gte-large-Q4.gguf
+ENV EMBEDDER_N_CTX=4096
+
+EXPOSE 8080
+CMD ["fastapi", "run", "api.py", "--port", "8080"]

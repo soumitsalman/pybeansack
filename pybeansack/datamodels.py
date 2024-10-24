@@ -10,6 +10,7 @@ BLOG = "blog/journal"
 COMMENT = "social media comment"
 
 # names of important fields of collections
+K_CONTAINER_URL = "container_url"
 K_LIKES = "likes"
 K_COMMENTS = "comments"
 K_TRENDSCORE = "trend_score"
@@ -62,7 +63,7 @@ class Bean(BaseModel):
     author: Optional[str] = None    
     created: Optional[int] = None   
     categories: Optional[list[str]] = None
-    tags: Optional[str|list[str]] = None
+    tags: Optional[list[str]|str] = None
     summary: Optional[str] = None
     embedding: Optional[list[float]] = None
     search_score: Optional[float|int] = None

@@ -4,7 +4,7 @@ azure-data-tables
 pandas
 pydantic
 nicegui
-fastapi
+fastapi[standard]
 tiktoken
 llama-cpp-python
 langchain
