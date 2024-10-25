@@ -37,3 +37,5 @@ def base_url():
     return os.getenv("BASE_URL")
 def internal_auth_token():
     return os.getenv("INTERNAL_AUTH_TOKEN")
+def in_maintenance():
+    return bool(os.getenv("IN_MAINTENANCE"))

@@ -3,6 +3,7 @@ import threading
 
 from sqlalchemy import true
 from connectors import redditor
+import env
 from shared.config import *
 from shared.messages import *
 from shared import beanops, espressops, prompt_parser
@@ -15,6 +16,11 @@ from .renderer import *
 SAVE_DELAY = 60
 save_timer = threading.Timer(0, lambda: None)
 save_lock = threading.Lock()
+
+def render_maintenance():
+    with render_header():  
+        ui.label(APP_NAME).classes("text-bold text-h6").style("margin-left: 1rem; margin-right: auto;")
+    render_error_text(IN_MAINTENANCE)
 
 # shows everything that came in within the last 24 hours
 def render_home(settings, user):    
@@ -29,17 +35,17 @@ def render_home(settings, user):
 def category_exists(category: str):
     return espressops.category_label(category)
 
-def render_trending(settings, user, category: str, last_ndays: int):
+def render_trending(settings, user, category: str):
     render_shell(
         settings, 
         user, 
         "Trending", 
-        lambda: _render_beans_page(user, banner=espressops.category_label(category), urls=None, categories=category, last_ndays=last_ndays))
+        lambda: _render_beans_page(user, banner=espressops.category_label(category), urls=None, categories=category, last_ndays=MIN_WINDOW))
 
 def channel_exists(channel_id: str):
     return espressops.get_user({K_ID: channel_id})
 
-def render_user_channel(settings, user, channel_id: str, last_ndays: int):
+def render_user_channel(settings, user, channel_id: str):
     def _render():
         urls = espressops.channel_content(channel_id)
         if urls:
@@ -48,7 +54,7 @@ def render_user_channel(settings, user, channel_id: str, last_ndays: int):
             render_error_text(BEANS_NOT_FOUND)
     render_shell(settings, user, "Trending", _render)
 
-def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int):
+def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int|None):
     selected_tags = []    
     async def on_tag_select(tag: str, selected: bool):
         selected_tags.append(tag) if selected else selected_tags.remove(tag)
@@ -131,6 +137,7 @@ async def _load_trending_beans(holder: ui.element, urls, categories, tags, kinds
         # this way I can check if there are more beans left in the pipe
         # because if there no more beans left no need to show the 'more' button
         beans = beanops.trending(urls, categories, tags, kinds, last_ndays, start_index, MAX_ITEMS_PER_PAGE+1)
+        ic([bean.updated for bean in beans], [bean.created for bean in beans], [bean.trend_score for bean in beans])
         start_index += MAX_ITEMS_PER_PAGE
         return beans[:MAX_ITEMS_PER_PAGE], (len(beans) > MAX_ITEMS_PER_PAGE)
 
@@ -216,6 +223,10 @@ def render_document(settings, user, docpath):
     render_shell(settings, user, None, _render)
        
 def render_shell(settings, user, current_tab: str, render_func: Callable):
+    if env.in_maintenance():
+        render_maintenance()
+        return
+    
     render_topics_menu = lambda topic: (espressops.category_label(topic), lambda: ui.navigate.to(make_navigation_target(f"/page/{topic}", ndays=settings['search']['last_ndays'])))
 
     def navigate(selected_tab):
@@ -299,9 +310,7 @@ def _render_settings(settings: dict, user: dict):
 
     ui.label('Preferences').classes("text-subtitle1")
     # sequencing of bind_value and on_value_change is important.
-    # otherwise the value_change function will be called every time the page loads
-    with ui.label().bind_text_from(settings['search'], "last_ndays", lambda x: f"Time Window: Last {x} Days").classes("w-full"):
-        ui.slider(min=MIN_WINDOW, max=MAX_WINDOW, step=1).bind_value(settings['search'], "last_ndays").on_value_change(save_session_settings)     
+    # otherwise the value_change function will be called every time the page loads       
     ui.select(
         label="Topics of Interest", 
         options=espressops.get_system_topic_id_label(), 
@@ -329,26 +338,26 @@ def render_user_registration(settings: dict, temp_user: dict, success_func: Call
             ui.link("Terms of Use", "/docs/terms-of-use", new_tab=True)
             ui.link("Privacy Policy", "/docs/privacy-policy", new_tab=True)
             user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above. And I agree to selling to the terms and conditions.").tooltip("We are legally obligated to ask you this question.")
-            with ui.stepper_navigation():
-                ui.button('Agreed', color="primary", on_click=stepper.next).props("unelevated").bind_enabled_from(user_agreement, "value")
-                ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
-        with ui.step("Tell Me Your Dreams") :
-            ui.label("Personalization").classes("text-h6")
-            with ui.row(wrap=False, align_items="center").classes("w-full"):
-                temp_user[K_ID] = espressops.convert_new_userid(f"{temp_user['name']}@{temp_user[K_SOURCE]}")
-                ui.input(label = "User ID").bind_value(temp_user, K_ID).props("outlined")
-                _render_user_image(temp_user)        
-            ui.label("Your Interests")      
-            if temp_user['source'] == "reddit":     
-                ui.button("Analyze From Reddit", on_click=lambda e: trigger_reddit_import(e.sender, temp_user['name'], [settings['search']['topics']])).classes("w-full")          
-                ui.label("- or -").classes("text-caption self-center")                         
-            ui.select(
-                label="Topics", with_input=True, multiple=True, 
-                options=espressops.get_system_topic_id_label()
-            ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
+        #     with ui.stepper_navigation():
+        #         ui.button('Agreed', color="primary", on_click=stepper.next).props("unelevated").bind_enabled_from(user_agreement, "value")
+        #         ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+        # with ui.step("Tell Me Your Dreams") :
+        #     ui.label("Personalization").classes("text-h6")
+        #     with ui.row(wrap=False, align_items="center").classes("w-full"):
+        #         temp_user[K_ID] = espressops.convert_new_userid(f"{temp_user['name']}@{temp_user[K_SOURCE]}")
+        #         ui.input(label = "User ID").bind_value(temp_user, K_ID).props("outlined")
+        #         _render_user_image(temp_user)        
+        #     ui.label("Your Interests")      
+        #     if temp_user['source'] == "reddit":     
+        #         ui.button("Analyze From Reddit", on_click=lambda e: trigger_reddit_import(e.sender, temp_user['name'], [settings['search']['topics']])).classes("w-full")          
+        #         ui.label("- or -").classes("text-caption self-center")                         
+        #     ui.select(
+        #         label="Topics", with_input=True, multiple=True, 
+        #         options=espressops.get_system_topic_id_label()
+        #     ).bind_value(settings['search'], 'topics').props("filled use-chips").classes("w-full").tooltip("We are saving this one too")
 
             with ui.stepper_navigation():
-                ui.button("Done", color="primary", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).props("unelevated")
+                ui.button("Done", color="primary", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user, settings['search']))).bind_enabled_from(user_agreement, "value").props("unelevated")
                 ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
 
 def render_user_profile_update(settings: dict, user: dict):

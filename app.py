@@ -15,8 +15,8 @@ from shared import config
 ##### LOGGING SETUP SECTION #####
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s|%(name)s|%(levelname)s|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-app_logger: logging.Logger = config.create_logger("__APP__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s', "espresso-app.log")
-api_logger: logging.Logger = config.create_logger("__API__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s', "espresso-api.log")
+app_logger: logging.Logger = config.create_logger("__APP__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s')
+api_logger: logging.Logger = config.create_logger("__API__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s')
 
 def log_app(function, **kwargs): 
     user = logged_in_user()
@@ -87,7 +87,7 @@ def log_out_user():
 
 @app.get("/web/slack/login")
 async def slack_login(request: Request):
-    redirect_uri = os.getenv('HOST_URL')+"/web/slack/oauth-redirect"
+    redirect_uri = env.base_url()+"/web/slack/oauth-redirect"
     return await oauth.slack.authorize_redirect(request, redirect_uri)
 
 @app.get("/web/slack/oauth-redirect")
@@ -102,7 +102,7 @@ async def slack_web_redirect(request: Request):
 
 @app.get("/reddit/login")
 async def reddit_login(request: Request):
-    redirect_uri = os.getenv('HOST_URL')+"/reddit/oauth-redirect"
+    redirect_uri = env.base_url()+"/reddit/oauth-redirect"
     return await oauth.reddit.authorize_redirect(request, redirect_uri)
 
 @app.get("/reddit/oauth-redirect")
@@ -116,15 +116,14 @@ async def reddit_redirect(request: Request):
         return RedirectResponse("/login-failed?source=reddit")
 
 def _redirect_after_auth(name, id, image_url, source, token):
-    authenticated_user = {
+    authenticated_user = ic({
         espressops.NAME: name,
         espressops.SOURCE_ID: id,
         espressops.SOURCE: source,
-        espressops.IMAGE_URL: image_url,
-        **token
-    }
+        espressops.IMAGE_URL: image_url
+    })
     # if a user is already logged in then add this as a connection
-    current_user = logged_in_user()
+    current_user = ic(logged_in_user())
     if current_user:
         espressops.add_connection(current_user, authenticated_user)
         current_user[espressops.CONNECTIONS][source]=name
@@ -132,7 +131,7 @@ def _redirect_after_auth(name, id, image_url, source, token):
         return RedirectResponse(last_page())
         
     # if no user is logged in but there is an registered user with this cred then log-in that user    
-    registered_user = espressops.get_user(authenticated_user)
+    registered_user = ic(espressops.get_user(authenticated_user))
     if registered_user:
         set_logged_in_user(registered_user)
         log_app('logged in')
@@ -160,7 +159,7 @@ async def login_failed(source: str):
 
 @ui.page('/user-registration')
 def user_registration():
-    log_app('user_registration', user_id=temp_user()[espressops.ID] if temp_user() else None)
+    log_app('user_registration', user_id=temp_user()[espressops.NAME] if temp_user() else None)
     web_ui.pages.render_user_registration(
         session_settings(), 
         temp_user(),
@@ -180,7 +179,7 @@ def search(
     acc: float = Query(ge=0, le=1, default=config.DEFAULT_ACCURACY),
     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
     kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None)):
+    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=config.MIN_WINDOW)):
 
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, tag=tag, kind=kind, ndays=ndays, acc=acc)
@@ -188,28 +187,24 @@ def search(
     web_ui.pages.render_search(settings, logged_in_user(), q, acc, tag, kind, ndays)
 
 @ui.page("/page/{category}")
-def trending(
-    category: str, 
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=config.DEFAULT_WINDOW)):    
+def trending(category: str):    
     if not web_ui.pages.category_exists(category):
         return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
     
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/page/{category}", ndays=ndays) 
-    log_app('page', page_id=category, ndays=ndays)
-    web_ui.pages.render_trending(settings, logged_in_user(), category.lower(), ndays)
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/page/{category}") 
+    log_app('page', page_id=category)
+    web_ui.pages.render_trending(settings, logged_in_user(), category.lower())
 
 @ui.page("/channel/{userid}")
-def user_channel(
-    userid: str, 
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=config.DEFAULT_WINDOW)):
+def user_channel(userid: str):
     if not web_ui.pages.channel_exists(userid):
         return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
     
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/channel/{userid}", ndays=ndays) 
-    log_app('channel', page_id=userid, ndays=ndays)
-    web_ui.pages.render_user_channel(settings, logged_in_user(), userid, ndays)
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/channel/{userid}") 
+    log_app('channel', page_id=userid)
+    web_ui.pages.render_user_channel(settings, logged_in_user(), userid)
 
 @ui.page("/docs/{doc}")
 async def document(doc: str):
@@ -222,102 +217,102 @@ async def document(doc: str):
 
 
 ##### API SECTION #####
-@app.get("/api/beans", response_model=list[Bean])
-async def get_beans(
-    url: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None), 
-    source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-    start: int | None = Query(ge=0, default=0), 
-    limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
-    """
-    Retrieves the bean(s) with the given URL(s).
-    """
-    res = beanops.get(url, tag, kind, source, ndays, start, limit)  
-    log_api('get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-    # return respond(res, "No beans found")
-    return res
+# @app.get("/api/beans", response_model=list[Bean])
+# async def get_beans(
+#     url: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
+#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
+#     kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None), 
+#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
+#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
+#     start: int | None = Query(ge=0, default=0), 
+#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
+#     """
+#     Retrieves the bean(s) with the given URL(s).
+#     """
+#     res = beanops.get(url, tag, kind, source, ndays, start, limit)  
+#     log_api('get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
+#     # return respond(res, "No beans found")
+#     return res
 
-@app.get("/api/beans/search", response_model=list[Bean])
-async def search_beans(
-    q: str = None, 
-    acc: float = Query(ge=0, le=1, default=config.DEFAULT_ACCURACY),
-    tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None), 
-    source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-    start: int | None = Query(ge=0, default=0), 
-    limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.DEFAULT_LIMIT)):
-    """
-    Search beans by various parameters.
-    q: query string
-    acc: accuracy
-    tags: list of tags
-    kinds: list of kinds
-    source: list of sources
-    ndays: last n days
-    start: start index
-    limit: limit
-    """
-    res = beanops.search(q, acc, tag, kind, source, ndays, start, limit)
-    log_api('search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-    # return respond(res, "No beans found")
-    return res
-@app.get("/api/beans/unique", response_model=list[Bean])
-async def unique_beans(
-    tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    kind: list[str] | None = Query(default=None), 
-    source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-    start: int | None = Query(ge=0, default=0), 
-    limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
-    """
-    Retuns a set of unique beans, meaning only one bean from each cluster will be included in the result.
-    To retrieve all the beans irrespective of cluster, use /beans endpoint.
-    To retrieve the beans related to the beans in this result set, use /beans/related endpoint.
-    """
-    res = beanops.unique(tag, kind, source, ndays, start, limit)
-    log_api('unique_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-    # return respond(res, "No beans found")
-    return res
+# @app.get("/api/beans/search", response_model=list[Bean])
+# async def search_beans(
+#     q: str = None, 
+#     acc: float = Query(ge=0, le=1, default=config.DEFAULT_ACCURACY),
+#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
+#     kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None), 
+#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
+#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
+#     start: int | None = Query(ge=0, default=0), 
+#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.DEFAULT_LIMIT)):
+#     """
+#     Search beans by various parameters.
+#     q: query string
+#     acc: accuracy
+#     tags: list of tags
+#     kinds: list of kinds
+#     source: list of sources
+#     ndays: last n days
+#     start: start index
+#     limit: limit
+#     """
+#     res = beanops.search(q, acc, tag, kind, source, ndays, start, limit)
+#     log_api('search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
+#     # return respond(res, "No beans found")
+#     return res
+# @app.get("/api/beans/unique", response_model=list[Bean])
+# async def unique_beans(
+#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
+#     kind: list[str] | None = Query(default=None), 
+#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
+#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
+#     start: int | None = Query(ge=0, default=0), 
+#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
+#     """
+#     Retuns a set of unique beans, meaning only one bean from each cluster will be included in the result.
+#     To retrieve all the beans irrespective of cluster, use /beans endpoint.
+#     To retrieve the beans related to the beans in this result set, use /beans/related endpoint.
+#     """
+#     res = beanops.unique(tag, kind, source, ndays, start, limit)
+#     log_api('unique_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
+#     # return respond(res, "No beans found")
+#     return res
 
-@app.get("/api/beans/related", response_model=list[Bean]|None)
-async def get_related_beans(
-    url: str, 
-    tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    kind: list[str] | None = Query(default=None), 
-    source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-    start: int | None = Query(ge=0, default=0), 
-    limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
-    """
-    Retrieves the related beans to the given bean.
-    """    
-    res = beanops.related(url, tag, kind, source, ndays, start, limit)
-    log_api('get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-    # return respond(res, "No beans found")
-    return res
+# @app.get("/api/beans/related", response_model=list[Bean]|None)
+# async def get_related_beans(
+#     url: str, 
+#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
+#     kind: list[str] | None = Query(default=None), 
+#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
+#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
+#     start: int | None = Query(ge=0, default=0), 
+#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
+#     """
+#     Retrieves the related beans to the given bean.
+#     """    
+#     res = beanops.related(url, tag, kind, source, ndays, start, limit)
+#     log_api('get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
+#     # return respond(res, "No beans found")
+#     return res
 
-@app.get("/api/beans/chatters", response_model=list[Chatter])
-async def get_chatters(url: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None)):
-    """
-    Retrieves the latest social media stats for the given bean(s).
-    """
-    res = beanops.chatters(url)
-    log_api('get_chatters', url=url, num_items=len(res) if res else None)
-    # return respond(res, "No chatters found")
-    return res
+# @app.get("/api/beans/chatters", response_model=list[Chatter])
+# async def get_chatters(url: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None)):
+#     """
+#     Retrieves the latest social media stats for the given bean(s).
+#     """
+#     res = beanops.chatters(url)
+#     log_api('get_chatters', url=url, num_items=len(res) if res else None)
+#     # return respond(res, "No chatters found")
+#     return res
 
-@app.get("/api/beans/sources")
-async def get_sources():
-    """
-    Retrieves the list of sources.
-    """
-    res = beanops.sources()
-    log_api('get_sources', num_items=len(res) if res else None)
-    # return respond(res, "No sources found")  
-    return res
+# @app.get("/api/beans/sources")
+# async def get_sources():
+#     """
+#     Retrieves the list of sources.
+#     """
+#     res = beanops.sources()
+#     log_api('get_sources', num_items=len(res) if res else None)
+#     # return respond(res, "No sources found")  
+#     return res
 
 def initialize_server():
     embedder = RemoteEmbeddings(env.llm_base_url(), env.llm_api_key(), env.embedder_model(), env.embedder_n_ctx()) \

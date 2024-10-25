@@ -16,5 +16,7 @@ UNKNOWN_ERROR = "💩 ... try again?!"
 PROCESSING = "🏃⛏️💩..."
 PUBLISHED = "👍 Published"
 
+IN_MAINTENANCE = "Taking an EPIC 💩! We will be back soon... (famous last words, yes we know)"
+
 CONSOLE_EXAMPLES = ["trending -q automotive-logistics", "search -q \"Earnings reports\" -t Apple", "publish url1 url2 url3"]   
 CONSOLE_PLACEHOLDER = "Tell me lies, sweet little lies"
