@@ -17,9 +17,13 @@ def initiatize(db_conn, embedder: Embeddings):
     beansack=Beansack(db_conn, embedder)
 
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def get(urls: str|list[str], tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> Bean:
+def get(urls: str|list[str], tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     filter=_create_filter(urls, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.get_beans(filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit, projection=PROJECTION)
+
+def embeddings(urls: str|list[str]) -> list[Bean]:
+    filter=_create_filter(urls, None, None, None, None, None, None, None)
+    return beansack.get_beans(filter=filter, projection={K_EMBEDDING: 1, K_URL: 1})
 
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def search(query: str, accuracy: float, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
