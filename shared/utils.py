@@ -50,19 +50,6 @@ DEFAULT_CATEGORIES = [
     "video-games-virtual-reality"
 ]
 
-TRENDING_TABS = [
-    {
-        "name": "articles", 
-        "label": "📰 News & Articles",
-        "kinds": [NEWS, BLOG]
-    },
-    {
-        "name": "posts", 
-        "label": "🗣️ Social Media",
-        "kinds": [POST, COMMENT]
-    }
-]
-
 def default_user_settings():
     return {
         "search": {
@@ -71,43 +58,45 @@ def default_user_settings():
         }          
     }
 
-# deployment settings
-EMBEDDER_CTX = 4096
-def embedder_path():
-    return os.getenv("MODEL_PATH")
+# # deployment settings
+# EMBEDDER_CTX = 4096
+# def embedder_path():
+#     return os.getenv("MODEL_PATH")
 
-def slack_bot_token() -> str:
-    return os.getenv("SLACKER_BOT_TOKEN")
-def slack_app_token() -> str:
-    return os.getenv("SLACKER_APP_TOKEN")
-def slack_signing_secret() -> str:
-    return os.getenv("SLACKER_SIGNING_SECRET")
-def slack_client_id():
-    return os.getenv("SLACKER_CLIENT_ID")
-def slack_client_secret():
-    return os.getenv("SLACKER_CLIENT_SECRET")
+# def slack_bot_token() -> str:
+#     return os.getenv("SLACKER_BOT_TOKEN")
+# def slack_app_token() -> str:
+#     return os.getenv("SLACKER_APP_TOKEN")
+# def slack_signing_secret() -> str:
+#     return os.getenv("SLACKER_SIGNING_SECRET")
+# def slack_client_id():
+#     return os.getenv("SLACKER_CLIENT_ID")
+# def slack_client_secret():
+#     return os.getenv("SLACKER_CLIENT_SECRET")
 
-def reddit_client_id():
-    return os.getenv("REDDITOR_APP_ID")
-def reddit_client_secret():
-    return os.getenv("REDDITOR_APP_SECRET")
+# def reddit_client_id():
+#     return os.getenv("REDDITOR_APP_ID")
+# def reddit_client_secret():
+#     return os.getenv("REDDITOR_APP_SECRET")
 
-def db_connection_str():
-    return os.getenv("DB_CONNECTION_STRING")
-def sb_connection_str():
-    return os.getenv("SB_CONNECTION_STRING")
-def llm_api_key():
-    return os.getenv("LLM_API_KEY")
-def llm_base_url():
-    return os.getenv("LLM_BASE_URL")
+# def db_connection_str():
+#     return os.getenv("DB_CONNECTION_STRING")
+# def sb_connection_str():
+#     return os.getenv("SB_CONNECTION_STRING")
+# def llm_api_key():
+#     return os.getenv("LLM_API_KEY")
+# def llm_base_url():
+#     return os.getenv("LLM_BASE_URL")
 
-def host_url():
-    return os.getenv("HOST_URL")
+# def host_url():
+#     return os.getenv("HOST_URL")
 
-def create_logger(name, format, filename=None):
+from pythonjsonlogger import jsonlogger
+
+def create_logger(name, filename=None):
     logger = logging.getLogger(name)
-    log_handler = logging.StreamHandler() if not filename else logging.FileHandler(filename)
-    log_handler.setFormatter(logging.Formatter(format, datefmt='%Y-%m-%d %H:%M:%S'))
+    log_handler = logging.FileHandler(filename) if filename else logging.StreamHandler()
+    log_handler.setFormatter(jsonlogger.JsonFormatter(timestamp=True))
     logger.addHandler(log_handler)
     logger.setLevel(logging.INFO)
     return logger

@@ -3,9 +3,8 @@ import humanize
 from icecream import ic
 import tldextract
 from pybeansack.beansack import *
-from pybeansack.beansack import _deserialize_chatters
 from pybeansack.datamodels import *
-from .config import *
+from .utils import *
 from memoization import cached
 
 beansack: Beansack = None

@@ -7,7 +7,7 @@ from itertools import groupby
 from typing import Callable
 from icecream import ic
 from shared import beanops
-from shared.config import *
+from shared.utils import *
 
 rounded_number = lambda counter: str(counter) if counter < 100 else str(99)+'+'
 rounded_number_with_max = lambda counter, top: str(counter) if counter <= top else str(top)+'+'

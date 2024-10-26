@@ -6,7 +6,7 @@ from pymongo import MongoClient, UpdateOne
 from pymongo.collection import Collection
 from pybeansack import utils
 from pybeansack.embedding import Embeddings
-from shared.config import *
+from shared.utils import *
 from azure.servicebus import ServiceBusClient, ServiceBusMessage, ServiceBusSender
 from icecream import ic
 from memoization import cached

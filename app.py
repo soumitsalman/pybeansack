@@ -10,13 +10,13 @@ from fastapi.responses import FileResponse, Response
 from icecream import ic
 import env
 from pybeansack.datamodels import *
-from shared import config
+from shared import utils, utils
 
 ##### LOGGING SETUP SECTION #####
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s|%(name)s|%(levelname)s|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-app_logger: logging.Logger = config.create_logger("__APP__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s')
-api_logger: logging.Logger = config.create_logger("__API__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s')
+app_logger: logging.Logger = utils.create_logger("__APP__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s')
+api_logger: logging.Logger = utils.create_logger("__API__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s')
 
 def log_app(function, **kwargs): 
     user = logged_in_user()
@@ -47,7 +47,7 @@ async def receive_slack_app_events(req: Request):
 
 ##### WEB APP SECTION #####
 from pybeansack.embedding import *
-from shared import beanops, config, espressops, messages
+from shared import beanops, espressops, messages
 import web_ui.pages
 import web_ui.renderer
 
@@ -55,7 +55,7 @@ oauth = OAuth()
 
 def session_settings() -> dict:
     if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = config.default_user_settings()
+        app.storage.user['settings'] = utils.default_user_settings()
     return app.storage.user['settings']
 
 def last_page() -> str:
@@ -95,7 +95,7 @@ async def slack_web_redirect(request: Request):
     try:
         token = await oauth.slack.authorize_access_token(request)
         user = (await oauth.slack.get('https://slack.com/api/users.identity', token=token)).json()    
-        return _redirect_after_auth(user['user']['name'], user['user']['id'], user['user'].get('image_72'), config.SLACK, token)
+        return _redirect_after_auth(user['user']['name'], user['user']['id'], user['user'].get('image_72'), utils.SLACK, token)
     except Exception as err:
         logging.warning(err)
         return RedirectResponse("/login-failed?source=slack")
@@ -110,7 +110,7 @@ async def reddit_redirect(request: Request):
     try:
         token = await oauth.reddit.authorize_access_token(request)
         user = (await oauth.reddit.get('https://oauth.reddit.com/api/v1/me', token=token)).json()
-        return _redirect_after_auth(user['name'], user['id'], user.get('icon_img'), config.REDDIT, token)
+        return _redirect_after_auth(user['name'], user['id'], user.get('icon_img'), utils.REDDIT, token)
     except Exception as err:
         logging.warning(err)
         return RedirectResponse("/login-failed?source=reddit")
@@ -176,10 +176,10 @@ def home():
 @ui.page("/search")
 def search(
     q: str = None, 
-    acc: float = Query(ge=0, le=1, default=config.DEFAULT_ACCURACY),
-    tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=config.MIN_WINDOW)):
+    acc: float = Query(ge=0, le=1, default=utils.DEFAULT_ACCURACY),
+    tag: list[str] | None = Query(max_length=utils.MAX_LIMIT, default=None),
+    kind: list[str] | None = Query(max_length=utils.MAX_LIMIT, default=None),
+    ndays: int | None = Query(ge=utils.MIN_WINDOW, le=utils.MAX_WINDOW, default=utils.MIN_WINDOW)):
 
     settings = session_settings()
     settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, tag=tag, kind=kind, ndays=ndays, acc=acc)
@@ -322,24 +322,24 @@ def initialize_server():
     espressops.initialize(env.db_connection_str(), env.sb_connection_str(), embedder)
 
     oauth.register(
-        name=config.REDDIT,
-        client_id=config.reddit_client_id(),
-        client_secret=config.reddit_client_secret(),
-        user_agent=config.APP_NAME,
+        name=utils.REDDIT,
+        client_id=utils.reddit_client_id(),
+        client_secret=utils.reddit_client_secret(),
+        user_agent=utils.APP_NAME,
         authorize_url='https://www.reddit.com/api/v1/authorize',
         access_token_url='https://www.reddit.com/api/v1/access_token', 
         api_base_url="https://oauth.reddit.com/",
         client_kwargs={'scope': 'identity mysubreddits'}
     )
     oauth.register(
-        name=config.SLACK,
-        client_id=config.slack_client_id(),
-        client_secret=config.slack_client_secret(),
-        user_agent=config.APP_NAME,
+        name=utils.SLACK,
+        client_id=utils.slack_client_id(),
+        client_secret=utils.slack_client_secret(),
+        user_agent=utils.APP_NAME,
         authorize_url='https://slack.com/oauth/authorize',
         access_token_url='https://slack.com/api/oauth.access',
         client_kwargs={'scope': 'identity.basic,identity.avatar'},
     )
 
 initialize_server()
-ui.run(title=config.APP_NAME, favicon="images/favicon.jpg", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3, dark=True)
+ui.run(title=utils.APP_NAME, favicon="images/favicon.jpg", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3, dark=True)

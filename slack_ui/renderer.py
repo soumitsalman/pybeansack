@@ -1,6 +1,6 @@
 from itertools import chain
-from shared import config
-from shared.config import *
+from shared import utils
+from shared.utils import *
 from shared import espressops, beanops, messages
 from icecream import ic
 import logging
@@ -36,7 +36,7 @@ SIGN_UP_MODAL = {
             "type": "section",
             "text": {
                 "type": "mrkdwn", 
-                "text": f"Please review our <{config.host_url()}/docs/terms-of-use|Terms of Use> and <{config.host_url()}/docs/privacy-policy|Privacy Policy>."
+                "text": f"Please review our <{utils.host_url()}/docs/terms-of-use|Terms of Use> and <{utils.host_url()}/docs/privacy-policy|Privacy Policy>."
             }
         },
         {
@@ -110,7 +110,7 @@ def render_connections(settings):
 def render_settings(settings):
     contents = []
     if "user" in settings:
-        contents = [render_text_banner(f"*Channel*: <{config.host_url()}/u/{settings['user'][K_ID]}|u/{settings['user'][K_ID]}>", False, None)]
+        contents = [render_text_banner(f"*Channel*: <{utils.host_url()}/u/{settings['user'][K_ID]}|u/{settings['user'][K_ID]}>", False, None)]
     return contents + [        
         render_text_banner("Topics of Interest", True, False),
         {

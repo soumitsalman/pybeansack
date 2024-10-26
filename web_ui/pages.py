@@ -4,7 +4,7 @@ import threading
 from sqlalchemy import true
 from connectors import redditor
 import env
-from shared.config import *
+from shared.utils import *
 from shared.messages import *
 from shared import beanops, espressops, prompt_parser
 from pybeansack.datamodels import *
@@ -422,3 +422,16 @@ def render_login_failed(success_forward, failure_forward):
     with ui.row(align_items="stretch").classes("w-full").style("justify-content: center;"):
         ui.button('Try Again', icon="login", on_click=lambda: ui.navigate.to(success_forward))
         ui.button('Forget it', icon="cancel", color="negative", on_click=lambda: ui.navigate.to(failure_forward))
+
+TRENDING_TABS = [
+    {
+        "name": "articles", 
+        "label": "📰 News & Articles",
+        "kinds": [NEWS, BLOG]
+    },
+    {
+        "name": "posts", 
+        "label": "🗣️ Social Media",
+        "kinds": [POST, COMMENT]
+    }
+]

@@ -2,20 +2,20 @@ import os
 import random
 import requests
 import requests.auth
-import shared.config as config
+import shared.utils as utils
 import urllib
 from icecream import ic
 import praw
 
 def is_user_authenticated(user_id) -> str:
     header = {
-        "X-API-Key": config.get_internal_auth_token()
+        "X-API-Key": utils.get_internal_auth_token()
     }
     params = {
         "state": user_id
     }
     # need to fix the actual reddit auth
-    resp = requests.get(url = config.get_redditor_url()+"/reddit/auth-status", params=params, headers=header)
+    resp = requests.get(url = utils.get_redditor_url()+"/reddit/auth-status", params=params, headers=header)
     if resp.status_code != requests.codes["ok"]:
         return resp.text
     else:

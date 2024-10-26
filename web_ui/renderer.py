@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from pybeansack.datamodels import *
-from shared import beanops, config, espressops
+from shared import beanops, espressops, utils
 from web_ui.custom_ui import *
 from nicegui import ui
 from icecream import ic
@@ -81,7 +81,7 @@ ESPRESSO_ICON_URL = "img:/images/favicon.jpg"
 go_to = lambda url: ui.navigate.to(url, new_tab=True)
 reddit_share_url = lambda bean: make_navigation_target("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
 twitter_share_url = lambda bean: make_navigation_target("https://x.com/intent/tweet", url=bean.url, text=bean.title)
-linkedin_share_url = lambda bean: make_navigation_target("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, source=config.host_url(), mini=True)
+linkedin_share_url = lambda bean: make_navigation_target("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, source=utils.host_url(), mini=True)
 whatsapp_share_url = lambda bean: make_navigation_target("https://wa.me/", text=f"{bean.title}\n{bean.url}")
 slack_share_url = lambda bean: make_navigation_target("https://slack.com/share/url", url=bean.url, text=bean.title)
 

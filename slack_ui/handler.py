@@ -3,7 +3,7 @@ import re
 from queue import Queue
 from .renderer import *
 from .slack_stores import MongoInstallationStore
-from shared.config import *
+from shared.utils import *
 from shared.messages import *
 from shared import prompt_parser, beanops, espressops
 from icecream import ic

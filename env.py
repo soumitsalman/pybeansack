@@ -39,3 +39,5 @@ def internal_auth_token():
     return os.getenv("INTERNAL_AUTH_TOKEN")
 def in_maintenance():
     return bool(os.getenv("IN_MAINTENANCE"))
+def log_file():
+    return os.getenv("LOG_FILE")
