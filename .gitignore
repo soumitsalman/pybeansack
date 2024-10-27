@@ -9,6 +9,5 @@
 .nicegui
 .models
 .slack
-docker-compose.yaml
 
 
