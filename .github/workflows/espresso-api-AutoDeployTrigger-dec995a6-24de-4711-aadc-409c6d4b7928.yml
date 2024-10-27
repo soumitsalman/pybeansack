@@ -34,14 +34,14 @@ jobs:
       - name: Build and push container image to registry
         uses: azure/container-apps-deploy-action@v2
         with:
-          appSourcePath: ${{ github.workspace }}/DockerfileAPI
+          appSourcePath: ${{ github.workspace }} # Pointing to the root directory of the repository
+          dockerfilePath: DockerfileAPI # Corrected input key
           registryUrl: docker.io
           registryUsername: ${{ secrets.ESPRESSOAPI_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.ESPRESSOAPI_REGISTRY_PASSWORD }}
           containerAppName: espresso-api
           resourceGroup: dev-cafecit-io_group
           imageToBuild: soumitsr/espresso-api:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
+
 
 
