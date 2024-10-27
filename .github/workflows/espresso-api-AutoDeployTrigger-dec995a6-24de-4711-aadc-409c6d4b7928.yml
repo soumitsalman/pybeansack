@@ -35,7 +35,6 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}/DockerfileAPI
-          _dockerfilePathKey_: _dockerfilePath_
           registryUrl: docker.io
           registryUsername: ${{ secrets.ESPRESSOAPI_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.ESPRESSOAPI_REGISTRY_PASSWORD }}
