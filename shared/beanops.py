@@ -101,13 +101,8 @@ def _create_filter(
         filter[K_URL] = lower_case(urls) 
     if kinds:
         filter[K_KIND] = lower_case(kinds)
-    # if categories:
-    #     # TODO: remove this
-    #     filter[K_CATEGORIES] = lower_case(categories)
-    if tags or categories:      
-        items = tags if isinstance(tags, list) else [tags]
-        items.extend(categories) if isinstance(categories, list) else items.append(categories)
-        filter[K_TAGS] = case_insensitive(items)
+    if tags:      
+        filter[K_TAGS] = case_insensitive(tags)
     if sources:
         # TODO: make it look into both source field of the beans and the channel field of the chatters
         filter[K_SOURCE] = case_insensitive(sources)
