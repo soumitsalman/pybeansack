@@ -19,3 +19,4 @@ azure-servicebus
 humanize
 memoization
 python-json-logger
+azure-monitor-opentelemetry

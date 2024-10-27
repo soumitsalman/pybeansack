@@ -1,9 +1,7 @@
 import asyncio
-import threading
-
-from sqlalchemy import true
 from connectors import redditor
 import env
+import threading
 from shared.utils import *
 from shared.messages import *
 from shared import beanops, espressops, prompt_parser
@@ -16,6 +14,7 @@ from .renderer import *
 SAVE_DELAY = 60
 save_timer = threading.Timer(0, lambda: None)
 save_lock = threading.Lock()
+APP_NAME = env.app_name()
 
 def render_maintenance():
     with render_header():  

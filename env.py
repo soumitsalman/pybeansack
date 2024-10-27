@@ -39,5 +39,8 @@ def internal_auth_token():
     return os.getenv("INTERNAL_AUTH_TOKEN")
 def in_maintenance():
     return bool(os.getenv("IN_MAINTENANCE"))
-def log_file():
-    return os.getenv("LOG_FILE")
+def app_name():
+    return os.getenv("APP_NAME")
+
+def az_insights_connection_string():
+    return os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")

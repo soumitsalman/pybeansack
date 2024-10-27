@@ -2,7 +2,6 @@ import logging
 import os
 from pybeansack.datamodels import *
 
-APP_NAME="Espresso by Project Cafecito"
 SLACK = "slack"
 REDDIT = "reddit"
 
@@ -91,12 +90,9 @@ def default_user_settings():
 # def host_url():
 #     return os.getenv("HOST_URL")
 
-from pythonjsonlogger import jsonlogger
+def log(logger, function, **kwargs):    
+    # transform the values before logging for flat tables
+    kwargs["num_returned"] = len(kwargs.get("num_returned", []))
+    kwargs = {key: ("|".join(value) if isinstance(value, list) else value) for key, value in kwargs.items() if value}
+    logger.info(function, extra=kwargs)
 
-def create_logger(name, filename=None):
-    logger = logging.getLogger(name)
-    log_handler = logging.FileHandler(filename) if filename else logging.StreamHandler()
-    log_handler.setFormatter(jsonlogger.JsonFormatter(timestamp=True))
-    logger.addHandler(log_handler)
-    logger.setLevel(logging.INFO)
-    return logger

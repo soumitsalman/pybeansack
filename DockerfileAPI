@@ -15,7 +15,8 @@ RUN wget -O ./.models/gte-large-Q4.gguf https://huggingface.co/ChristianAzinn/gt
 
 ENV EMBEDDER_MODEL=/app/.models/gte-large-Q4.gguf
 ENV EMBEDDER_N_CTX=4096
-ENV LOG_FILE=./espresso-api.log
+ENV APP_NAME="Espresso API"
+ENV OTEL_SERVICE_NAME=ESPRESSO-API
 
 EXPOSE 8080
 CMD ["fastapi", "run", "api.py", "--port", "8080"]

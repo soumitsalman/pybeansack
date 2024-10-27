@@ -1,61 +1,78 @@
+import env
 import logging
-import os
-import time
-from fastapi import HTTPException, Query
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+configure_azure_monitor(
+    connection_string=env.az_insights_connection_string(), 
+    logger_name=env.app_name(), 
+    instrumentation_options={"fastapi": {"enabled": True}})  
+logger: logging.Logger = logging.getLogger(env.app_name())
+logger.setLevel(logging.INFO)
+
+from pybeansack.datamodels import *
+from pybeansack.embedding import *
+from shared import beanops, espressops, messages
+from shared.utils import *
+
+oauth = OAuth()
+def initialize_server():
+    embedder = RemoteEmbeddings(env.llm_base_url(), env.llm_api_key(), env.embedder_model(), env.embedder_n_ctx()) \
+        if env.llm_base_url() else \
+        BeansackEmbeddings(env.embedder_model(), env.embedder_n_ctx())
+    beanops.initiatize(env.db_connection_str(), embedder)
+    espressops.initialize(env.db_connection_str(), env.sb_connection_str(), embedder)
+
+    oauth.register(
+        name=REDDIT,
+        client_id=env.reddit_client_id(),
+        client_secret=env.reddit_client_secret(),
+        user_agent=env.app_name(),
+        authorize_url='https://www.reddit.com/api/v1/authorize',
+        access_token_url='https://www.reddit.com/api/v1/access_token', 
+        api_base_url="https://oauth.reddit.com/",
+        client_kwargs={'scope': 'identity mysubreddits'}
+    )
+    oauth.register(
+        name=SLACK,
+        client_id=env.slack_client_id(),
+        client_secret=env.slack_client_secret(),
+        user_agent=env.app_name(),
+        authorize_url='https://slack.com/oauth/authorize',
+        access_token_url='https://slack.com/api/oauth.access',
+        client_kwargs={'scope': 'identity.basic,identity.avatar'},
+    )
+
+
+
+# ##### SLACK APP SECTION #####
+# from slack_bolt.adapter.fastapi import SlackRequestHandler
+# from slack_ui.handler import slack_app
+
+# handler = SlackRequestHandler(slack_app)
+
+# @app.post("/slack/events")
+# @app.post("/slack/commands")
+# @app.post("/slack/actions")
+# @app.get("/slack/oauth-redirect")
+# @app.get("/slack/install")
+# async def receive_slack_app_events(req: Request):
+#     res = await handler.handle(req)
+#     return res
+
+##### WEB APP SECTION #####
+from fastapi import Query
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 from nicegui import app, ui
 from fastapi.responses import FileResponse, Response
 from icecream import ic
-import env
-from pybeansack.datamodels import *
-from shared import utils, utils
-
-##### LOGGING SETUP SECTION #####
-
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s|%(name)s|%(levelname)s|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-app_logger: logging.Logger = utils.create_logger("__APP__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(page_id)s|%(q)s|%(acc)s|%(tag)s|%(kind)s|%(ndays)s')
-api_logger: logging.Logger = utils.create_logger("__API__", '%(asctime)s|%(name)s|%(levelname)s|%(message)s|%(user_id)s|%(q)s|%(acc)s|%(url)s|%(tag)s|%(kind)s|%(source)s|%(ndays)s|%(start)s|%(limit)s|%(num_items)s')
-
-def log_app(function, **kwargs): 
-    user = logged_in_user()
-    extra = {"user_id": user[espressops.ID] if user else None, "page_id": None, "q": None, "acc": None, "url": None, "tag": None, "kind": None, "ndays": None}
-    extra.update(kwargs)
-    app_logger.info(function, extra=extra)
-
-def log_api(function, **kwargs):    
-    extra = {"user_id": None, "q": None, "acc": None, "url": None, "tag": None, "kind": None, "source": None, "ndays": None, "start": None, "limit": None, "num_items": None}
-    extra.update(kwargs)
-    api_logger.info(function, extra=extra)
-
-##### SLACK APP SECTION #####
-from slack_bolt.adapter.fastapi import SlackRequestHandler
-from slack_ui.handler import slack_app
-
-handler = SlackRequestHandler(slack_app)
-
-@app.post("/slack/events")
-@app.post("/slack/commands")
-@app.post("/slack/actions")
-@app.get("/slack/oauth-redirect")
-@app.get("/slack/install")
-async def receive_slack_app_events(req: Request):
-    res = await handler.handle(req)
-    return res
-
-
-##### WEB APP SECTION #####
-from pybeansack.embedding import *
-from shared import beanops, espressops, messages
 import web_ui.pages
 import web_ui.renderer
 
-oauth = OAuth()
-
 def session_settings() -> dict:
     if 'settings' not in app.storage.user:
-        app.storage.user['settings'] = utils.default_user_settings()
+        app.storage.user['settings'] = default_user_settings()
     return app.storage.user['settings']
 
 def last_page() -> str:
@@ -95,7 +112,7 @@ async def slack_web_redirect(request: Request):
     try:
         token = await oauth.slack.authorize_access_token(request)
         user = (await oauth.slack.get('https://slack.com/api/users.identity', token=token)).json()    
-        return _redirect_after_auth(user['user']['name'], user['user']['id'], user['user'].get('image_72'), utils.SLACK, token)
+        return _redirect_after_auth(user['user']['name'], user['user']['id'], user['user'].get('image_72'), SLACK, token)
     except Exception as err:
         logging.warning(err)
         return RedirectResponse("/login-failed?source=slack")
@@ -110,7 +127,7 @@ async def reddit_redirect(request: Request):
     try:
         token = await oauth.reddit.authorize_access_token(request)
         user = (await oauth.reddit.get('https://oauth.reddit.com/api/v1/me', token=token)).json()
-        return _redirect_after_auth(user['name'], user['id'], user.get('icon_img'), utils.REDDIT, token)
+        return _redirect_after_auth(user['name'], user['id'], user.get('icon_img'), REDDIT, token)
     except Exception as err:
         logging.warning(err)
         return RedirectResponse("/login-failed?source=reddit")
@@ -127,14 +144,14 @@ def _redirect_after_auth(name, id, image_url, source, token):
     if current_user:
         espressops.add_connection(current_user, authenticated_user)
         current_user[espressops.CONNECTIONS][source]=name
-        log_app('connection added')
+        log(logger, 'connection added')
         return RedirectResponse(last_page())
         
     # if no user is logged in but there is an registered user with this cred then log-in that user    
     registered_user = ic(espressops.get_user(authenticated_user))
     if registered_user:
         set_logged_in_user(registered_user)
-        log_app('logged in')
+        log(logger, 'logged in')
         return RedirectResponse(last_page()) 
 
     set_temp_user(authenticated_user)
@@ -142,7 +159,7 @@ def _redirect_after_auth(name, id, image_url, source, token):
 
 @app.get('/logout')
 def logout():
-    log_app('logged out')
+    log(logger, 'logged out')
     log_out_user()
     return RedirectResponse(last_page())
 
@@ -159,7 +176,7 @@ async def login_failed(source: str):
 
 @ui.page('/user-registration')
 def user_registration():
-    log_app('user_registration', user_id=temp_user()[espressops.NAME] if temp_user() else None)
+    log(logger, 'user_registration', user_id=temp_user()[espressops.NAME] if temp_user() else None)
     web_ui.pages.render_user_registration(
         session_settings(), 
         temp_user(),
@@ -170,40 +187,40 @@ def user_registration():
 def home():  
     settings = session_settings()
     settings['last_page'] = "/" 
-    log_app('home')
+    log(logger, 'home')
     web_ui.pages.render_home(settings, logged_in_user())
 
 @ui.page("/search")
 def search(
     q: str = None, 
-    acc: float = Query(ge=0, le=1, default=utils.DEFAULT_ACCURACY),
-    tag: list[str] | None = Query(max_length=utils.MAX_LIMIT, default=None),
-    kind: list[str] | None = Query(max_length=utils.MAX_LIMIT, default=None),
-    ndays: int | None = Query(ge=utils.MIN_WINDOW, le=utils.MAX_WINDOW, default=utils.MIN_WINDOW)):
+    acc: float = Query(ge=0, le=1, default=DEFAULT_ACCURACY),
+    tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
+    kind: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
+    ndays: int | None = Query(ge=MIN_WINDOW, le=MAX_WINDOW, default=MIN_WINDOW)):
 
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, tag=tag, kind=kind, ndays=ndays, acc=acc)
-    log_app('search', q=q, tag=tag, kind=kind, ndays=ndays, acc=acc)
+    settings['last_page'] = web_ui.renderer.make_navigation_target("/search", q=q, acc=acc, tag=tag, kind=kind, ndays=ndays)
+    log(logger, 'search', q=q, tag=tag, kind=kind, ndays=ndays, acc=acc)
     web_ui.pages.render_search(settings, logged_in_user(), q, acc, tag, kind, ndays)
 
-@ui.page("/page/{category}")
+@ui.page("/channel/{category}")
 def trending(category: str):    
     if not web_ui.pages.category_exists(category):
         return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
     
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/page/{category}") 
-    log_app('page', page_id=category)
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/channel/{category}") 
+    log(logger, 'channel', page_id=category)
     web_ui.pages.render_trending(settings, logged_in_user(), category.lower())
 
-@ui.page("/channel/{userid}")
+@ui.page("/page/{userid}")
 def user_channel(userid: str):
     if not web_ui.pages.channel_exists(userid):
         return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
     
     settings = session_settings()
-    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/channel/{userid}") 
-    log_app('channel', page_id=userid)
+    settings['last_page'] = web_ui.renderer.make_navigation_target(f"/page/{userid}") 
+    log(logger, 'page', page_id=userid)
     web_ui.pages.render_user_channel(settings, logged_in_user(), userid)
 
 @ui.page("/docs/{doc}")
@@ -212,134 +229,8 @@ async def document(doc: str):
     if not os.path.exists(path):
         return Response(content=messages.RESOURCE_NOT_FOUND, status_code=404)
     
-    log_app('docs', page_id=doc)
+    log(logger, 'docs', page_id=doc)
     web_ui.pages.render_document(session_settings(), logged_in_user(), path)      
 
-
-##### API SECTION #####
-# @app.get("/api/beans", response_model=list[Bean])
-# async def get_beans(
-#     url: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-#     kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None), 
-#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-#     start: int | None = Query(ge=0, default=0), 
-#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
-#     """
-#     Retrieves the bean(s) with the given URL(s).
-#     """
-#     res = beanops.get(url, tag, kind, source, ndays, start, limit)  
-#     log_api('get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-#     # return respond(res, "No beans found")
-#     return res
-
-# @app.get("/api/beans/search", response_model=list[Bean])
-# async def search_beans(
-#     q: str = None, 
-#     acc: float = Query(ge=0, le=1, default=config.DEFAULT_ACCURACY),
-#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-#     kind: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None), 
-#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-#     start: int | None = Query(ge=0, default=0), 
-#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.DEFAULT_LIMIT)):
-#     """
-#     Search beans by various parameters.
-#     q: query string
-#     acc: accuracy
-#     tags: list of tags
-#     kinds: list of kinds
-#     source: list of sources
-#     ndays: last n days
-#     start: start index
-#     limit: limit
-#     """
-#     res = beanops.search(q, acc, tag, kind, source, ndays, start, limit)
-#     log_api('search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-#     # return respond(res, "No beans found")
-#     return res
-# @app.get("/api/beans/unique", response_model=list[Bean])
-# async def unique_beans(
-#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-#     kind: list[str] | None = Query(default=None), 
-#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-#     start: int | None = Query(ge=0, default=0), 
-#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
-#     """
-#     Retuns a set of unique beans, meaning only one bean from each cluster will be included in the result.
-#     To retrieve all the beans irrespective of cluster, use /beans endpoint.
-#     To retrieve the beans related to the beans in this result set, use /beans/related endpoint.
-#     """
-#     res = beanops.unique(tag, kind, source, ndays, start, limit)
-#     log_api('unique_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-#     # return respond(res, "No beans found")
-#     return res
-
-# @app.get("/api/beans/related", response_model=list[Bean]|None)
-# async def get_related_beans(
-#     url: str, 
-#     tag: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None),
-#     kind: list[str] | None = Query(default=None), 
-#     source: list[str] = Query(max_length=config.MAX_LIMIT, default=None),
-#     ndays: int | None = Query(ge=config.MIN_WINDOW, le=config.MAX_WINDOW, default=None), 
-#     start: int | None = Query(ge=0, default=0), 
-#     limit: int | None = Query(ge=config.MIN_LIMIT, le=config.MAX_LIMIT, default=config.MAX_LIMIT)):
-#     """
-#     Retrieves the related beans to the given bean.
-#     """    
-#     res = beanops.related(url, tag, kind, source, ndays, start, limit)
-#     log_api('get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_items=len(res) if res else None)
-#     # return respond(res, "No beans found")
-#     return res
-
-# @app.get("/api/beans/chatters", response_model=list[Chatter])
-# async def get_chatters(url: list[str] | None = Query(max_length=config.MAX_LIMIT, default=None)):
-#     """
-#     Retrieves the latest social media stats for the given bean(s).
-#     """
-#     res = beanops.chatters(url)
-#     log_api('get_chatters', url=url, num_items=len(res) if res else None)
-#     # return respond(res, "No chatters found")
-#     return res
-
-# @app.get("/api/beans/sources")
-# async def get_sources():
-#     """
-#     Retrieves the list of sources.
-#     """
-#     res = beanops.sources()
-#     log_api('get_sources', num_items=len(res) if res else None)
-#     # return respond(res, "No sources found")  
-#     return res
-
-def initialize_server():
-    embedder = RemoteEmbeddings(env.llm_base_url(), env.llm_api_key(), env.embedder_model(), env.embedder_n_ctx()) \
-        if env.llm_base_url() else \
-        BeansackEmbeddings(env.embedder_model(), env.embedder_n_ctx())
-    beanops.initiatize(env.db_connection_str(), embedder)
-    espressops.initialize(env.db_connection_str(), env.sb_connection_str(), embedder)
-
-    oauth.register(
-        name=utils.REDDIT,
-        client_id=utils.reddit_client_id(),
-        client_secret=utils.reddit_client_secret(),
-        user_agent=utils.APP_NAME,
-        authorize_url='https://www.reddit.com/api/v1/authorize',
-        access_token_url='https://www.reddit.com/api/v1/access_token', 
-        api_base_url="https://oauth.reddit.com/",
-        client_kwargs={'scope': 'identity mysubreddits'}
-    )
-    oauth.register(
-        name=utils.SLACK,
-        client_id=utils.slack_client_id(),
-        client_secret=utils.slack_client_secret(),
-        user_agent=utils.APP_NAME,
-        authorize_url='https://slack.com/oauth/authorize',
-        access_token_url='https://slack.com/api/oauth.access',
-        client_kwargs={'scope': 'identity.basic,identity.avatar'},
-    )
-
 initialize_server()
-ui.run(title=utils.APP_NAME, favicon="images/favicon.jpg", storage_secret=os.getenv('INTERNAL_AUTH_TOKEN'), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3, dark=True)
+ui.run(title=env.app_name(), favicon="images/favicon.jpg", storage_secret=env.internal_auth_token(), host="0.0.0.0", port=8080, show=False, binding_refresh_interval=0.3, dark=True)
