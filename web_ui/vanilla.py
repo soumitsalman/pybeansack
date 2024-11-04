@@ -15,44 +15,84 @@ APP_NAME = env.app_name()
 async def render_home(user):
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
-        render_following_pages(user).classes("w-1/5 gt-sm")
+        render_following_channels(user).classes("w-1/5 gt-sm")
         with ui.grid().classes("w-full grid-cols-1 lg:grid-cols-2"):
             # render trending blogs, posts and news
             for kind in DEFAULT_KINDS:
-                with ui.card(align_items="start").tight().props("flat"):
-                    ui.item(f"Trending {kind[K_TITLE]}").classes("text-h6")
+                with ui.card(align_items="stretch").tight().props("flat"):
+                    ui.item(f"{kind[K_TITLE]}").classes("text-h6")
                     ui.separator() 
                     # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
                     render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE))
             # render trending pages
-            render_trending_channels(user)
+            with ui.card(align_items="stretch").tight().props("flat") as panel:        
+                ui.item("Explore").classes("text-h6")
+                ui.separator()
+                render_trending_channels(user)
+    render_footer()
+
+async def render_trending(user):
+    channels = espressops.get_following_channels(user) or DEFAULT_CHANNELS
+    
+    async def load_and_render(holder: ui.element, channel):
+        beans = [(await run.io_bound(beanops.get_trending_beans, tags=channel[K_TITLE], kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1)) for kind in DEFAULT_KINDS]
+        beans = [bean[0] for bean in beans if bean]
+        with holder:
+            render_swipable_beans(user, beans).classes("w-full") \
+                if beans else \
+                    render_error_text(NOTHING_TRENDING)
+
+    render_header(user)
+    with ui.row(wrap=False).classes("w-full"): 
+        render_following_channels(user).classes("w-1/5 gt-sm")
+        with ui.grid().classes("w-full grid-cols-1 lg:grid-cols-2"):
+            for channel in channels:
+                with ui.card(align_items="stretch").tight().props("flat") as holder:
+                    ui.item(channel[K_TITLE], on_click=create_channel_route(channel)).classes("text-h4")
+                    ui.separator()
+                    background_tasks.create_lazy(load_and_render(holder, channel), name=f"trending-{channel[K_TITLE]}-{now()}")
+                            
     render_footer()
 
 async def render_channel(user, channel_id: str):
     channel = espressops.get_channel(channel_id)
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
-        render_following_pages(user).classes("w-1/5 gt-sm")
+        render_following_channels(user).classes("w-1/5 gt-sm")
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
             with ui.row(wrap=False, align_items="start").classes("justify-between q-mb-md w-full"):
                 ui.label(channel[K_TEXT]).classes("text-h4")
                 if user:
                     ui.button("Follow", icon="add").props("unelevated")
+            # checking if there is actually any content of this kind        
+            bean_exists = {kind[K_ID]: beanops.count_beans(query=None, accuracy=None, urls=None, tags=channel[K_TEXT], kinds=kind[K_ID], last_ndays=None, limit=1) for kind in DEFAULT_KINDS}
             with ui.tabs().classes("w-full") as tabs:
-                [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS]
+                [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS if bean_exists[kind[K_ID]]]
             with ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders"):
                 for kind in DEFAULT_KINDS:
-                    with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
-                        # TODO: render_appendable_tags with select action
-                        render_appendable_beans(user, lambda start, limit, kind=kind: beanops.get_trending_beans(tags=channel[K_TEXT], kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0")                                
+                    if bean_exists[kind[K_ID]]:
+                        with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
+                            # TODO: render_appendable_tags with select action
+                            render_appendable_beans(user, lambda start, limit, kind=kind: beanops.get_trending_beans(tags=channel[K_TEXT], kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0")                                
+            if not any(bean_exists.values()):
+                render_error_text(NOTHING_TRENDING)
     render_footer()
 
 async def render_search(user, query: str, accuracy: float, tags: str|list[str], kinds: str|list[str]):
-    process_prompt = lambda: _trigger_new_search(prompt_input.value, kinds_panel.value, accuracy_panel.value)
+    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value, kinds=kinds_panel.value, accuracy=accuracy_panel.value))
+    search_func = lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit)
+
+    async def search_and_render(holder: ui.element, user, query, accuracy, tags, kinds):
+        items_count = await run.cpu_bound(beanops.count_beans, query=query, accuracy=accuracy, urls=None, tags=tags, kinds=kinds, last_ndays=None, limit=MAX_LIMIT)
+        holder.clear()
+        with holder:
+            render_paginated_beans(user, search_func, items_count).classes("rounded-borders") \
+                if items_count else \
+                    render_error_text(BEANS_NOT_FOUND)
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"):
-        render_following_pages(user).classes("w-1/5 gt-sm")
+        render_following_channels(user).classes("w-1/5 gt-sm")
         # render the search input
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
             with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
@@ -65,27 +105,14 @@ async def render_search(user, query: str, accuracy: float, tags: str|list[str], 
                     with ui.label("Accuracy").classes("w-full text-left"):
                         accuracy_panel=ui.slider(min=0.1, max=1.0, step=0.05, value=(accuracy or DEFAULT_ACCURACY)).props("label-always")
                     kinds_panel = ui.toggle(options={NEWS:"News", BLOG:"Blogs", POST:"Posts", None:"All"}).props("unelevated no-caps")
-
-            # show existing search results if there are any
-            banner = query or tags 
-            if banner:    
-                ui.label(banner or (tags if isinstance(tags, str) else ", ".join(tags))).classes("text-h4 banner")
-                with ui.grid().classes("w-full") as view:
-                    render_paginated_beans(
-                        user, 
-                        lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit), 
-                        items_count=beanops.count_beans(query=query, urls=None, categories=None, tags=tags, kinds=kinds, last_ndays=None, limit=MAX_LIMIT)).classes("rounded-borders")
-                    # TODO: add a block for pages
-    
+            
+            # render this ONLY if there is a query or tag present or else the banner will be empty
+            if query or tags: 
+                ui.label(query or (tags if isinstance(tags, str) else ", ".join(tags))).classes("text-h4 banner")
+                with ui.grid().classes("w-full") as holder: #grid-cols-1 lg:grid-cols-2
+                    render_skeleton_beans(3)
+                background_tasks.create_lazy(search_and_render(holder, user, query, accuracy, tags, kinds), name=f"search-{now()}")    
     render_footer()
-
-def _trigger_new_search(prompt: str, kinds: list[str], accuracy: float):
-    result = prompt_parser.console_parser.parse(prompt)
-    if result.task in ["lookfor", "search", "trending"]: 
-        url = create_navigation_target("/search", q=result.query, tag=result.tag, sources=result.source, kind=kinds, min_score=accuracy)
-    else:
-        url = create_navigation_target("/search", q=prompt, kind=kinds, min_score=accuracy)
-    ui.navigate.to(url)
 
 async def render_doc(user, doc_id):
     render_header(user)
@@ -93,24 +120,6 @@ async def render_doc(user, doc_id):
         ui.markdown(file.read()).classes("lg:w-1/2 w-full self-center")
     render_footer()
 
-# async def _search_and_render_beans(user: dict, holder: ui.element, query, tag, kinds, last_ndays, accuracy):         
-#     count = 0
-#     if query:            
-#         result = await run.io_bound(beanops.search_beans, query=query, accuracy=accuracy or DEFAULT_ACCURACY, tags=tag, kinds=kinds, sources=None, last_ndays=last_ndays, start=0, limit=MAX_LIMIT)
-#         count, beans_iter = len(result), lambda start: result[start: start + MAX_ITEMS_PER_PAGE]
-#     elif tag:
-#         count, beans_iter = beanops.count_beans(None, urls=None, categories=None, tags=tag, kinds=kinds, last_ndays=last_ndays, limit=MAX_LIMIT), \
-#             lambda start: beanops.get_beans(urls=None, tags=tag, kinds=kinds, sources=None, last_ndays=last_ndays,  start=start, limit=MAX_ITEMS_PER_PAGE)
-
-#     holder.clear()
-#     with holder:
-#         if not count:
-#             ui.label(BEANS_NOT_FOUND)
-#             return
-#         render_beans_as_paginated_list(beans_iter, count, lambda bean: render_expandable_bean(user, bean, False))
-
-
-  
 
 # def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int|None):
 #     selected_tags = []    

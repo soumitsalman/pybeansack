@@ -13,6 +13,10 @@ body {
     color: #BBBBBB;
 }
 
+.bg-primary { background-color: #4e392a; }
+
+.bg-secondary { background-color: #b79579; }
+
 .text-caption { color: #999999; }
 
 .tag {    

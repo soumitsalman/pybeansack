@@ -44,9 +44,6 @@ def current_user(**kwargs):
         app.storage.user['current_user'] = kwargs
     return app.storage.user.get('current_user')
 
-# def set_temp_user(user):
-#     app.storage.user["temp_user"] = user
-
 def delete_temp_user():
     if 'temp_user' in app.storage.user:
         del app.storage.user["temp_user"]
@@ -73,10 +70,10 @@ async def channel(channel_id: str = Depends(validate_channel)):
     session_settings(last_page=f"/channel/{channel_id}")
     await vanilla.render_channel(current_user(), channel_id)
 
-@ui.page("/docs/{doc_id}")
-async def document(doc_id: str = Depends(validate_doc)):
-    log(logger, 'docs', page_id=doc_id)
-    await vanilla.render_doc(current_user(), doc_id)  
+@ui.page("/trending")
+async def trending():
+    log(logger, 'trending')
+    await vanilla.render_trending(current_user())
 
 @ui.page("/search")
 async def search(
@@ -85,8 +82,13 @@ async def search(
     tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
     kind: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
     log(logger, 'search', q=q, acc=acc, tag=tag, kind=kind)
-    settings = session_settings(last_page=renderer.create_navigation_target("/search", q=q, acc=acc, tag=tag, kind=kind))    
+    session_settings(last_page=renderer.create_navigation_target("/search", q=q, acc=acc, tag=tag, kind=kind))    
     await vanilla.render_search(current_user(), q, acc, tag, kind)
+
+@ui.page("/docs/{doc_id}")
+async def document(doc_id: str = Depends(validate_doc)):
+    log(logger, 'docs', page_id=doc_id)
+    await vanilla.render_doc(current_user(), doc_id)  
     
 initialize_server()
 ui.run(

@@ -32,7 +32,7 @@ def create_navigation_target(base_url, **kwargs):
     return base_url
 
 def create_navigation_route(base_url, **kwargs):
-    return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs), new_tab=True)
+    return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs))
 
 def create_channel_route(channel):
     return lambda channel=channel: ui.navigate.to(f"/channel/{channel[K_ID]}")
@@ -43,12 +43,12 @@ def render_header(user):
     search_route = lambda: ui.navigate.to(create_navigation_target("/search", q=search_input.value))
 
     with ui.header(wrap=False).props("reveal").classes("justify-between items-stretch rounded-borders p-1 q-ma-xs") as header:     
-        with ui.button(on_click=lambda: ui.navigate.to("/")).props("unelevated").classes("q-px-xs"):
+        with ui.button(on_click=create_navigation_route("/")).props("unelevated").classes("q-px-xs"):
             with ui.avatar(square=True, size="md").classes("rounded-borders"):
                 ui.image("images/cafecito.png")
             ui.label("Espresso").classes("q-ml-sm")
             
-        ui.button(icon="trending_up").props("unelevated").classes("lt-md")
+        ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-md")
         ui.button(icon="search", on_click=search_route).props("unelevated").classes("lt-md")
         with ui.input(placeholder="What are you looking for today?")\
             .on("keydown.enter", search_route)\
@@ -82,21 +82,18 @@ def render_login_buttons():
             ui.avatar(SLACK_ICON_URL, color="transparent")
     return menu
 
-def render_following_pages(user):
+def render_following_channels(user):
     with ui.card(align_items="stretch").tight().props("flat") as panel:        
-        ui.item("Following" if user else "Popular Channels").classes("text-h6")
+        ui.item("Following" if user else "Popular Channels", on_click=create_navigation_route("/trending")).classes("text-h6")
         ui.separator()        
         [ui.item(channel["title"], on_click=create_channel_route(channel)) \
          for channel in (espressops.get_following_channels(user) or utils.DEFAULT_CHANNELS)]
     return panel
 
 def render_trending_channels(user):
-    with ui.card(align_items="start").tight().props("flat") as panel:        
-        ui.item("Trending Channels").classes("text-h6")
-        ui.separator()
-        with ui.row(align_items="stretch").classes("q-pa-sm"):
-            [ui.button(page["title"], on_click=create_channel_route(page), color="secondary").props("outline padding=lg") \
-             for page in random.sample(beanops.get_trending_pages() or utils.DEFAULT_CHANNELS, MAX_ITEMS_PER_PAGE)]
+    with ui.row(align_items="stretch").classes("q-pa-sm") as panel:
+        [ui.item(page["title"], on_click=create_channel_route(page)).classes(f"rounded-borders text-lg bg-primary") \
+            for page in random.sample(beanops.get_trending_pages() or utils.DEFAULT_CHANNELS, MAX_ITEMS_PER_PAGE)]
     return panel
 
 def render_beans(user, load_beans: Callable):
@@ -107,7 +104,7 @@ def render_beans(user, load_beans: Callable):
             [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans]
 
     with ui.list() as view:
-        render_skeleton_beans(3)
+        render_skeleton_beans(3).classes("w-full")
     background_tasks.create_lazy(render(), name=f"beans-{utils.now()}")
     return view
 
@@ -149,11 +146,14 @@ def render_paginated_beans(user, load_beans: Callable, items_count: int):
         render_search_items()
     return view
 
-def render_bean_with_related(user, bean):
+def render_bean_with_related(user, bean: Bean):
     with_related_beans = [bean] + beanops.get_related(url=bean.url, tags=None, kinds=bean.kind, sources=None, last_ndays=None, start=0, limit=MAX_RELATED_ITEMS)
+    return render_swipable_beans(user, with_related_beans)
+
+def render_swipable_beans(user, beans: list[Bean]):
     with ui.item() as view:  # Added rounded-borders class here
         with ui.carousel(animated=True, arrows=True).props("swipeable control-color=secondary").classes("rounded-borders bg-grey-10 w-full h-full"):
-            for i, bean in enumerate(with_related_beans):
+            for i, bean in enumerate(beans):
                 with ui.carousel_slide(bean.url).classes("w-full m-0 q-pa-sm no-wrap"):  # Added rounded-borders class here
                     render_bean(user, bean, i==0).classes("w-full")
     return view
@@ -177,7 +177,7 @@ def render_whole_bean(user, bean: Bean):
 def render_bean_header(user: dict, bean: Bean):
     with ui.row(wrap=False, align_items="stretch").classes("w-full bean-header") as view:            
         if bean.image_url: 
-            ui.image(bean.image_url).classes(IMAGE_DIMENSIONS)
+            ui.image(bean.image_url).props("width=8em height=8em")
         with ui.element().classes("w-full"):
             ui.label(bean.title).classes("bean-title") 
             render_bean_stats(user, bean).classes("text-caption") 
@@ -204,11 +204,7 @@ def render_bean_body(user, bean):
     return view
 
 def render_bean_tags(bean: Bean):
-    make_tag = lambda tag: ui.chip(
-        tag, 
-        color="secondary", 
-        on_click=lambda tag=tag: create_navigation_target("/search", tag=tag)
-    ).props('outline dense').classes("tag tag-space")
+    make_tag = lambda tag: ui.chip(tag, color="secondary", on_click=create_navigation_route("/search", tag=tag)).props('outline dense').classes("tag tag-space")
     with ui.row(wrap=True, align_items="stretch").classes("gap-0 w-full") as view:
         [make_tag(tag) for tag in random.sample(bean.tags, min(MAX_TAGS_PER_BEAN, len(bean.tags)))]
     return view
@@ -242,12 +238,25 @@ def render_skeleton_tags(count = 3):
 def render_skeleton_beans(count = 3):
     with ui.list() as holder:
         for _ in range(count):
-            with ui.card().props("flat bordered").classes("w-full"):
-                with ui.row(align_items="start", wrap=False).classes("w-full"):                    
-                    ui.skeleton("rect", width="40%", height="75px")
-                    with ui.column().classes("w-full"):
-                        ui.skeleton("text", width="100%")
-                        ui.skeleton("text", width="20%")     
+            with ui.item():
+                with ui.item_section().props("side"):
+                    ui.skeleton("rect", size="8em")
+                with ui.item_section().props("top"):
+                    ui.skeleton("text", width="100%")
+                    ui.skeleton("text", width="100%")
+                    ui.skeleton("text", width="40%")
+                           
+    return holder 
+
+def render_skeleton_channels(count = 3):
+    with ui.list() as holder:
+        for _ in range(count):
+            with ui.item():
+                with ui.item_section().props("side"):
+                    ui.skeleton("rect", size="8em")
+                with ui.item_section().props("top"):
+                    ui.skeleton("text", width="40%")
+                    ui.skeleton("text", width="100%")    
     return holder 
 
 def render_footer():
@@ -261,16 +270,13 @@ def render_error_text(msg: str):
 @contextmanager
 def disable_button(button: ui.button):
     button.disable()
+    button.props(add="loading")
     try:
         yield
     finally:
+        button.props(remove="loading")
         button.enable()
-
-# async def publish(user, bean: Bean):
-#     msg = LOGIN_FIRST
-#     if user:
-#         msg = PUBLISHED if espressops.publish(user, bean.url) else UNKNOWN_ERROR
-#     ui.notify(msg)
+ 
 
 # def render_tags_as_chips(tags: list[str], on_click: Callable = None, on_select: Callable = None):
 #     async def on_selection_changed(sender):

@@ -31,7 +31,33 @@ EMBEDDING = "embedding"
 CONNECTIONS = "connections"
 PREFERENCES = "preferences"
 CATEGORIES = "categories"
-INDEX_QUEUE = "index-queue"
+COLLECT_QUEUE = "collect=queue"
+
+# INDEX DEFINITION
+# db.channels.createIndex(
+#     {
+#         title: "text",
+#         description: "text",
+#         query: "text",
+#         tags: "text",
+#         kinds: "text",
+#         sources: "text"
+#     },
+#     {
+#         name: "channels_text_search"
+#     }
+# )
+class Channel(BaseModel):
+    id: str = Field(default=None, alias=ID)
+    owner: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    query: Optional[str] = None
+    urls: Optional[list[str]] = None
+    tags: Optional[list[str]] = None
+    kinds: Optional[list[str]] = None
+    sources: Optional[list[str]] = None
+    last_ndays: Optional[int] = None
 
 def initialize(conn_str: str, sb_conn_str: str, emb: Embeddings):    
     global users, categories, channels  
@@ -41,7 +67,7 @@ def initialize(conn_str: str, sb_conn_str: str, emb: Embeddings):
     channels = client[DB]["channels"]
 
     global index_queue
-    index_queue = ServiceBusClient.from_connection_string(sb_conn_str).get_queue_sender(INDEX_QUEUE)
+    index_queue = ServiceBusClient.from_connection_string(sb_conn_str).get_queue_sender(COLLECT_QUEUE)
 
     global embedder
     embedder = emb
