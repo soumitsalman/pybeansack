@@ -21,10 +21,10 @@ def run_console():
     while True:        
         result = ic(prompt_parser.console_parser.parse(input("You: "), settings['search']))
         if not result.task:
-            beans = beanops.search(query=result.query, tags=None, kinds=None, last_ndays=None, min_score=result.min_score, start_index=0, topn=utils.MAX_ITEMS_PER_PAGE)   
+            beans = beanops.search_beans(query=result.query, tags=None, kinds=None, last_ndays=None, min_score=result.min_score, start_index=0, topn=utils.MAX_ITEMS_PER_PAGE)   
             
         if result.task in ["lookfor", "search"]: 
-            beans = beanops.search(query=result.query, tags=result.tags, kinds=result.kind, last_ndays=result.last_ndays, min_score=result.min_score, start_index=0, topn=utils.MAX_ITEMS_PER_PAGE)       
+            beans = beanops.search_beans(query=result.query, tags=result.tags, kinds=result.kind, last_ndays=result.last_ndays, min_score=result.min_score, start_index=0, topn=utils.MAX_ITEMS_PER_PAGE)       
             
         if result.task in ["trending"]: 
             beans = beanops.trending(urls=None, categories=result.query, kinds=result.kind, last_ndays=result.last_ndays, start_index=0, topn=utils.MAX_ITEMS_PER_PAGE)     

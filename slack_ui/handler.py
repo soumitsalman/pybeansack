@@ -71,7 +71,7 @@ def _process_prompt(prompt, userid, say):
     if result.task in ["lookfor", "search"]: 
         _new_message_queue(
             settings,
-            beanops.search(
+            beanops.search_beans(
                 query=result.query, tags=result.tag, kinds=result.kind, sources=result.source, last_ndays=result.last_ndays, min_score=result.min_score or DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))        
         beans, left = _dequeue_message(settings)
     elif result.task in ["trending"]: 
@@ -93,7 +93,7 @@ def _process_prompt(prompt, userid, say):
         say(UNKNOWN_INPUT%result.query)
         _new_message_queue(
             settings,
-            beanops.search(
+            beanops.search_beans(
                 query=result.query, tags=None, kinds=None, sources=None, last_ndays=None, min_score=DEFAULT_ACCURACY, start_index=0, topn=LOCAL_MAX_LIMIT))   
         beans, left = _dequeue_message(settings)
     
@@ -118,7 +118,7 @@ def handle_trending_in_keyword(ack, action, body, say):
     settings = session_settings(body['user']['id'])
     _new_message_queue(
         settings,
-        beanops.get(None, action['value'], DEFAULT_KIND, MIN_WINDOW, None, 0, LOCAL_MAX_LIMIT))
+        beanops.get_beans(None, action['value'], DEFAULT_KIND, MIN_WINDOW, None, 0, LOCAL_MAX_LIMIT))
     beans, left = _dequeue_message(settings)
     say_beans(beans, left, say, body['user']['id'])
    

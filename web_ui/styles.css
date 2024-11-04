@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Quicksand&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+/* #b59475 → #604934 (Light Beige/Brown)
+#b49374 → #604933 (Beige/Brown)
+#9d7456 → #4e392a (Deep Coffee Brown)
+#b79579 → #624935 (Warm Beige)
+#b69478 → #624934 (Soft Brown)  */
+   
+body {
+    font-family: 'Quicksand', serif;
+    font-style: normal; 
+    color: #BBBBBB;
+}
+
+.text-caption { color: #999999; }
+
+.tag {    
+    text-overflow: ellipsis;
+    max-width: 30ch; 
+}
+
+.bean-source {    
+    text-overflow: ellipsis;
+    max-width: 30ch; 
+}
+
+.bean-title {
+    font-weight: bold;
+    word-wrap: break-word; 
+    overflow-wrap: break-word;
+}
+
+.bean-body {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-overflow: ellipsis;
+    max-width: 1200ch; 
+}
+
+.tag * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 30ch; 
+}
+
+.banner {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 50ch; 
+}
+
+.wide-no-p-m {
+    padding: 0px;
+    margin: 0px;
+    width: 100%;
+}
+
+.bean-expansion .q-expansion-item__container > .q-item {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.bean-expansion .q-expansion-item__container > .q-item * {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.bean-expansion .q-expansion-item__content {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* .bean-expansion .q-expansion-item__content * {
+    padding: 0 !important;
+    margin: 0 !important;
+} */
+
+

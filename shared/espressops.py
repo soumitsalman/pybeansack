@@ -18,7 +18,6 @@ channels: Collection = None
 index_queue: ServiceBusSender = None
 embedder: Embeddings = None
 
-
 SYSTEM = "__SYSTEM__"
 SOURCE = "source"
 ID = "_id"
@@ -81,7 +80,11 @@ def unregister_user(user) -> bool:
     update_categories(user, [])
     channels.delete_many({SOURCE: userid})
     users.delete_one({ID: userid})
-    
+
+# TODO: implement following pages
+def get_following_channels(user: dict):
+    return None
+
 def get_categories(user: dict):
     return list(categories.find(filter={SOURCE:_get_userid(user)}, sort={TEXT: 1}, projection={ID: 1, TEXT: 1}))
 
@@ -148,10 +151,8 @@ def remove_connection(user: dict, source):
         })
     
 @cached(max_size=1000, ttl=ONE_WEEK) 
-def category_label(id: str):
-    if id:
-        res = categories.find_one(filter = {ID: id}, projection={TEXT: 1})
-        return res[TEXT] if res else None
+def get_channel(id: str):
+    return categories.find_one(filter = {ID: id}, projection={TEXT: 1}) if id else None
 
 def match_categories(content):
     cats = []

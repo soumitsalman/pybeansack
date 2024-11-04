@@ -15,59 +15,52 @@ def initiatize(db_conn, embedder: Embeddings):
     global beansack
     beansack=Beansack(db_conn, embedder)
 
+def get_kinds():
+    return beansack.beanstore.distinct(K_KIND)
+
+# @cached(max_size=1, ttl=ONE_WEEK)
+def get_sources():
+    return beansack.beanstore.distinct(K_SOURCE)
+
+# @cached(max_size=1, ttl=ONE_DAY)
+def get_tags():
+    return beansack.beanstore.distinct(K_TAGS)
+
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def get(urls: str|list[str], tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
+def get_beans(urls: str|list[str], tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     filter=_create_filter(urls, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.get_beans(filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit, projection=PROJECTION)
 
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def embeddings(urls: str|list[str]) -> list[Bean]:
+def get_bean_embeddings(urls: str|list[str]) -> list[Bean]:
     filter=_create_filter(urls, None, None, None, None, None, None, None)
     return beansack.get_beans(filter=filter, projection={K_EMBEDDING: 1, K_URL: 1})
 
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def search(query: str, accuracy: float, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
+def search_beans(query: str, accuracy: float, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(None, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.vector_search_beans(query=query, min_score=accuracy, filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit, projection=PROJECTION)    
 
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def unique(tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
+def get_trending_beans(tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
     filter=_create_filter(None, None, tags, kinds, sources, last_ndays, None, None)
     return beansack.get_unique_beans(filter=filter, sort_by=LATEST_AND_TRENDING, skip=start, limit=limit)
 
-# @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-# def trending(urls: list[str], categories: str|list[str], tags: str|list[str], kinds: str|list[str], last_ndays: int, start: int, limit: int):
-#     """Retrieves the trending news articles, social media posts, blog articles that match user interest, topic or query."""
-#     ic(categories, tags, kinds, last_ndays, start, limit)
-#     filter=_create_filter(urls, categories, tags, kinds, None, last_ndays, start, limit)
-#     sort_by = LATEST_AND_TRENDING if kinds and (POST in kinds) else NEWEST_AND_TRENDING
-#     # if urls:
-#     #     return beansack.get_beans(filter=filter, sort_by=sort_by, skip=start, limit=limit, projection=PROJECTION)    
-#     return beansack.get_unique_beans(filter=filter, sort_by=sort_by, skip=start, limit=limit, projection=PROJECTION)
-
 @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
-def related(url: str, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
+def get_related(url: str, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
     bean = beansack.beanstore.find_one({K_URL: url}, projection=PROJECTION)
     if bean:
         filter = _create_filter(None, None, tags, kinds, sources, last_ndays, bean[K_CLUSTER_ID], url)
         return beansack.get_beans(filter=filter, skip=start, limit=limit, sort_by=NEWEST_AND_TRENDING, projection=PROJECTION)
 
 @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
-def chatters(urls: str|list[str]):
+def get_chatters(urls: str|list[str]):
     """Retrieves the latest social media status from different mediums."""
     return beansack.get_chatter_stats(urls)
-
-# @cached(max_size=1, ttl=ONE_WEEK)
-def sources():
-    return beansack.beanstore.distinct(K_SOURCE)
-
-# @cached(max_size=1, ttl=ONE_DAY)
-def tags():
-    return beansack.beanstore.distinct(K_TAGS)
     
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def trending_tags(urls: list[str], categories: str|list[str], kinds: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
+def get_trending_tags(urls: list[str], categories: str|list[str], kinds: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     return beansack.get_trending_tags(filter=_create_filter(urls, categories, None, kinds, None, last_ndays, None, None), skip=start, limit=limit)
     
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
@@ -75,14 +68,16 @@ def count_beans(query: str, urls: list[str], categories: str|list[str], tags: st
     filter = _create_filter(urls, categories, tags, kinds, None, last_ndays, None, None)
     if query:
         return beansack.count_vector_search_beans(query=query, filter=filter, limit=limit)
-    if not categories and not urls:
-        return beansack.beanstore.count_documents(filter=filter, limit=limit)
     return beansack.count_unique_beans(filter=filter, limit=limit)
 
 @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
-def count_related(cluster_id: str, url: str, limit: int) -> int:
+def count_related_beans(cluster_id: str, url: str, limit: int) -> int:
     filter = _create_filter(None, None, None, None, None,None, cluster_id, url)
     return beansack.beanstore.count_documents(filter=filter, limit=limit)
+
+# TODO: implement trending pages
+def get_trending_pages():
+    return None
     
 def _create_filter(
         urls: list[str], 

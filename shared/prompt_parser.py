@@ -41,17 +41,15 @@ class InteractiveInputParser:
         
         self.parser.format_help()
         
-    def parse(self, prompt: str, defaults: dict) -> ParseResult: 
+    def parse(self, prompt: str) -> ParseResult: 
         try:
             args = self.parser.parse_args(shlex.split(prompt.lower()))
             return ParseResult(
                 task=args.task,
                 urls=args.urls,       
-                # this is a heuristic to detect if the user is trying to search for a topic          
-                query=args.query if len(args.query.split()) > 5 else f"topic: {args.query}", 
-                category=args.query,
+                query=args.query, 
                 tag=args.tag,
-                last_ndays=int(args.ndays or defaults.get('last_ndays')), 
+                last_ndays=int(args.ndays) if args.ndays else None, 
                 topn=int(args.topn) if args.topn else None,
                 min_score=min(1, max(0, float(args.acc))) if args.acc else None,
                 source=args.source)

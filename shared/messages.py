@@ -4,6 +4,7 @@ NO_MORE_BEANS = "Thass'it ... Se acabo! Go get some :coffee:"
 MORE_BEANS = "More stories in the queue. Type 'more' for loading the next page."
 NOT_IMPLEMENTED = "I don't really do much. I just sit here and look pretty."
 LOGIN_FIRST = "Imma' need you to Login first"
+NOTHING_TRENDING = "Nothing trending."
 
 BEANS_NOT_FOUND = "Couldn't find anything"
 RESOURCE_NOT_FOUND = "Never heard of 'em"

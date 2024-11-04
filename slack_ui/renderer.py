@@ -79,7 +79,7 @@ def render_home_blocks(settings):
     blocks.append(DIVIDER)
 
     categories = tuple(settings['search']['topics'])
-    tags = beanops.trending_tags(None, categories, None, MIN_WINDOW, DEFAULT_LIMIT)    
+    tags = beanops.get_trending_tags(None, categories, None, MIN_WINDOW, DEFAULT_LIMIT)    
     if tags:
         blocks.append(render_text_banner("Trending Tags", True))
         blocks.append(render_tags([tag.tags for tag in tags]))
@@ -115,7 +115,7 @@ def render_settings(settings):
         render_text_banner("Topics of Interest", True, False),
         {
             "type": "actions",
-            "elements": [render_button("category", cat, label = espressops.category_label(cat)) for cat in settings['search']['topics']]
+            "elements": [render_button("category", cat, label = espressops.get_channel(cat)) for cat in settings['search']['topics']]
         },
         {
             "type": "actions",

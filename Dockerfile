@@ -11,7 +11,7 @@ WORKDIR /app
 COPY . . 
 RUN pip install -r requirements.txt
 
-ENV APP_NAME="Espresso by Project Cafecito"
+ENV APP_NAME="Espresso"
 ENV OTEL_SERVICE_NAME=ESPRESSO-WEB
 
 EXPOSE 8080

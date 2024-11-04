@@ -41,7 +41,7 @@ jobs:
           registryPassword: ${{ secrets.ESPRESSOAPI_REGISTRY_PASSWORD }}
           containerAppName: espresso-api
           resourceGroup: dev-cafecit-io_group
-          imageToBuild: soumitsr/espresso-api:${{ github.sha }}
+          imageToBuild: soumitsr/espresso-api:${{ github.event.head_commit.timestamp | format('%Y-%m-%d') }}
 
 
 

@@ -37,13 +37,13 @@ async def get_beans(
     """
     Retrieves the bean(s) with the given URL(s).
     """
-    res = beanops.get(url, tag, kind, source, ndays, start, limit)  
+    res = beanops.get_beans(url, tag, kind, source, ndays, start, limit)  
     log(logger, 'get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
 @app.get("/beans/embeddings", response_model=list[Bean]|None)
 async def get_embeddings(url: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    res = beanops.embeddings(url)
+    res = beanops.get_bean_embeddings(url)
     log(logger, 'get_embeddings', url=url, num_returned=res)
     return res
 
@@ -68,12 +68,12 @@ async def search_beans(
     start: start index
     limit: limit
     """
-    res = beanops.search(q, acc, tag, kind, source, ndays, start, limit)
+    res = beanops.search_beans(q, acc, tag, kind, source, ndays, start, limit)
     log(logger, 'search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
-@app.get("/beans/unique", response_model=list[Bean]|None)
-async def unique_beans(
+@app.get("/beans/trending", response_model=list[Bean]|None)
+async def trending_beans(
     tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
     kind: list[str] | None = Query(default=None), 
     source: list[str] = Query(max_length=MAX_LIMIT, default=None),
@@ -85,8 +85,8 @@ async def unique_beans(
     To retrieve all the beans irrespective of cluster, use /beans endpoint.
     To retrieve the beans related to the beans in this result set, use /beans/related endpoint.
     """
-    res = beanops.unique(tag, kind, source, ndays, start, limit)
-    log(logger, 'unique_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
+    res = beanops.get_trending_beans(tag, kind, source, ndays, start, limit)
+    log(logger, 'trending_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
 @app.get("/beans/related", response_model=list[Bean]|None)
@@ -101,7 +101,7 @@ async def get_related_beans(
     """
     Retrieves the related beans to the given bean.
     """    
-    res = beanops.related(url, tag, kind, source, ndays, start, limit)
+    res = beanops.get_related(url, tag, kind, source, ndays, start, limit)
     log(logger, 'get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
@@ -110,7 +110,7 @@ async def get_chatters(url: list[str] | None = Query(max_length=MAX_LIMIT, defau
     """
     Retrieves the latest social media stats for the given bean(s).
     """
-    res = beanops.chatters(url)
+    res = beanops.get_chatters(url)
     log(logger, 'get_chatters', url=url, num_returned=res)
     return res
 
@@ -119,7 +119,7 @@ async def get_sources():
     """
     Retrieves the list of sources.
     """
-    res = beanops.sources()
+    res = beanops.get_sources()
     log(logger, 'get_sources', num_returned=res)
     return res
 
@@ -128,7 +128,7 @@ async def get_tags():
     """
     Retrieves the list of tags.
     """
-    res = beanops.tags()
+    res = beanops.get_tags()
     log(logger, 'get_tags', num_returned=res)
     return res
 
