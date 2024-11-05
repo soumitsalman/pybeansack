@@ -14,7 +14,7 @@ from memoization import cached
 DB = "espresso"
 users: Collection = None
 categories: Collection = None
-channels: Collection = None
+baristas: Collection = None
 index_queue: ServiceBusSender = None
 embedder: Embeddings = None
 
@@ -26,15 +26,17 @@ IMAGE_URL = "image_url"
 SOURCE_ID = "id_in_source"
 TOPICS = "topics"
 TEXT = "text"
+TITLE = "title"
 DESCRIPTION = "description"
 EMBEDDING = "embedding"
 CONNECTIONS = "connections"
 PREFERENCES = "preferences"
 CATEGORIES = "categories"
-COLLECT_QUEUE = "collect=queue"
+BARISTAS = "baristas"
+COLLECT_QUEUE = "collect-queue"
 
 # INDEX DEFINITION
-# db.channels.createIndex(
+# db.baristas.createIndex(
 #     {
 #         title: "text",
 #         description: "text",
@@ -44,10 +46,10 @@ COLLECT_QUEUE = "collect=queue"
 #         sources: "text"
 #     },
 #     {
-#         name: "channels_text_search"
+#         name: "baristas_text_search"
 #     }
 # )
-class Channel(BaseModel):
+class Barista(BaseModel):
     id: str = Field(default=None, alias=ID)
     owner: Optional[str] = None
     title: Optional[str] = None
@@ -60,11 +62,11 @@ class Channel(BaseModel):
     last_ndays: Optional[int] = None
 
 def initialize(conn_str: str, sb_conn_str: str, emb: Embeddings):    
-    global users, categories, channels  
+    global users, categories, baristas  
     client = MongoClient(conn_str)
     users = client[DB]["users"]
     categories = client[DB][CATEGORIES]
-    channels = client[DB]["channels"]
+    baristas = client[DB][BARISTAS]
 
     global index_queue
     index_queue = ServiceBusClient.from_connection_string(sb_conn_str).get_queue_sender(COLLECT_QUEUE)
@@ -104,12 +106,34 @@ def register_user(user, preferences) -> dict:
 def unregister_user(user) -> bool:
     userid = _get_userid(user)
     update_categories(user, [])
-    channels.delete_many({SOURCE: userid})
+    baristas.delete_many({SOURCE: userid})
     users.delete_one({ID: userid})
 
 # TODO: implement following pages
-def get_following_channels(user: dict):
+def get_following_baristas(user: dict):
     return None
+
+# TODO: implement trending pages
+def get_trending_baristas():
+    return None
+
+@cached(max_size=1000, ttl=ONE_HOUR) 
+def get_barista(id: str):
+    return Barista(**baristas.find_one({ID: id})) if id else None
+
+@cached(max_size=10, ttl=ONE_DAY) 
+def get_baristas(ids: list[str]):
+    filter = {ID: {"$in": ids}} if ids else {}
+    return [Barista(**barista) for barista in baristas.find(filter, sort={TITLE: 1})]
+
+def search_baristas(query: str|list[str]):
+    pipeline = [
+        {   "$match": {"$text": {"$search": query if isinstance(query, str) else " ".join(query)}} },            
+        {   "$addFields":  { K_SEARCH_SCORE: {"$meta": "textScore"}} },
+        {   "$sort": {K_SEARCH_SCORE: -1} },
+        {   "$limit": 10 }     
+    ]        
+    return [Barista(**barista) for barista in baristas.aggregate(pipeline)]
 
 def get_categories(user: dict):
     return list(categories.find(filter={SOURCE:_get_userid(user)}, sort={TEXT: 1}, projection={ID: 1, TEXT: 1}))
@@ -176,9 +200,7 @@ def remove_connection(user: dict, source):
             "$unset": { f"{CONNECTIONS}.{source}": "" } 
         })
     
-@cached(max_size=1000, ttl=ONE_WEEK) 
-def get_channel(id: str):
-    return categories.find_one(filter = {ID: id}, projection={TEXT: 1}) if id else None
+
 
 def match_categories(content):
     cats = []
@@ -204,7 +226,7 @@ def match_categories(content):
 
 @cached(max_size=1000, ttl=ONE_WEEK) 
 def channel_content(channel_id: dict):
-    return channels.distinct(K_URL, filter = {K_SOURCE: channel_id})  
+    return baristas.distinct(K_URL, filter = {K_SOURCE: channel_id})  
 
 def publish(user: dict, urls: str|list[str]):
     userid = _get_userid(user)
@@ -212,7 +234,7 @@ def publish(user: dict, urls: str|list[str]):
         urls = [urls] if isinstance(urls, str) else urls
         entries = [{K_ID: f"{userid}:{url}", K_SOURCE: userid, K_URL: url, K_CREATED: int(time.time())} for url in urls]
         # save to the user's channged
-        res = channels.bulk_write([UpdateOne(filter={K_ID: entry[K_ID]}, update={"$setOnInsert": entry}, upsert=True) for entry in entries], ordered=False).acknowledged
+        res = baristas.bulk_write([UpdateOne(filter={K_ID: entry[K_ID]}, update={"$setOnInsert": entry}, upsert=True) for entry in entries], ordered=False).acknowledged
         index_queue.send_messages([ServiceBusMessage(json.dumps(entry)) for entry in entries])
         return res
     

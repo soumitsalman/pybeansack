@@ -10,32 +10,31 @@ from icecream import ic
 from .renderer import *
 
 APP_NAME = env.app_name()
+CONTENT_GRID_CLASSES = "w-full grid-cols-1 md:grid-cols-2"
 
 # shows everything that came in within the last 24 hours
 async def render_home(user):
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
-        render_following_channels(user).classes("w-1/5 gt-sm")
-        with ui.grid().classes("w-full grid-cols-1 lg:grid-cols-2"):
+        render_baristas_panel(user).classes("w-1/5 gt-sm")
+        with ui.grid().classes(CONTENT_GRID_CLASSES):
             # render trending blogs, posts and news
             for kind in DEFAULT_KINDS:
-                with ui.card(align_items="stretch").tight().props("flat"):
-                    ui.item(f"{kind[K_TITLE]}").classes("text-h6")
-                    ui.separator() 
+                with render_card_container(kind[K_TITLE]):
                     # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
-                    render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE))
+                    render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
+                        if beanops.count_beans(query=None, accuracy=None, urls=None, tags=None, kinds=kind[K_ID], last_ndays=1, limit=1) else \
+                            render_error_text(NOTHING_TRENDING)
             # render trending pages
-            with ui.card(align_items="stretch").tight().props("flat") as panel:        
-                ui.item("Explore").classes("text-h6")
-                ui.separator()
-                render_trending_channels(user)
+            with render_card_container("Explore"):                
+                render_baristas(user, random.sample(espressops.get_baristas(None), 5))
     render_footer()
 
-async def render_trending(user):
-    channels = espressops.get_following_channels(user) or DEFAULT_CHANNELS
+async def render_barista_snapshots(user):
+    baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
     
-    async def load_and_render(holder: ui.element, channel):
-        beans = [(await run.io_bound(beanops.get_trending_beans, tags=channel[K_TITLE], kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1)) for kind in DEFAULT_KINDS]
+    async def load_and_render(holder: ui.element, barista):
+        beans = [(await run.io_bound(beanops.get_trending_beans, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1)) for kind in DEFAULT_KINDS]
         beans = [bean[0] for bean in beans if bean]
         with holder:
             render_swipable_beans(user, beans).classes("w-full") \
@@ -44,28 +43,26 @@ async def render_trending(user):
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
-        render_following_channels(user).classes("w-1/5 gt-sm")
-        with ui.grid().classes("w-full grid-cols-1 lg:grid-cols-2"):
-            for channel in channels:
-                with ui.card(align_items="stretch").tight().props("flat") as holder:
-                    ui.item(channel[K_TITLE], on_click=create_channel_route(channel)).classes("text-h4")
-                    ui.separator()
-                    background_tasks.create_lazy(load_and_render(holder, channel), name=f"trending-{channel[K_TITLE]}-{now()}")
+        render_baristas_panel(user).classes("w-1/5 gt-sm")
+        with ui.grid().classes(CONTENT_GRID_CLASSES):
+            for barista in baristas:
+                holder = render_card_container(barista.title, on_click=create_barista_route(barista))
+                background_tasks.create_lazy(load_and_render(holder, barista), name=f"trending-{now()}")
                             
     render_footer()
 
-async def render_channel(user, channel_id: str):
-    channel = espressops.get_channel(channel_id)
+async def render_barista_servings(user, barista_id: str):
+    barista = espressops.get_barista(barista_id)
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
-        render_following_channels(user).classes("w-1/5 gt-sm")
+        render_baristas_panel(user).classes("w-1/5 gt-sm")
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
             with ui.row(wrap=False, align_items="start").classes("justify-between q-mb-md w-full"):
-                ui.label(channel[K_TEXT]).classes("text-h4")
+                ui.label(barista.title).classes("text-h4")
                 if user:
                     ui.button("Follow", icon="add").props("unelevated")
             # checking if there is actually any content of this kind        
-            bean_exists = {kind[K_ID]: beanops.count_beans(query=None, accuracy=None, urls=None, tags=channel[K_TEXT], kinds=kind[K_ID], last_ndays=None, limit=1) for kind in DEFAULT_KINDS}
+            bean_exists = {kind[K_ID]: beanops.count_beans(query=None, accuracy=None, urls=None, tags=barista.tags, kinds=kind[K_ID], last_ndays=None, limit=1) for kind in DEFAULT_KINDS}
             with ui.tabs().classes("w-full") as tabs:
                 [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS if bean_exists[kind[K_ID]]]
             with ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders"):
@@ -73,26 +70,30 @@ async def render_channel(user, channel_id: str):
                     if bean_exists[kind[K_ID]]:
                         with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
                             # TODO: render_appendable_tags with select action
-                            render_appendable_beans(user, lambda start, limit, kind=kind: beanops.get_trending_beans(tags=channel[K_TEXT], kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0")                                
+                            render_appendable_beans(user, lambda start, limit, kind=kind: beanops.get_trending_beans(tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0")                                
             if not any(bean_exists.values()):
                 render_error_text(NOTHING_TRENDING)
     render_footer()
 
 async def render_search(user, query: str, accuracy: float, tags: str|list[str], kinds: str|list[str]):
-    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value, kinds=kinds_panel.value, accuracy=accuracy_panel.value))
-    search_func = lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit)
+    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value, kind=kinds_panel.value, acc=accuracy_panel.value))
+    # search_func = lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit)
 
-    async def search_and_render(holder: ui.element, user, query, accuracy, tags, kinds):
-        items_count = await run.cpu_bound(beanops.count_beans, query=query, accuracy=accuracy, urls=None, tags=tags, kinds=kinds, last_ndays=None, limit=MAX_LIMIT)
+    async def search_and_render(holder: ui.element):
+        items = await run.cpu_bound(beanops.search_beans, query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=0, limit=MAX_LIMIT)
         holder.clear()
         with holder:
-            render_paginated_beans(user, search_func, items_count).classes("rounded-borders") \
-                if items_count else \
-                    render_error_text(BEANS_NOT_FOUND)
+            with render_card_container("Beans"):    
+                render_paginated_beans(user, lambda start, limit: items[start:start+limit], len(items)).classes("rounded-borders") \
+                    if items else \
+                        render_error_text(BEANS_NOT_FOUND)
+            if not kinds:
+                with render_card_container("Baristas"):
+                    render_baristas(user, espressops.search_baristas(query or tags)).classes("rounded-borders")
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"):
-        render_following_channels(user).classes("w-1/5 gt-sm")
+        render_baristas_panel(user).classes("w-1/5 gt-sm")
         # render the search input
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
             with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
@@ -109,15 +110,18 @@ async def render_search(user, query: str, accuracy: float, tags: str|list[str], 
             # render this ONLY if there is a query or tag present or else the banner will be empty
             if query or tags: 
                 ui.label(query or (tags if isinstance(tags, str) else ", ".join(tags))).classes("text-h4 banner")
-                with ui.grid().classes("w-full") as holder: #grid-cols-1 lg:grid-cols-2
+                # if kinds is present then only beans are being searched so it needs 1 column or else 2 columns for beans and baristas
+                with ui.grid().classes(CONTENT_GRID_CLASSES if not kinds else "w-full") as holder:
                     render_skeleton_beans(3)
-                background_tasks.create_lazy(search_and_render(holder, user, query, accuracy, tags, kinds), name=f"search-{now()}")    
+                    render_skeleton_baristas(3)
+                background_tasks.create_lazy(search_and_render(holder), name=f"search-{now()}")   
+
     render_footer()
 
 async def render_doc(user, doc_id):
     render_header(user)
     with open(f"./docs/{doc_id}", 'r') as file:
-        ui.markdown(file.read()).classes("lg:w-1/2 w-full self-center")
+        ui.markdown(file.read()).classes("w-full md:w-2/3 lg:w-1/2  self-center")
     render_footer()
 
 

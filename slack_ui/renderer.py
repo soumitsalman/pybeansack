@@ -115,7 +115,7 @@ def render_settings(settings):
         render_text_banner("Topics of Interest", True, False),
         {
             "type": "actions",
-            "elements": [render_button("category", cat, label = espressops.get_channel(cat)) for cat in settings['search']['topics']]
+            "elements": [render_button("category", cat, label = espressops.get_barista(cat)) for cat in settings['search']['topics']]
         },
         {
             "type": "actions",

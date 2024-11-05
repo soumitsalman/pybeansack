@@ -22,7 +22,7 @@ ESPRESSO_ICON_URL = "img:/images/favicon.jpg"
 
 reddit_share_url = lambda bean: create_navigation_route("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
 twitter_share_url = lambda bean: create_navigation_route("https://x.com/intent/tweet", url=bean.url, text=bean.summary)
-linkedin_share_url = lambda bean: create_navigation_route("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.summary, mini=True)
+linkedin_share_url = lambda bean: create_navigation_route("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, mini=True)
 whatsapp_share_url = lambda bean: create_navigation_route("https://wa.me/", text=f"{bean.title}\n{bean.url}")
 slack_share_url = lambda bean: create_navigation_route("https://slack.com/share/url", url=bean.url, text=bean.title)
 
@@ -34,8 +34,8 @@ def create_navigation_target(base_url, **kwargs):
 def create_navigation_route(base_url, **kwargs):
     return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs))
 
-def create_channel_route(channel):
-    return lambda channel=channel: ui.navigate.to(f"/channel/{channel[K_ID]}")
+def create_barista_route(barista: espressops.Barista):
+    return lambda barista=barista: ui.navigate.to(f"/barista/{barista.id}")
 
 def render_header(user):    
     ui.add_css(CSS_FILE)
@@ -82,18 +82,15 @@ def render_login_buttons():
             ui.avatar(SLACK_ICON_URL, color="transparent")
     return menu
 
-def render_following_channels(user):
-    with ui.card(align_items="stretch").tight().props("flat") as panel:        
-        ui.item("Following" if user else "Popular Channels", on_click=create_navigation_route("/trending")).classes("text-h6")
-        ui.separator()        
-        [ui.item(channel["title"], on_click=create_channel_route(channel)) \
-         for channel in (espressops.get_following_channels(user) or utils.DEFAULT_CHANNELS)]
+def render_baristas(user, baristas: list[espressops.Barista]):
+    with ui.row(align_items="stretch").classes("q-pa-sm") as panel:
+        [ui.item(barista.title, on_click=create_barista_route(barista)).classes(f"rounded-borders text-lg bg-primary") for barista in baristas]
     return panel
 
-def render_trending_channels(user):
-    with ui.row(align_items="stretch").classes("q-pa-sm") as panel:
-        [ui.item(page["title"], on_click=create_channel_route(page)).classes(f"rounded-borders text-lg bg-primary") \
-            for page in random.sample(beanops.get_trending_pages() or utils.DEFAULT_CHANNELS, MAX_ITEMS_PER_PAGE)]
+def render_baristas_panel(user):
+    baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
+    with render_card_container("Following" if user else "Popular Baristas", on_click=create_navigation_route("/trending")) as panel:        
+        [ui.item(barista.title, on_click=create_barista_route(barista)) for barista in baristas]
     return panel
 
 def render_beans(user, load_beans: Callable):
@@ -136,11 +133,11 @@ def render_paginated_beans(user, load_beans: Callable, items_count: int):
     @ui.refreshable
     def render_search_items():
         page, go_to_page = ui.state(0)
-        if items_count > MAX_ITEMS_PER_PAGE:
-            page_numbers = ui.pagination(min=1, max=page_count, direction_links=True, value=page+1, on_change=lambda: go_to_page(page_numbers.value - 1))
+        # if items_count > MAX_ITEMS_PER_PAGE:
+        #     page_numbers = ui.pagination(min=1, max=page_count, direction_links=True, value=page+1, )
         render_beans(user, lambda: load_beans(page*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE)).classes("w-full")
         if items_count > MAX_ITEMS_PER_PAGE:
-            ui.pagination(min=1, max=page_count, direction_links=True, value=page+1).bind_value(page_numbers, 'value')
+            ui.pagination(min=1, max=page_count, direction_links=True, value=page+1, on_change=lambda e: go_to_page(e.sender.value - 1))
     
     with ui.column(align_items="stretch") as view:   
         render_search_items()
@@ -248,7 +245,7 @@ def render_skeleton_beans(count = 3):
                            
     return holder 
 
-def render_skeleton_channels(count = 3):
+def render_skeleton_baristas(count = 3):
     with ui.list() as holder:
         for _ in range(count):
             with ui.item():
@@ -266,6 +263,12 @@ def render_footer():
 
 def render_error_text(msg: str):
     return ui.label(msg).classes("self-center text-center")
+
+def render_card_container(label: str, on_click: Callable = None):
+    with ui.card(align_items="stretch").tight().props("flat") as panel:        
+        ui.item(label, on_click=on_click).classes("text-h6")
+        ui.separator() 
+    return panel
 
 @contextmanager
 def disable_button(button: ui.button):

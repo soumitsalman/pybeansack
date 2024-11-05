@@ -88,10 +88,6 @@ def count_beans(query: str, accuracy: float, urls: list[str], tags: str|list[str
 def count_related_beans(cluster_id: str, url: str, limit: int) -> int:
     filter = _create_filter(None, None, None, None, None, cluster_id, url)
     return beansack.beanstore.count_documents(filter=filter, limit=limit)
-
-# TODO: implement trending pages
-def get_trending_pages():
-    return None
     
 def _create_filter(
         urls: list[str],
@@ -105,9 +101,11 @@ def _create_filter(
     if urls:
         filter[K_URL] = lower_case(urls) 
     if kinds:
-        filter[K_KIND] = lower_case(kinds)
+        filter[K_KIND] = lower_case(kinds)    
     if tags:      
-        filter[K_TAGS] = case_insensitive(tags)
+        # TODO: change it to text search if applicable
+        # filter[K_TAGS] = case_insensitive(tags)        
+        filter[K_TAGS] = {"$in": tags} if isinstance(tags, list) else tags
     if sources:
         # TODO: make it look into both source field of the beans and the channel field of the chatters
         filter[K_SOURCE] = case_insensitive(sources)
