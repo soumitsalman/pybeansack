@@ -24,7 +24,7 @@ async def render_home(user):
                 with render_card_container(kind[K_TITLE]):
                     # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
                     render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
-                        if beanops.count_beans(query=None, accuracy=None, urls=None, tags=None, kinds=kind[K_ID], last_ndays=1, limit=1) else \
+                        if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
                             render_error_text(NOTHING_TRENDING)
             # render trending pages
             with render_card_container("Explore"):                
@@ -63,7 +63,7 @@ async def render_barista_servings(user, barista_id: str):
                 if user:
                     ui.button("Follow", icon="add").props("unelevated")
             # checking if there is actually any content of this kind        
-            bean_exists = {kind[K_ID]: beanops.count_beans(query=None, accuracy=None, urls=None, tags=barista.tags, kinds=kind[K_ID], last_ndays=None, limit=1) for kind in DEFAULT_KINDS}
+            bean_exists = {kind[K_ID]: beanops.count_beans(query=None, accuracy=None, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=None, limit=1) for kind in DEFAULT_KINDS}
             with ui.tabs().classes("w-full") as tabs:
                 [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS if bean_exists[kind[K_ID]]]
             with ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders"):
@@ -77,15 +77,15 @@ async def render_barista_servings(user, barista_id: str):
     render_footer()
 
 async def render_search(user, query: str, accuracy: float, tags: str|list[str], kinds: str|list[str]):
-    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value, kind=kinds_panel.value, acc=accuracy_panel.value))
-    # search_func = lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit)
-
+    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value, kind=kinds_panel.value, acc=accuracy_panel.value))    
+    search_beans_func = lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit)
+    
     async def search_and_render(holder: ui.element):
-        items = await run.cpu_bound(beanops.search_beans, query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=0, limit=MAX_LIMIT)
+        items_count = await run.io_bound(beanops.count_beans, query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, limit=MAX_LIMIT)
         holder.clear()
         with holder:            
-            render_paginated_beans(user, lambda start, limit: items[start:start+limit], len(items)).classes("rounded-borders") \
-                if items else \
+            render_paginated_beans(user, search_beans_func, items_count).classes("rounded-borders") \
+                if items_count else \
                     render_error_text(NOTHING_FOUND)
 
     render_header(user)

@@ -78,8 +78,8 @@ def get_trending_tags(urls: list[str], categories: str|list[str], kinds: str|lis
     return beansack.get_trending_tags(filter=_create_filter(urls, categories, None, kinds, None, last_ndays, None, None), skip=start, limit=limit)
     
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def count_beans(query: str, accuracy: float, urls: list[str], tags: str|list[str], kinds: str|list[str], last_ndays: int, limit: int) -> int:
-    filter = _create_filter(urls, tags, kinds, None, last_ndays, None, None)
+def count_beans(query: str, accuracy: float, tags: str|list[str], kinds: str|list[str], sources: str|list[str], last_ndays: int, limit: int) -> int:
+    filter = _create_filter(None, tags, kinds, None, last_ndays, None, None)
     if query:
         return beansack.count_vector_search_beans(query=query, min_score=accuracy, filter=filter, limit=limit)
     return beansack.count_unique_beans(filter=filter, limit=limit)

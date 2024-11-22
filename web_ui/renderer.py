@@ -146,8 +146,6 @@ def render_paginated_beans(user, load_beans: Callable, items_count: int):
     @ui.refreshable
     def render_search_items():
         page, go_to_page = ui.state(0)
-        # if items_count > MAX_ITEMS_PER_PAGE:
-        #     page_numbers = ui.pagination(min=1, max=page_count, direction_links=True, value=page+1, )
         render_beans(user, lambda: load_beans(page*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE)).classes("w-full")
         if items_count > MAX_ITEMS_PER_PAGE:
             ui.pagination(min=1, max=page_count, direction_links=True, value=page+1, on_change=lambda e: go_to_page(e.sender.value - 1))
@@ -190,13 +188,13 @@ def render_bean_header(user: dict, bean: Bean):
         if bean.image_url: 
             ui.image(bean.image_url).props("width=8em height=8em")
         with ui.element().classes("w-full"):
-            ui.label(bean.title).classes("bean-title") 
+            ui.label(bean.title).classes("bean-title")                
             render_bean_stats(user, bean).classes("text-caption") 
     return view
 
 def render_bean_stats(user, bean: Bean): 
-    with ui.row(align_items="stretch").classes("w-full") as view:  
-        ui.label(beanops.naturalday(bean.created or bean.updated))
+    with ui.row(align_items="stretch").classes("w-full") as view:       
+        ui.label(f"{beanops.naturalday(bean.created or bean.updated)}'s {bean.kind}")
         if bean.comments:
             ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")
         if bean.likes:
@@ -221,7 +219,7 @@ def render_bean_tags(bean: Bean):
     return view
 
 def render_bean_source(bean: Bean):
-    with ui.row(wrap=False, align_items="center").classes("gap-0") as view:
+    with ui.row(wrap=False, align_items="center").classes("gap-0") as view:        
         ui.avatar("img:"+beanops.favicon(bean), size="xs", color="transparent")
         ui.link(bean.source, bean.url, new_tab=True).classes("ellipsis-30")
     return view

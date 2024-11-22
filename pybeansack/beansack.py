@@ -137,11 +137,14 @@ class Beansack:
             limit = DEFAULT_VECTOR_SEARCH_LIMIT, 
             projection = None
         ) -> list[Bean]:
-        pipline = self._vector_search_pipeline(query, embedding, min_score, filter, sort_by, skip, limit, projection)
-        return _deserialize_beans(self.beanstore.aggregate(pipeline=pipline))
+        pipeline = self._vector_search_pipeline(query, embedding, min_score, filter, sort_by, skip, limit)
+        if projection:
+            pipeline.append({"$project": projection})
+        return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
     
     def count_vector_search_beans(self, query: str = None, embedding: list[float] = None, min_score = DEFAULT_VECTOR_SEARCH_SCORE, filter: dict = None, limit = DEFAULT_VECTOR_SEARCH_LIMIT) -> int:
-        pipeline = self._count_vector_search_pipeline(query, embedding, min_score, filter, limit)
+        pipeline = self._vector_search_pipeline(query, embedding, min_score, filter, None, None, limit)
+        pipeline.append({ "$count": "total_count"})
         result = list(self.beanstore.aggregate(pipeline))
         return result[0]['total_count'] if result else 0
     
@@ -268,7 +271,7 @@ class Beansack:
             pipeline.append({"$project": projection})
         return pipeline
    
-    def _vector_search_pipeline(self, text, embedding, min_score, filter, sort_by, skip, limit, projection):        
+    def _vector_search_pipeline(self, text, embedding, min_score, filter, sort_by, skip, limit):        
         pipeline = [            
             {
                 "$search": {
@@ -296,15 +299,13 @@ class Beansack:
         if skip:
             pipeline.append({"$skip": skip})
         if limit:
-            pipeline.append({"$limit": limit})
-        if projection:
-            pipeline.append({"$project": projection})
+            pipeline.append({"$limit": limit})        
         return pipeline
     
-    def _count_vector_search_pipeline(self, text, embedding, min_score, filter, limit):
-        pipline = self._vector_search_pipeline(text, embedding, min_score, filter, None, None, limit, None)
-        pipline.append({ "$count": "total_count"})
-        return pipline
+    # def _count_vector_search_pipeline(self, text, embedding, min_score, filter, limit):
+    #     pipline = self._vector_search_pipeline(text, embedding, min_score, filter, None, None, limit, None)
+    #     pipline.append({ "$count": "total_count"})
+    #     return pipline
     
     def get_chatter_stats(self, urls: str|list[str]) -> list[Chatter]:
         """Retrieves the latest social media status from different mediums."""
