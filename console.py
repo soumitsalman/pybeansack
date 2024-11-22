@@ -10,7 +10,7 @@ APP_NAME = "Espresso:"
 
 def render_beans(beans):
     if not beans:
-        print(APP_NAME, messages.BEANS_NOT_FOUND)  
+        print(APP_NAME, messages.NOTHING_FOUND)  
         return    
     print(APP_NAME, len(beans), "Beans")
     [print(bean.title) for bean in beans]

@@ -62,7 +62,6 @@ class Beansack:
              
         client = MongoClient(
             conn_str, 
-            appname="PyCoffeemaker_or_Espresso", 
             timeoutMS=TIMEOUT,
             serverSelectionTimeoutMS=TIMEOUT,
             socketTimeoutMS=TIMEOUT,

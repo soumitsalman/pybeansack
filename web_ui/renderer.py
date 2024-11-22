@@ -11,13 +11,23 @@ from shared.messages import *
 PRIMARY_COLOR = "#4e392a"
 SECONDARY_COLOR = "#b79579"
 CSS_FILE = "./web_ui/styles.css"
-IMAGE_DIMENSIONS = "w-32 h-32"
+IMAGE_DIMENSIONS = "w-32 h-28"
+GOOGLE_ANALYTICS_SCRIPT = '''
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-NBSTNYWPG1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-NBSTNYWPG1');
+</script>
+'''
 
 REDDIT_ICON_URL = "img:https://www.reddit.com/favicon.ico"
 LINKEDIN_ICON_URL = "img:https://www.linkedin.com/favicon.ico"
 SLACK_ICON_URL = "img:https://www.slack.com/favicon.ico"
 TWITTER_ICON_URL = "img:https://www.x.com/favicon.ico"
-WHATSAPP_ICON_URL = "img:https://www.whatsapp.com/favicon.ico"
+WHATSAPP_ICON_URL = "img:/images/whatsapp.png"
 ESPRESSO_ICON_URL = "img:/images/favicon.jpg"
 
 reddit_share_url = lambda bean: create_navigation_route("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
@@ -37,7 +47,9 @@ def create_navigation_route(base_url, **kwargs):
 def create_barista_route(barista: espressops.Barista):
     return lambda barista=barista: ui.navigate.to(f"/barista/{barista.id}")
 
-def render_header(user):    
+def render_header(user):
+    ui.add_head_html(GOOGLE_ANALYTICS_SCRIPT)
+
     ui.add_css(CSS_FILE)
     ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)
     search_route = lambda: ui.navigate.to(create_navigation_target("/search", q=search_input.value))
@@ -48,7 +60,7 @@ def render_header(user):
                 ui.image("images/cafecito.png")
             ui.label("Espresso").classes("q-ml-sm")
             
-        ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-md")
+        ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-sm")
         ui.button(icon="search", on_click=search_route).props("unelevated").classes("lt-md")
         with ui.input(placeholder="What are you looking for today?")\
             .on("keydown.enter", search_route)\
@@ -57,8 +69,9 @@ def render_header(user):
             prepend = search_input.add_slot("prepend")
             with prepend:
                 ui.button(icon="search", color="secondary", on_click=search_route).props("flat rounded").classes("m-0")
-        with ui.button(icon="person" if user else "login").props("unelevated"):
-            (render_user_card(user) if user else render_login_buttons())
+        ui.button(icon="person" if user else "login", on_click=lambda: ui.notify("Coming Soon")).props("unelevated").tooltip("Coming Soon")
+        # with ui.button(icon="person" if user else "login").props("unelevated"):
+        #     (render_user_card(user) if user else render_login_buttons())
     return header
 
 def render_user_card(user):
@@ -152,13 +165,14 @@ def render_swipable_beans(user, beans: list[Bean]):
         with ui.carousel(animated=True, arrows=True).props("swipeable control-color=secondary").classes("rounded-borders bg-grey-10 w-full h-full"):
             for i, bean in enumerate(beans):
                 with ui.carousel_slide(bean.url).classes("w-full m-0 q-pa-sm no-wrap"):  # Added rounded-borders class here
-                    render_bean(user, bean, i==0).classes("w-full")
+                    render_bean(user, bean, i!=0).classes("w-full")
     return view
 
-render_bean = lambda user, bean, expandable: render_expandable_bean(user, bean) if expandable else render_whole_bean(user, bean)
+# render_bean = lambda user, bean, expandable: render_expandable_bean(user, bean) if expandable else render_whole_bean(user, bean)
+render_bean = lambda user, bean, expanded: render_expandable_bean(user, bean, expanded)
 
-def render_expandable_bean(user, bean):
-    with ui.expansion().props("dense hide-expand-icon").classes("bean-expansion") as expansion:
+def render_expandable_bean(user, bean, expanded: bool = False):
+    with ui.expansion(value=expanded).props("dense hide-expand-icon").classes("bean-expansion") as expansion:
         header = expansion.add_slot("header")
         with header:
             render_bean_header(user, bean).classes(add="p-0")

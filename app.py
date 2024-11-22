@@ -1,3 +1,4 @@
+from fastapi.responses import FileResponse
 import env
 from icecream import ic
 import logging
@@ -63,6 +64,11 @@ def validate_doc(doc_id: str):
         raise HTTPException(status_code=404, detail=f"{doc_id} does not exist")
     return doc_id
 
+def validate_image(image_id: str):
+    if not bool(os.path.exists(f"images/{image_id}")):
+        raise HTTPException(status_code=404, detail=f"{image_id} does not exist")
+    return image_id
+
 @ui.page("/")
 async def home():  
     log(logger, 'home', user_id=current_user())
@@ -94,6 +100,11 @@ async def search(
 async def document(doc_id: str = Depends(validate_doc)):
     log(logger, 'docs', user_id=current_user(), page_id=doc_id)
     await vanilla.render_doc(registerd_user(), doc_id)  
+    
+@ui.page("/images/{image_id}")
+async def image(image_id: str = Depends(validate_image)):
+    return FileResponse(f"./images/{image_id}", media_type="image/png")
+    
     
 initialize_server()
 ui.run(
