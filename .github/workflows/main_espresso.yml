@@ -23,14 +23,14 @@ jobs:
       uses: docker/login-action@v2
       with:
         registry: https://index.docker.io/v1/
-        username: ${{ secrets.AzureAppService_ContainerUsername_b0807d42c64047239b60be5a5ee9f666 }}
-        password: ${{ secrets.AzureAppService_ContainerPassword_8a17f0b951054262899ac8f29d056a8f }}
+        username: ${{ secrets.AzureAppService_ContainerUsername_b98d9d154d7e489f94a8a0a3e235c30e }}
+        password: ${{ secrets.AzureAppService_ContainerPassword_3f91050dc61841a2aeaf9a57f4113bb3 }}
 
     - name: Build and push container image to registry
       uses: docker/build-push-action@v3
       with:
         push: true
-        tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_b0807d42c64047239b60be5a5ee9f666 }}/soumitsr/espresso-web:${{ github.sha }}
+        tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_b98d9d154d7e489f94a8a0a3e235c30e }}/espresso-web:${{ github.sha }}
         file: ./Dockerfile
 
   deploy:
@@ -47,5 +47,5 @@ jobs:
       with:
         app-name: 'espresso'
         slot-name: 'production'
-        publish-profile: ${{ secrets.AzureAppService_PublishProfile_9697a2dba84242098bb45242af8746bc }}
-        images: 'index.docker.io/${{ secrets.AzureAppService_ContainerUsername_b0807d42c64047239b60be5a5ee9f666 }}/soumitsr/espresso-web:${{ github.sha }}'
+        publish-profile: ${{ secrets.AzureAppService_PublishProfile_d6e3da095f4a44f795a99b1ae2e5d633 }}
+        images: 'index.docker.io/${{ secrets.AzureAppService_ContainerUsername_b98d9d154d7e489f94a8a0a3e235c30e }}/espresso-web:${{ github.sha }}'
