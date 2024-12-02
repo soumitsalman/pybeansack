@@ -48,8 +48,6 @@ def create_barista_route(barista: espressops.Barista):
     return lambda barista=barista: ui.navigate.to(f"/barista/{barista.id}")
 
 def render_header(user):
-    ui.add_head_html(GOOGLE_ANALYTICS_SCRIPT)
-
     ui.add_css(CSS_FILE)
     ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)
     search_route = lambda: ui.navigate.to(create_navigation_target("/search", q=search_input.value))

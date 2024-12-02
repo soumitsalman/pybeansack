@@ -107,6 +107,8 @@ async def image(image_id: str = Depends(validate_image)):
     
     
 initialize_server()
+
+ui.add_head_html(renderer.GOOGLE_ANALYTICS_SCRIPT, shared=True)
 ui.run(
     title=env.app_name(), 
     storage_secret=env.internal_auth_token(),

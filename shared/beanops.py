@@ -120,4 +120,4 @@ def _create_filter(
 lower_case = lambda items: {"$in": [item.lower() for item in items]} if isinstance(items, list) else items.lower()
 case_insensitive = lambda items: {"$in": [re.compile(item, re.IGNORECASE) for item in items]} if isinstance(items, list) else re.compile(items, re.IGNORECASE)
 favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+tldextract.extract(bean.url).registered_domain
-naturalday = lambda date_val: humanize.naturalday(datetime.fromtimestamp(date_val), format="%a, %b %d")
+naturalday = lambda date_val: humanize.naturalday(date_val, format="%a, %b %d")
