@@ -6,6 +6,7 @@ from llama_cpp import Llama
 from openai import OpenAI
 from abc import ABC, abstractmethod
 from memoization import cached
+from icecream import ic
 
 class Embeddings(ABC):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
