@@ -10,6 +10,7 @@ RUN apt update && apt install -y \
 WORKDIR /app 
 COPY . . 
 RUN pip install -r requirements.txt
+RUN pip install -r pybeansack/requirements.txt
 
 ENV LLM_BASE_URL=https://api.deepinfra.com/v1/openai
 ENV EMBEDDER_MODEL=thenlper/gte-large

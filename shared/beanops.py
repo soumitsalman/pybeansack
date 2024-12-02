@@ -2,7 +2,7 @@ import re
 import humanize
 from icecream import ic
 import tldextract
-from pybeansack.beansack import *
+from pybeansack.mongosack import *
 from pybeansack.datamodels import *
 from .utils import *
 from memoization import cached
