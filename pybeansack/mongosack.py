@@ -146,7 +146,7 @@ class Beansack:
         result = list(self.beanstore.aggregate(pipeline))
         return result[0]['total_count'] if result else 0
     
-    def text_search_beans(self, query: str, filter = None, sort_by = None, skip=0, limit=0, projection=None):
+    def text_search_beans(self, query: str, filter = None, sort_by = {K_SEARCH_SCORE: -1}, skip=0, limit=0, projection=None):
         return _deserialize_beans(
             self.beanstore.aggregate(
                 self._text_search_pipeline(query, filter=filter, sort_by=sort_by, skip=skip, limit=limit, projection=projection, for_count=False)))
@@ -251,14 +251,15 @@ class Beansack:
             match.update(filter)
 
         pipeline = [
-            {   "$match": match },            
-            {   "$addFields":  { K_SEARCH_SCORE: {"$meta": "textScore"}} },
-            {   "$match": { K_SEARCH_SCORE: {"$gte": len(text.split(sep=" ,.;:`'\"\n\t\r\f"))}} }  # this is hueristic to count the number of word match
+            { "$match": match },            
+            { "$addFields":  { K_SEARCH_SCORE: {"$meta": "textScore"}} },
+            { "$sort": {K_SEARCH_SCORE: -1} }
         ]        
         # means this is for retrieval of the actual contents
         # in this case sort by the what is provided for sorting
+        pipeline.append({"$group": CLUSTER_GROUP})
         if sort_by:
-            pipeline.append({"$sort": sort_by})
+            pipeline.append({"$sort": sort_by})           
         if skip:
             pipeline.append({"$skip": skip})
         if limit:

@@ -21,12 +21,21 @@ from web_ui import renderer, vanilla
 # from authlib.integrations.starlette_client import OAuth
 
 # oauth = OAuth()
+
+registered_pages = {}
+
 def initialize_server():
     embedder = RemoteEmbeddings(env.llm_base_url(), env.llm_api_key(), env.embedder_model(), env.embedder_n_ctx()) \
         if env.llm_base_url() else \
         BeansackEmbeddings(env.embedder_model(), env.embedder_n_ctx())
     beanops.initiatize(env.db_connection_str(), embedder)
     espressops.initialize(env.db_connection_str(), env.sb_connection_str(), embedder)
+    
+    # register a list of specialized pages
+    global registered_pages
+    registered_pages.update({"trending": lambda: vanilla.render_snapshot_for_baristas(registerd_user())})
+    registered_pages.update({kind[K_ID]: lambda kind=kind: vanilla.render_snapshot_for_bean_kind(registerd_user(), kind) for kind in DEFAULT_KINDS})
+    
 
 def session_settings(**kwargs) -> dict:
     if kwargs:
@@ -59,6 +68,11 @@ def validate_barista(barista_id: str):
         raise HTTPException(status_code=404, detail=f"{barista_id} does not exist")
     return barista_id
 
+def validate_page(page_id: str):
+    if page_id.lower() not in registered_pages:
+        raise HTTPException(status_code=404, detail=f"{page_id} does not exist")
+    return page_id
+
 def validate_doc(doc_id: str):
     if not bool(os.path.exists(f"docs/{doc_id}")):
         raise HTTPException(status_code=404, detail=f"{doc_id} does not exist")
@@ -81,11 +95,6 @@ async def barista(barista_id: str = Depends(validate_barista)):
     session_settings(last_page=f"/barista/{barista_id}")
     await vanilla.render_barista_servings(registerd_user(), barista_id)
 
-@ui.page("/trending")
-async def trending():
-    log(logger, 'trending', user_id=current_user())
-    await vanilla.render_barista_snapshots(registerd_user())
-
 @ui.page("/search")
 async def search(
     q: str = None, 
@@ -104,6 +113,13 @@ async def document(doc_id: str = Depends(validate_doc)):
 @ui.page("/images/{image_id}")
 async def image(image_id: str = Depends(validate_image)):
     return FileResponse(f"./images/{image_id}", media_type="image/png")
+
+# this has to be the last page because it will catch all non-prefixed routes
+@ui.page("/{page_id}")
+async def location(page_id: str = Depends(validate_page)):
+    log(logger, page_id, user_id=current_user())
+    session_settings(last_page=f"/{page_id}")
+    await registered_pages[page_id]()
     
     
 initialize_server()

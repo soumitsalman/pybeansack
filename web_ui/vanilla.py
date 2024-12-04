@@ -10,7 +10,7 @@ from icecream import ic
 from .renderer import *
 
 APP_NAME = env.app_name()
-CONTENT_GRID_CLASSES = "w-full grid-cols-1 md:grid-cols-2"
+CONTENT_GRID_CLASSES = "w-full grid-cols-1 lg:grid-cols-2"
 BARISTAS_PANEL_CLASSES = "w-1/4 gt-xs"
 
 # shows everything that came in within the last 24 hours
@@ -21,22 +21,42 @@ async def render_home(user):
         with ui.grid().classes(CONTENT_GRID_CLASSES):
             # render trending blogs, posts and news
             for kind in DEFAULT_KINDS:
-                with render_card_container(kind[K_TITLE]):
+                with render_card_container(kind[K_TITLE], on_click=create_navigation_route(f"/{kind[K_ID]}")):
                     # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
                     render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
                         if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
                             render_error_text(NOTHING_TRENDING)
             # render trending pages
             with render_card_container("Explore"):                
-                render_baristas(user, random.sample(espressops.get_baristas(None), 5))
+                render_barista_names(user, random.sample(espressops.get_baristas(None), 5))
     render_footer()
 
-async def render_barista_snapshots(user):
+# async def render_snapshot_for_trending(user):
+#     baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
+    
+#     async def load_and_render(holder: ui.element, barista):
+#         beans = [(await run.io_bound(beanops.get_trending_beans, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1)) for kind in DEFAULT_KINDS]
+#         beans = [bean[0] for bean in beans if bean]
+#         with holder:
+#             render_swipable_beans(user, beans).classes("w-full") \
+#                 if beans else \
+#                     render_error_text(NOTHING_TRENDING)
+
+#     render_header(user)
+#     with ui.row(wrap=False).classes("w-full"): 
+#         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
+#         with ui.grid().classes(CONTENT_GRID_CLASSES):
+#             for barista in baristas:
+#                 holder = render_card_container(barista.title, on_click=create_barista_route(barista))
+#                 background_tasks.create_lazy(load_and_render(holder, barista), name=f"trending-{now()}")
+                            
+#     render_footer()
+
+async def render_snapshot_for_baristas(user):
     baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
     
-    async def load_and_render(holder: ui.element, barista):
-        beans = [(await run.io_bound(beanops.get_trending_beans, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1)) for kind in DEFAULT_KINDS]
-        beans = [bean[0] for bean in beans if bean]
+    async def load_and_render(holder: ui.element, barista, kind: dict):
+        beans = await run.io_bound(beanops.get_trending_beans, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1)
         with holder:
             render_swipable_beans(user, beans).classes("w-full") \
                 if beans else \
@@ -45,14 +65,42 @@ async def render_barista_snapshots(user):
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.grid().classes(CONTENT_GRID_CLASSES):
-            for barista in baristas:
-                holder = render_card_container(barista.title, on_click=create_barista_route(barista))
-                background_tasks.create_lazy(load_and_render(holder, barista), name=f"trending-{now()}")
+        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+            with ui.tabs().classes("w-full") as tabs:
+                [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS]
+
+            with ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders"):
+                for kind in DEFAULT_KINDS:
+                    with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
+                        with ui.grid().classes(CONTENT_GRID_CLASSES):
+                            for barista in baristas:
+                                # with render_card_container(barista.title, on_click=create_barista_route(barista)):
+                                with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap"):
+                                    render_beans(user, lambda barista=barista, kind=kind: beanops.get_trending_beans(tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1), skeleton_count=1).classes("w-full") \
+                                        if beanops.count_beans(query=None, accuracy=None, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
+                                            render_error_text(NOTHING_TRENDING)
                             
     render_footer()
 
-async def render_barista_servings(user, barista_id: str):
+async def render_snapshot_for_bean_kind(user: dict, kind: dict):
+    render_header(user)
+    with ui.row(wrap=False).classes("w-full"): 
+        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
+        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+            ui.label(kind[K_TITLE]).classes("text-h4")
+            with ui.grid().classes(CONTENT_GRID_CLASSES):
+                with render_card_container("Latest"):                    
+                    render_appendable_beans(user, lambda start, limit, kind=kind: beanops.get_newest_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=start, limit=limit)).classes("w-full m-0 p-0") \
+                        if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
+                            render_error_text(NOTHING_FOUND)
+                with render_card_container("Trending"):                    
+                    render_appendable_beans(user, lambda start, limit, kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0") \
+                        if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=kind[K_ID], sources=None, last_ndays=None, limit=1) else \
+                            render_error_text(NOTHING_TRENDING)
+                            
+    render_footer()
+
+async def render_barista_servings(user: dict, barista_id: str):
     barista = espressops.get_barista(barista_id)
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
@@ -77,48 +125,76 @@ async def render_barista_servings(user, barista_id: str):
     render_footer()
 
 async def render_search(user, query: str, accuracy: float, tags: str|list[str], kinds: str|list[str]):
-    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value, kind=kinds_panel.value, acc=accuracy_panel.value))    
+    tab_names = ["Beans", "Baristas"]   
+    result_counts = {tab_name: 0 for tab_name in tab_names} # initial value for tab badge
+    panels = {tab_name: None for tab_name in tab_names}
+
+    process_prompt = lambda: ui.navigate.to(create_navigation_target("/search", q=prompt_input.value))    
     search_beans_func = lambda start, limit: beanops.search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit)
     
-    async def search_and_render(holder: ui.element):
-        items_count = await run.io_bound(beanops.count_beans, query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, limit=MAX_LIMIT)
-        holder.clear()
-        with holder:            
-            render_paginated_beans(user, search_beans_func, items_count).classes("rounded-borders") \
+    async def search_and_render_baristas():
+        items = await run.io_bound(espressops.search_baristas, query or tags)
+        result_counts["Baristas"] = len(items)
+        panels["Baristas"].clear()
+        with panels["Baristas"]:
+            render_barista_names(user, items).classes("rounded-borders w-full") if items else render_error_text(NOTHING_FOUND)
+
+    async def search_and_render_beans():
+        items_count = await run.io_bound(beanops.count_beans, query=query, tags=tags, accuracy=accuracy, kinds=kinds, sources=None, last_ndays=None, limit=MAX_LIMIT)
+        result_counts["Beans"] = items_count
+        panels["Beans"].clear()
+        with panels["Beans"]:            
+            render_paginated_beans(user, search_beans_func, items_count).classes("rounded-borders w-full") \
                 if items_count else \
                     render_error_text(NOTHING_FOUND)
+            
+    def refresh_search(new_kinds: str|list[str] = kinds, new_tags: str|list[str] = tags, new_accuracy: float = accuracy):
+        nonlocal kinds, tags, accuracy        
+        # has there been a change?
+        if new_kinds != kinds or new_tags != tags or new_accuracy != accuracy:            
+            kinds = new_kinds
+            tags = new_tags
+            accuracy = new_accuracy
+            background_tasks.create_lazy(search_and_render_beans(), name=f"search-beans-{now()}") 
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"):
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
         # render the search input
-        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+        with ui.column().classes("w-full m-0 p-0"):
             with ui.input(placeholder=CONSOLE_PLACEHOLDER, autocomplete=CONSOLE_EXAMPLES).on('keydown.enter', process_prompt) \
                 .props('rounded outlined input-class=mx-3').classes('w-full self-center') as prompt_input:
                 ui.button(icon="send", on_click=process_prompt).bind_visibility_from(prompt_input, 'value').props("flat dense")
             
-            # TODO: make the knob be inside the input box and the expansion be a dialog/drawer
-            with ui.expansion(text="Knobs").props("expand-icon=tune expanded-icon=tune").classes("w-full text-right text-caption"):
-                with ui.row(wrap=False, align_items="stretch").classes("w-full border-[1px]").style("border-radius: 5px; padding-left: 1rem;"):                
-                    with ui.label("Accuracy").classes("w-full text-left"):
-                        accuracy_panel=ui.slider(min=0.1, max=1.0, step=0.05, value=(accuracy or DEFAULT_ACCURACY)).props("label-always")
-                    kinds_panel = ui.toggle(options={NEWS:"News", BLOG:"Blogs", POST:"Posts", None:"All"}).props("unelevated no-caps")
-            
             # render this ONLY if there is a query or tag present or else the banner will be empty
             if query or tags: 
                 ui.label(query or (tags if isinstance(tags, str) else ", ".join(tags))).classes("text-h4 banner")
-                tab_names = ["Beans", "Baristas"] if not kinds else ["Beans"]
-                
-                with ui.tabs().classes("w-full") as tabs:                    
-                    [ui.tab(name=tab_name, label=tab_name) for tab_name in tab_names]
+
+                # ui.toggle(options={kind[K_ID]: kind[K_TITLE] for kind in DEFAULT_KINDS}, on_change=lambda e: refresh_search_and_render_beans(new_kinds=e.sender.value), clearable=True).props("unelevated rounded no-caps").classes("bg-dark")
+                with ui.row().classes("w-full gap-1"):   
+                    new_kinds = ui.toggle(options={kind[K_ID]: kind[K_TITLE] for kind in DEFAULT_KINDS}, on_change=debounce(lambda: refresh_search(new_kinds=new_kinds.value), 1), clearable=True).props("unelevated rounded no-caps").classes("bg-dark")
+                    # TODO: add to / remove from a list of tags
+                    # TODO: render take top 20 beans from different clusters render 1 tag from 10 random beans
+                    # [ui.chip("tag", selectable=True, on_selection_change=debounce(lambda: refresh_search(new_tags=tag), 1.5)) for tag in tags]
+                    # with ui.label("Accuracy").classes("w-1/2 q-mr-xs q-mt-xs"):
+                    #     new_accuracy = ui.slider(min=0.1, max=1.0, step=0.05, value=(accuracy or DEFAULT_ACCURACY), on_change=debounce(lambda: refresh_search(new_accuracy=new_accuracy.value), 1)).props("label-always")
+
+                with ui.tabs().classes("w-full") as tabs:  
+                    for tab_name in tab_names:                  
+                        with ui.tab(name=tab_name, label=tab_name):
+                            ui.badge().props("transparent floating").classes("q-mb-md")\
+                                .bind_text_from(result_counts, tab_name, lambda count: rounded_number(count))\
+                                .bind_visibility_from(result_counts, tab_name, lambda count: bool(count))                                            
                 with ui.tab_panels(tabs, value=tab_names[0]).classes("w-full"):
                     for tab_name in tab_names:
-                        with ui.tab_panel(name=tab_name).classes("w-full"):
-                            if tab_name == "Beans":
-                                background_tasks.create_lazy(search_and_render(render_skeleton_beans(3).classes("w-full")), name=f"search-{now()}") 
+                        panels[tab_name] = ui.tab_panel(name=tab_name).classes("w-full")
+                        with panels[tab_name]:
+                            ui.spinner("radio", size="md", color="secondary").classes("self-center")
+                            if tab_name == "Beans":                                
+                                background_tasks.create_lazy(search_and_render_beans(), name=f"search-beans-{now()}") 
                             else:
-                                res = espressops.search_baristas(query or tags)
-                                render_baristas(user, res).classes("rounded-borders w-full") if res else render_error_text(NOTHING_FOUND)
+                                background_tasks.create_lazy(search_and_render_baristas(), name=f"search-baristas-{now()}") 
+
     render_footer()
 
 async def render_doc(user, doc_id):
@@ -126,7 +202,6 @@ async def render_doc(user, doc_id):
     with open(f"./docs/{doc_id}", 'r') as file:
         ui.markdown(file.read()).classes("w-full md:w-2/3 lg:w-1/2  self-center")
     render_footer()
-
 
 # def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int|None):
 #     selected_tags = []    

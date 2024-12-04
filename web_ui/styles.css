@@ -19,11 +19,6 @@ body {
 
 .text-caption { color: #999999; }
 
-.tag {    
-    text-overflow: ellipsis;
-    max-width: 30ch; 
-}
-
 .bean-source {    
     text-overflow: ellipsis;
     max-width: 30ch; 
@@ -75,9 +70,8 @@ body {
     margin: 0 !important;
 }
 
-/* .bean-expansion .q-expansion-item__content * {
-    padding: 0 !important;
-    margin: 0 !important;
-} */
-
-
+.vertical-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    text-align: center;
+}

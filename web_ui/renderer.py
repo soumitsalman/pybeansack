@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import random
+import threading
 from pybeansack.datamodels import *
 from shared import beanops, espressops, utils
 from web_ui.custom_ui import *
@@ -35,6 +36,9 @@ twitter_share_url = lambda bean: create_navigation_route("https://x.com/intent/t
 linkedin_share_url = lambda bean: create_navigation_route("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, mini=True)
 whatsapp_share_url = lambda bean: create_navigation_route("https://wa.me/", text=f"{bean.title}\n{bean.url}")
 slack_share_url = lambda bean: create_navigation_route("https://slack.com/share/url", url=bean.url, text=bean.title)
+
+rounded_number = lambda counter: str(counter) if counter < MAX_LIMIT else str(MAX_LIMIT-1)+'+'
+rounded_number_with_max = lambda counter, top: str(counter) if counter <= top else str(top)+'+'
 
 def create_navigation_target(base_url, **kwargs):
     if kwargs:
@@ -93,7 +97,7 @@ def render_login_buttons():
             ui.avatar(SLACK_ICON_URL, color="transparent")
     return menu
 
-def render_baristas(user, baristas: list[espressops.Barista]):
+def render_barista_names(user, baristas: list[espressops.Barista]):
     with ui.row(align_items="stretch").classes("q-pa-sm") as panel:
         [ui.item(barista.title, on_click=create_barista_route(barista)).classes(f"rounded-borders text-lg bg-primary") for barista in baristas]
     return panel
@@ -104,7 +108,7 @@ def render_baristas_panel(user):
         [ui.item(barista.title, on_click=create_barista_route(barista)) for barista in baristas]
     return panel
 
-def render_beans(user, load_beans: Callable):
+def render_beans(user, load_beans: Callable, skeleton_count: int = 3):
     async def render():
         beans = await run.io_bound(load_beans)
         view.clear()
@@ -112,11 +116,11 @@ def render_beans(user, load_beans: Callable):
             [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans]
 
     with ui.list() as view:
-        render_skeleton_beans(3).classes("w-full")
+        render_skeleton_beans(skeleton_count).classes("w-full")
     background_tasks.create_lazy(render(), name=f"beans-{utils.now()}")
     return view
 
-def render_appendable_beans(user, load_beans: Callable):
+def render_appendable_beans(user, load_beans: Callable, skeleton_count: int = 3):
     start = 0   
     async def on_next_page():
         with disable_button(more_btn):
@@ -133,7 +137,7 @@ def render_appendable_beans(user, load_beans: Callable):
 
     with ui.column(align_items="start") as view:
         with ui.list().classes("w-full m-0 p-0") as holder:
-            render_skeleton_beans(3)
+            render_skeleton_beans(skeleton_count)
         more_btn = ui.button("More Stories", on_click=on_next_page).props("icon-right=chevron_right").classes("q-mx-sm")
     background_tasks.create_lazy(on_next_page(), name=f"appendable-beans-{start}-{utils.now()}")
     return view  
@@ -274,9 +278,11 @@ def render_footer():
 def render_error_text(msg: str):
     return ui.label(msg).classes("self-center text-center")
 
-def render_card_container(label: str, on_click: Callable = None):
+def render_card_container(label: str, on_click: Callable = None, header_classes: str = "text-h6"):
     with ui.card(align_items="stretch").tight().props("flat") as panel:        
-        ui.item(label, on_click=on_click).classes("text-h6")
+        holder = ui.item(label, on_click=on_click).classes(header_classes)
+        if on_click:
+            holder.props("clickable").tooltip("Click for more")
         ui.separator() 
     return panel
 
@@ -290,6 +296,16 @@ def disable_button(button: ui.button):
         button.props(remove="loading")
         button.enable()
  
+
+def debounce(func, wait):
+    last_call = None
+    def debounced(*args, **kwargs):
+        nonlocal last_call
+        if last_call:
+            last_call.cancel()
+        last_call = threading.Timer(wait, func, args, kwargs)
+        last_call.start()
+    return debounced
 
 # def render_tags_as_chips(tags: list[str], on_click: Callable = None, on_select: Callable = None):
 #     async def on_selection_changed(sender):
