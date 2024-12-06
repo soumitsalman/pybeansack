@@ -33,8 +33,8 @@ def initialize_server():
     
     # register a list of specialized pages
     global registered_pages
-    registered_pages.update({"trending": lambda: vanilla.render_snapshot_for_baristas(registerd_user())})
-    registered_pages.update({kind[K_ID]: lambda kind=kind: vanilla.render_snapshot_for_bean_kind(registerd_user(), kind) for kind in DEFAULT_KINDS})
+    registered_pages.update({"trending": lambda: vanilla.render_trending_snapshot(registerd_user())})
+    registered_pages.update({kind[K_ID]: lambda kind=kind: vanilla.render_bean_type_snapshot(registerd_user(), kind) for kind in DEFAULT_KINDS})
     
 
 def session_settings(**kwargs) -> dict:
@@ -93,17 +93,18 @@ async def home():
 async def barista(barista_id: str = Depends(validate_barista)): 
     log(logger, 'barista', user_id=current_user(), page_id=barista_id)   
     session_settings(last_page=f"/barista/{barista_id}")
-    await vanilla.render_barista_servings(registerd_user(), barista_id)
+    await vanilla.render_barista_page(registerd_user(), barista_id)
 
 @ui.page("/search")
 async def search(
     q: str = None, 
+    url: str = None,
     acc: float = Query(ge=0, le=1, default=DEFAULT_ACCURACY),
     tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
     kind: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    log(logger, 'search', user_id=current_user(), q=q, acc=acc, tag=tag, kind=kind)
-    session_settings(last_page=renderer.create_navigation_target("/search", q=q, acc=acc, tag=tag, kind=kind))    
-    await vanilla.render_search(registerd_user(), q, acc, tag, kind)
+    log(logger, 'search', user_id=current_user(), q=q, url=url, acc=acc, tag=tag, kind=kind)
+    session_settings(last_page=renderer.create_navigation_target("/search", q=q, url=url, acc=acc, tag=tag, kind=kind))    
+    await vanilla.render_search(registerd_user(), q, url, acc, tag, kind)
 
 @ui.page("/docs/{doc_id}")
 async def document(doc_id: str = Depends(validate_doc)):

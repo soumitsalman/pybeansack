@@ -1,11 +1,12 @@
 from datetime import datetime
 from pybeansack.datamodels import *
+from urllib.parse import urlparse
 
 SLACK = "slack"
 REDDIT = "reddit"
 
 # search settings
-DEFAULT_ACCURACY = 0.75
+DEFAULT_ACCURACY = 0.
 DEFAULT_WINDOW = 7
 MIN_WINDOW = 1
 MAX_WINDOW = 30
@@ -57,5 +58,5 @@ def log(logger, function, **kwargs):
     kwargs = {key: ("|".join(value) if isinstance(value, list) else value) for key, value in kwargs.items() if value}
     logger.info(function, extra=kwargs)
 
-def now():
-    return datetime.now().timestamp()
+now = lambda: datetime.now().timestamp()
+is_valid_url = lambda url: urlparse(url).scheme in ["http", "https"]

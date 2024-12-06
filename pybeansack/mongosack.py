@@ -35,8 +35,11 @@ CLUSTER_GROUP = {
     K_CHANNEL: {"$first": "$channel"},
     K_UPDATED: {"$first": "$updated"},
     K_CREATED: {"$first": "$created"},
+    K_COLLECTED: {"$first": "$collected"},
     K_LIKES: {"$first": "$likes"},
     K_COMMENTS: {"$first": "$comments"},
+    K_SHARES: {"$first": "$shares"},
+    K_SEARCH_SCORE: {"$first": "$search_score"},
     K_TRENDSCORE: {"$first": "$trend_score"},
     K_AUTHOR: {"$first": "$author"},
     K_KIND: {"$first": "$kind"},
@@ -168,38 +171,132 @@ class Beansack:
         match_filter = {K_TAGS: {"$exists": True}}
         if filter:
             match_filter.update(filter)
+        # for the beans in scope
+        # take one bean from each cluster for diversification.
+        # then for each tag, use an aggregated valuee of latest and trending
+        # sort by that sort and then return the list
         pipeline = [
-            {"$match": match_filter},
-            {"$unwind": "$tags"}, 
+            { "$match": match_filter },
+            { "$sort": LATEST_AND_TRENDING },
+            {
+                # for each cluster tag the tags of the bean with the latest and highest trend 
+                "$group": {
+                    "_id": "$cluster_id",    
+                    "url": {"$first": "$url"},                
+                    "updated": { "$first": "$updated" },
+                    "trend_score": { "$first": "$trend_score" },
+                    "tags": {"$first": "$tags"}
+                }
+            },
+            { "$unwind": "$tags" },
             {
                 "$group": {
                     "_id": "$tags",
-                    "cluster_id": {"$first": "$cluster_id"},
+                    "tags": {"$first": "$tags"},
+                    "updated": { "$max": "$updated" },
                     "trend_score": { "$sum": "$trend_score" },
-                    "updated": { "$max": "$updated" }
+                    "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
             },
-            {
-                "$sort": TRENDING
-            },
-            {
-                "$group": {
-                    "_id": "$cluster_id",
-                    "url": {"$first": "$cluster_id"},
-                    "tags": { "$first": "$_id" },
-                    "trend_score": { "$first": "$trend_score" },
-                    "updated": { "$first": "$updated" }
-                }
-            },
-            {"$sort": LATEST_AND_TRENDING}
+            { "$sort": LATEST_AND_TRENDING }
         ]
+        # pipeline = [
+        #     {"$match": match_filter},
+        #     {"$unwind": "$tags"}, 
+        #     {
+        #         "$group": {
+        #             "_id": "$tags",
+        #             "cluster_id": {"$first": "$cluster_id"},
+        #             "trend_score": { "$sum": "$trend_score" },
+        #             "updated": { "$max": "$updated" }
+        #         }
+        #     },
+        #     { "$sort": LATEST_AND_TRENDING },
+        #     {
+        #         "$group": {
+        #             "_id": "$cluster_id",
+        #             "url": {"$first": "$cluster_id"},
+        #             "tags": { "$first": "$_id" },
+        #             "trend_score": { "$first": "$trend_score" },
+        #             "updated": { "$first": "$updated" }
+        #         }
+        #     },
+        #     { "$sort": LATEST_AND_TRENDING }
+        # ]
         if skip:
             pipeline.append({"$skip": skip})    
         if limit:
             pipeline.append({"$limit": limit})   
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
-  
-    def count_related_beans(self, urls: list[str]) -> list:
+
+    def vector_search_trending_tags(self, 
+            query: str = None,
+            embedding: list[float] = None, 
+            min_score = DEFAULT_VECTOR_SEARCH_SCORE, 
+            filter = None, 
+            sort_by = None,
+            skip = None,
+            limit = DEFAULT_VECTOR_SEARCH_LIMIT, 
+            projection = None
+        ) -> list[Bean]:
+
+        match_filter = {K_TAGS: {"$exists": True}}
+        if filter:
+            match_filter.update(filter)
+        pipeline = [            
+            {
+                "$search": {
+                    "cosmosSearch": {
+                        "vector": embedding or self.embedder.embed_query(query),
+                        "path":   K_EMBEDDING,
+                        "filter": match_filter,
+                        "k":      DEFAULT_VECTOR_SEARCH_LIMIT,
+                    },
+                    "returnStoredSource": True
+                }
+            },
+            {
+                "$addFields": { "search_score": {"$meta": "searchScore"} }
+            },
+            {
+                "$match": { "search_score": {"$gte": min_score} }
+            },
+            {
+                "$sort": LATEST_AND_TRENDING
+            },
+            {
+                # for each cluster tag the tags of the bean with the latest and highest trend 
+                "$group": {
+                    "_id": "$cluster_id",    
+                    "url": {"$first": "$url"},                
+                    "updated": { "$first": "$updated" },
+                    "trend_score": { "$first": "$trend_score" },
+                    "tags": {"$first": "$tags"}
+                }
+            },
+            { 
+                "$unwind": "$tags" 
+            },
+            {
+                "$group": {
+                    "_id": "$tags",
+                    "tags": {"$first": "$tags"},
+                    "updated": { "$max": "$updated" },
+                    "trend_score": { "$sum": "$trend_score" },
+                    "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
+                }
+            },
+            { 
+                "$sort": LATEST_AND_TRENDING 
+            }
+        ]
+        if skip:
+            pipeline.append({"$skip": skip})
+        if limit:
+            pipeline.append({"$limit": limit})
+        return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
+
+    def get_cluster_sizes(self, urls: list[str]) -> list:
         pipeline = [            
             {
                 "$group": {
@@ -270,7 +367,7 @@ class Beansack:
             pipeline.append({"$project": projection})
         return pipeline
    
-    def _vector_search_pipeline(self, text, embedding, min_score, filter, sort_by, skip, limit, projection):        
+    def _vector_search_pipeline(self, text, embedding, min_score, filter, sort_by, skip, limit, projection):    
         pipeline = [            
             {
                 "$search": {
@@ -288,13 +385,17 @@ class Beansack:
             },
             {
                 "$match": { "search_score": {"$gte": min_score} }
-            }
+            },
+            {   
+                "$sort": { "search_score": -1 }
+            },
+            {
+                "$group": CLUSTER_GROUP
+            },
+            {   
+                "$sort": { "search_score": -1 }
+            },
         ]  
-        if sort_by:
-            pipeline.append({"$sort": sort_by})        
-        pipeline.append({"$group": CLUSTER_GROUP})         
-        if sort_by:
-            pipeline.append({"$sort": sort_by})
         if skip:
             pipeline.append({"$skip": skip})
         if limit:
