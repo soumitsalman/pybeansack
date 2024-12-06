@@ -6,7 +6,7 @@ NOT_IMPLEMENTED = "I don't really do much. I just sit here and look pretty."
 LOGIN_FIRST = "Imma' need you to Login first"
 NOTHING_TRENDING = "Nothing trending."
 
-NOTHING_FOUND = "Couldn't find anything"
+NOTHING_FOUND = "That's all she wrote 🤷🏽!"
 RESOURCE_NOT_FOUND = "Never heard of 'em"
 # NOTHING_TRENDING = "Nothing trending."
 # NOTHING_TRENDING_IN = "Nothing trending in last %d day(s)."

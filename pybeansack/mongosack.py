@@ -171,6 +171,7 @@ class Beansack:
         match_filter = {K_TAGS: {"$exists": True}}
         if filter:
             match_filter.update(filter)
+        # Option 1:
         # for the beans in scope
         # take one bean from each cluster for diversification.
         # then for each tag, use an aggregated valuee of latest and trending
@@ -200,6 +201,11 @@ class Beansack:
             },
             { "$sort": LATEST_AND_TRENDING }
         ]
+        # Option 2:
+        # flatten the tags
+        # group by cluster
+        # sort by the number of times the tags appear
+        # then take the top tags
         # pipeline = [
         #     {"$match": match_filter},
         #     {"$unwind": "$tags"}, 
@@ -234,10 +240,8 @@ class Beansack:
             embedding: list[float] = None, 
             min_score = DEFAULT_VECTOR_SEARCH_SCORE, 
             filter = None, 
-            sort_by = None,
             skip = None,
-            limit = DEFAULT_VECTOR_SEARCH_LIMIT, 
-            projection = None
+            limit = DEFAULT_VECTOR_SEARCH_LIMIT
         ) -> list[Bean]:
 
         match_filter = {K_TAGS: {"$exists": True}}

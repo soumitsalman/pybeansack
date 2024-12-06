@@ -23,6 +23,7 @@ from web_ui import renderer, vanilla
 # oauth = OAuth()
 
 registered_pages = {}
+get_bean_kind = lambda kind_id: next((kind for kind in DEFAULT_KINDS if kind_id == kind[K_ID]), None)
 
 def initialize_server():
     embedder = RemoteEmbeddings(env.llm_base_url(), env.llm_api_key(), env.embedder_model(), env.embedder_n_ctx()) \
@@ -33,9 +34,7 @@ def initialize_server():
     
     # register a list of specialized pages
     global registered_pages
-    registered_pages.update({"trending": lambda: vanilla.render_trending_snapshot(registerd_user())})
-    registered_pages.update({kind[K_ID]: lambda kind=kind: vanilla.render_bean_type_snapshot(registerd_user(), kind) for kind in DEFAULT_KINDS})
-    
+    # TODO: add registered pages here
 
 def session_settings(**kwargs) -> dict:
     if kwargs:
@@ -64,12 +63,14 @@ def delete_temp_user():
         del app.storage.browser["temp_user"]
 
 def validate_barista(barista_id: str):
-    if not bool(espressops.get_barista(barista_id)):
+    barista_id = barista_id.lower()
+    if not (get_bean_kind(barista_id) or espressops.get_barista(barista_id)):
         raise HTTPException(status_code=404, detail=f"{barista_id} does not exist")
     return barista_id
 
-def validate_page(page_id: str):
-    if page_id.lower() not in registered_pages:
+def validate_registered_page(page_id: str):
+    page_id = page_id.lower()
+    if page_id not in registered_pages:
         raise HTTPException(status_code=404, detail=f"{page_id} does not exist")
     return page_id
 
@@ -89,22 +90,32 @@ async def home():
     session_settings(last_page="/")  
     await vanilla.render_home(registerd_user())
 
-@ui.page("/barista/{barista_id}")
-async def barista(barista_id: str = Depends(validate_barista)): 
-    log(logger, 'barista', user_id=current_user(), page_id=barista_id)   
-    session_settings(last_page=f"/barista/{barista_id}")
-    await vanilla.render_barista_page(registerd_user(), barista_id)
+@ui.page("/trending")
+async def trending_snapshot(tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
+    log(logger, 'trending', user_id=current_user(), tag=tag)
+    session_settings(last_page="/trending", tag=tag)
+    if tag:
+        await vanilla.render_trending_by_tag(registerd_user(), tag)
+    else:
+        await vanilla.render_trending_snapshot(registerd_user())
+
+@ui.page("/trending/{barista_id}")
+async def trending(barista_id: str = Depends(validate_barista, use_cache=True)): 
+    log(logger, 'trending', user_id=current_user(), page_id=barista_id)   
+    session_settings(last_page=f"/trending/{barista_id}")
+    if bean_kind := get_bean_kind(barista_id):
+        await vanilla.render_trending_by_kind(registerd_user(), bean_kind)
+    else:
+        await vanilla.render_barista_page(registerd_user(), barista_id)
 
 @ui.page("/search")
 async def search(
-    q: str = None, 
-    url: str = None,
+    q: str = None,
     acc: float = Query(ge=0, le=1, default=DEFAULT_ACCURACY),
-    tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
     kind: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    log(logger, 'search', user_id=current_user(), q=q, url=url, acc=acc, tag=tag, kind=kind)
-    session_settings(last_page=renderer.create_navigation_target("/search", q=q, url=url, acc=acc, tag=tag, kind=kind))    
-    await vanilla.render_search(registerd_user(), q, url, acc, tag, kind)
+    log(logger, 'search', user_id=current_user(), q=q, acc=acc, kind=kind)
+    session_settings(last_page=renderer.create_navigation_target("/search", q=q, acc=acc, kind=kind))    
+    await vanilla.render_search(registerd_user(), q, acc, kind)
 
 @ui.page("/docs/{doc_id}")
 async def document(doc_id: str = Depends(validate_doc)):
@@ -117,7 +128,7 @@ async def image(image_id: str = Depends(validate_image)):
 
 # this has to be the last page because it will catch all non-prefixed routes
 @ui.page("/{page_id}")
-async def location(page_id: str = Depends(validate_page)):
+async def location(page_id: str = Depends(validate_registered_page)):
     log(logger, page_id, user_id=current_user())
     session_settings(last_page=f"/{page_id}")
     await registered_pages[page_id]()

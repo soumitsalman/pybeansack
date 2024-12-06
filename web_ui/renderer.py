@@ -49,7 +49,7 @@ def create_navigation_route(base_url, **kwargs):
     return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs))
 
 def create_barista_route(barista: espressops.Barista):
-    return lambda barista=barista: ui.navigate.to(f"/barista/{barista.id}")
+    return lambda barista=barista: ui.navigate.to(f"/trending/{barista.id}")
 
 def create_search_target(text):
     return create_navigation_target("/search", q=text) \
@@ -66,16 +66,17 @@ def render_header(user):
             ui.label("Espresso").classes("q-ml-sm")
             
         ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-sm")
-        ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-md")
+        ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-sm")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
         with ui.input(placeholder=SEARCH_PLACEHOLDER) \
             .props('item-aligned clearable dense rounded outlined maxlength=1000 bg-color=dark clear-icon=close') \
-            .classes("gt-sm w-1/3 m-0 p-0") \
+            .classes("gt-xs w-1/2 m-0 p-0") \
             .on("keydown.enter", trigger_search) as search_input:    
             prepend = search_input.add_slot("prepend")   
             with prepend:
                 ui.button(icon="search", color="secondary", on_click=trigger_search).props("flat rounded").classes("m-0")
+                
         ui.button(icon="person" if user else "login", on_click=lambda: ui.notify("Coming Soon")).props("unelevated").tooltip("Coming Soon")
         # with ui.button(icon="person" if user else "login").props("unelevated"):
         #     (render_user_card(user) if user else render_login_buttons())
@@ -118,7 +119,8 @@ def render_beans(user, load_beans: Callable, skeleton_count: int = 3):
         beans = await run.io_bound(load_beans)
         view.clear()
         with view:
-            [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans]
+            [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans] \
+                if beans else ui.label(NOTHING_FOUND).classes("w-full text-center")
 
     with ui.list() as view:
         render_skeleton_beans(skeleton_count).classes("w-full")
@@ -127,14 +129,17 @@ def render_beans(user, load_beans: Callable, skeleton_count: int = 3):
 
 def render_beans_as_extendable_list(user, load_beans: Callable, skeleton_count: int = 3):
     start = 0   
-    async def on_next_page():
+    async def render():
         with disable_button(more_btn):
             nonlocal start
             beans = await run.io_bound(load_beans, start, MAX_ITEMS_PER_PAGE+1)              
             if start == 0:
                 holder.clear()
             with holder:
+                if not beans and not start:
+                    ui.label(NOTHING_FOUND).classes("w-full text-center")
                 [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans[:MAX_ITEMS_PER_PAGE]]
+                    
         # if there are no more beans, delete the more button
         start += MAX_ITEMS_PER_PAGE
         if len(beans) <= MAX_ITEMS_PER_PAGE:
@@ -143,12 +148,12 @@ def render_beans_as_extendable_list(user, load_beans: Callable, skeleton_count: 
     with ui.column(align_items="start") as view:
         with ui.list().classes("w-full m-0 p-0") as holder:
             render_skeleton_beans(skeleton_count)
-        more_btn = ui.button("More Stories", on_click=on_next_page).props("icon-right=chevron_right").classes("q-mx-sm")
-    background_tasks.create_lazy(on_next_page(), name=f"appendable-beans-{start}-{utils.now()}")
+        more_btn = ui.button("More Stories", on_click=render).props("icon-right=chevron_right").classes("q-mx-sm")
+    background_tasks.create_lazy(render(), name=f"appendable-beans-{start}-{utils.now()}")
     return view  
 
 def render_paginated_beans(user, load_beans: Callable, get_items_count: Callable):
-    async def load_page():
+    async def render():
         beans_panel.clear()
         with beans_panel:
             render_skeleton_beans(2)
@@ -158,9 +163,10 @@ def render_paginated_beans(user, load_beans: Callable, get_items_count: Callable
 
         beans_panel.clear()
         with beans_panel:
-            [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans]
+            [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans] \
+                if beans else ui.label(NOTHING_FOUND).classes("w-full text-center")
 
-    async def load_pagination():
+    async def render_pagination():
         with panel:
             pagination_skeleton = ui.skeleton("rect", width="100%").classes("w-full")
 
@@ -175,11 +181,11 @@ def render_paginated_beans(user, load_beans: Callable, get_items_count: Callable
 
     with ui.column(align_items="stretch") as panel:
         beans_panel = ui.list().classes("w-full")
-        pagination_panel = ui.pagination(min=1, max=5, direction_links=True, on_change=load_page).props("max-pages=7 ellipses")
+        pagination_panel = ui.pagination(min=1, max=5, direction_links=True, on_change=render).props("max-pages=7 ellipses")
         pagination_panel.set_visibility(False)
 
-    background_tasks.create_lazy(load_page(), name=f"paginated-beans-{utils.now()}")
-    background_tasks.create_lazy(load_pagination(), name=f"pagination-numbers-{utils.now()}")
+    background_tasks.create_lazy(render(), name=f"paginated-beans-{utils.now()}")
+    background_tasks.create_lazy(render_pagination(), name=f"pagination-numbers-{utils.now()}")
 
     return panel
 
@@ -245,8 +251,8 @@ def render_bean_body(user, bean):
 
 def render_bean_tags(bean: Bean):
     # make_tag = lambda tag: ui.chip(tag, color="secondary", on_click=create_navigation_route("/search", tag=tag)).props('outline dense').classes("tag tag-space")
-    make_tag = lambda tag: ui.link(tag, target=create_navigation_target("/search", tag=tag)).classes("tag").style("color: secondary; text-decoration: none;")
-    with ui.row(wrap=True, align_items="baseline").classes("w-full m-0 p-0 text-caption") as view:
+    make_tag = lambda tag: ui.link(tag, target=create_navigation_target("/trending", tag=tag)).classes("tag q-mr-md").style("color: secondary; text-decoration: none;")
+    with ui.row(wrap=True, align_items="baseline").classes("w-full gap-0 m-0 p-0 text-caption") as view:
         [make_tag(tag) for tag in random.sample(bean.tags, min(MAX_TAGS_PER_BEAN, len(bean.tags)))]
     return view
 
@@ -261,7 +267,7 @@ def render_bean_actions(user, bean: Bean):
     share_button = lambda url_func, icon: ui.button(on_click=url_func(bean), icon=icon).props("flat")   
 
     with ui.button_group().props("flat size=sm").classes("p-0 m-0"):
-        ui.button(icon="more", color="secondary", on_click=create_navigation_route("/search", url=bean.url)).props("flat size=sm").tooltip("More like this")
+        ui.button(icon="more", color="secondary", on_click=create_navigation_route("/search", q=bean.url)).props("flat size=sm").tooltip("More like this")
         with ui.button(icon="share", color="secondary").props("flat size=sm") as view:
             with ui.menu():
                 with ui.row(wrap=False, align_items="stretch").classes("gap-1 m-0 p-0"):
@@ -284,7 +290,7 @@ def render_tags_to_filter(load_tags: Callable, on_selection_changed: Callable):
         else:
             holder.delete() 
 
-    with ui.row(align_items="stretch").classes("gap-0 bg-dark rounded-borders") as holder:
+    with ui.row(align_items="stretch").classes("gap-0 bg-dark rounded-borders q-px-xs") as holder:
         ui.skeleton("rect", width="100%").classes("w-full")
     background_tasks.create_lazy(render(), name=f"tags-{utils.now()}")
     return holder

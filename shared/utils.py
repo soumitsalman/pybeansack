@@ -6,7 +6,7 @@ SLACK = "slack"
 REDDIT = "reddit"
 
 # search settings
-DEFAULT_ACCURACY = 0.
+DEFAULT_ACCURACY = 0.8
 DEFAULT_WINDOW = 7
 MIN_WINDOW = 1
 MAX_WINDOW = 30
