@@ -64,7 +64,7 @@ def delete_temp_user():
 
 def validate_barista(barista_id: str):
     barista_id = barista_id.lower()
-    if not (get_bean_kind(barista_id) or espressops.get_barista(barista_id)):
+    if not espressops.get_barista(barista_id):
         raise HTTPException(status_code=404, detail=f"{barista_id} does not exist")
     return barista_id
 
@@ -88,34 +88,30 @@ def validate_image(image_id: str):
 async def home():  
     log(logger, 'home', user_id=current_user())
     session_settings(last_page="/")  
-    await vanilla.render_home(registerd_user())
+    await vanilla.render_trending_snapshot(registerd_user())
 
-@ui.page("/trending")
-async def trending_snapshot(tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    log(logger, 'trending', user_id=current_user(), tag=tag)
-    session_settings(last_page="/trending", tag=tag)
+@ui.page("/beans")
+async def beans(tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
+    log(logger, 'beans', user_id=current_user(), tag=tag)
+    session_settings(last_page="/beans", tag=tag)
     if tag:
-        await vanilla.render_trending_by_tag(registerd_user(), tag)
+        await vanilla.render_tags_page(registerd_user(), tag)
     else:
         await vanilla.render_trending_snapshot(registerd_user())
 
-@ui.page("/trending/{barista_id}")
-async def trending(barista_id: str = Depends(validate_barista, use_cache=True)): 
-    log(logger, 'trending', user_id=current_user(), page_id=barista_id)   
-    session_settings(last_page=f"/trending/{barista_id}")
-    if bean_kind := get_bean_kind(barista_id):
-        await vanilla.render_trending_by_kind(registerd_user(), bean_kind)
-    else:
-        await vanilla.render_barista_page(registerd_user(), barista_id)
+@ui.page("/barista/{barista_id}")
+async def barista(barista_id: str = Depends(validate_barista, use_cache=True)): 
+    log(logger, 'barista', user_id=current_user(), barista_id=barista_id)   
+    session_settings(last_page=f"/barista/{barista_id}")
+    await vanilla.render_barista_page(registerd_user(), barista_id)
 
 @ui.page("/search")
 async def search(
     q: str = None,
-    acc: float = Query(ge=0, le=1, default=DEFAULT_ACCURACY),
-    kind: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    log(logger, 'search', user_id=current_user(), q=q, acc=acc, kind=kind)
-    session_settings(last_page=renderer.create_navigation_target("/search", q=q, acc=acc, kind=kind))    
-    await vanilla.render_search(registerd_user(), q, acc, kind)
+    acc: float = Query(ge=0, le=1, default=DEFAULT_ACCURACY)):
+    log(logger, 'search', user_id=current_user(), q=q, acc=acc)
+    session_settings(last_page=renderer.create_navigation_target("/search", q=q, acc=acc))    
+    await vanilla.render_search(registerd_user(), q, acc)
 
 @ui.page("/docs/{doc_id}")
 async def document(doc_id: str = Depends(validate_doc)):

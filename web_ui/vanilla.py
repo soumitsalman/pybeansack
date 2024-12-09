@@ -1,36 +1,39 @@
+from itertools import chain
 from connectors import redditor
 import env
 from shared.utils import *
 from shared.messages import *
 from shared import beanops, espressops, prompt_parser
 from pybeansack.datamodels import *
+from pybeansack.utils import ndays_ago
 from web_ui.custom_ui import *
 from nicegui import ui, background_tasks, run
 from icecream import ic
 from .renderer import *
 
 APP_NAME = env.app_name()
-CONTENT_GRID_CLASSES = "w-full grid-cols-1 md:grid-cols-2"
+REMOVE_FILTER = "remove-filter"
+CONTENT_GRID_CLASSES = "w-full grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
 BARISTAS_PANEL_CLASSES = "w-1/4 gt-xs"
+TOGGLE_OPTIONS_PROPS = "unelevated rounded no-caps color=dark toggle-color=primary"
 
-tags_banner_text = lambda tags: tags if isinstance(tags, str) else ", ".join(tags)
 # shows everything that came in within the last 24 hours
-async def render_home(user):
-    render_header(user)
-    with ui.row(wrap=False).classes("w-full"): 
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.grid().classes(CONTENT_GRID_CLASSES):
-            # render trending blogs, posts and news
-            for kind in DEFAULT_KINDS:
-                with render_card_container(kind[K_TITLE], on_click=create_navigation_route(f"/trending/{kind[K_ID]}")):
-                    # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
-                    render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
-                        if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
-                            render_error_text(NOTHING_TRENDING)
-            # render trending pages
-            with render_card_container("Explore"):                
-                render_barista_names(user, random.sample(espressops.get_baristas(None), 5))
-    render_footer()
+# async def render_home(user):
+#     render_header(user)
+#     with ui.row(wrap=False).classes("w-full"): 
+#         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
+#         with ui.grid().classes(CONTENT_GRID_CLASSES):
+#             # render trending blogs, posts and news
+#             for kind in DEFAULT_KINDS:
+#                 # with render_card_container(kind[K_TITLE], on_click=create_navigation_route(f"/trending/{kind[K_ID]}")):
+#                     # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
+#                 render_beans(user, lambda kind=kind: beanops.get_trending_beans(tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
+#                     if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
+#                         render_error_text(NOTHING_TRENDING)
+#             # render trending pages
+#             with render_card_container("Explore"):                
+#                 render_barista_names(user, random.sample(espressops.get_baristas(None), 5))
+#     render_footer()
 
 async def render_trending_snapshot(user):
     baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
@@ -39,144 +42,162 @@ async def render_trending_snapshot(user):
     with ui.row(wrap=False).classes("w-full"): 
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
-            with ui.tabs().classes("w-full") as tabs:
-                [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS]
-
-            with ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders"):
-                for kind in DEFAULT_KINDS:
-                    with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
-                        with ui.grid().classes(CONTENT_GRID_CLASSES):
-                            for barista in baristas:
-                                with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap"):
-                                    render_beans(user, lambda barista=barista, kind=kind: beanops.get_trending_beans(tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=0, limit=1), skeleton_count=1).classes("w-full") \
-                                        if beanops.count_beans(query=None, accuracy=None, tags=barista.tags, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
-                                            render_error_text(NOTHING_TRENDING)
-                            
+            for barista in baristas:
+                with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap").classes("bg-transparent"):
+                    if beanops.count_beans(query=None, accuracy=None, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
+                        get_beans_func = lambda barista=barista: list(chain(*[
+                            beanops.get_newest_beans(tags=barista.tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=0, limit=MIN_LIMIT) \
+                            for kind in KIND_LABELS.keys()
+                        ]))
+                        render_beans(user, get_beans_func, ui.grid().classes(CONTENT_GRID_CLASSES))
+                    else:
+                        render_error_text(NOTHING_TRENDING)                            
     render_footer()
 
-async def render_trending_by_kind(user: dict, kind: dict):    
-    def load_beans(filter_tags):
-        tags = filter_tags or None
-        bean_panels.clear()
-        with bean_panels:
-            with render_card_container("Trending"):                    
-                render_beans_as_extendable_list(user, lambda start, limit: beanops.get_trending_beans(tags=tags, kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0") \
-                    if beanops.count_beans(query=None, accuracy=None, tags=tags, kinds=kind[K_ID], sources=None, last_ndays=None, limit=1) else \
-                        render_error_text(NOTHING_TRENDING)
-            with render_card_container("Latest"):                    
-                render_beans_as_extendable_list(user, lambda start, limit: beanops.get_newest_beans(tags=tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=start, limit=limit)).classes("w-full m-0 p-0") \
-                    if beanops.count_beans(query=None, accuracy=None, tags=tags, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
-                        render_error_text(NOTHING_FOUND)
+# async def render_trending_by_kind(user: dict, kind: dict):    
+#     def load_beans(filter_tags):
+#         tags = filter_tags or None
+#         bean_panels.clear()
+#         with bean_panels:
+#             with render_card_container("Trending"):                    
+#                 render_beans_as_extendable_list(user, lambda start, limit: beanops.get_trending_beans(tags=tags, kinds=kind[K_ID], sources=None, last_ndays=None, start=start, limit=limit)).classes("w-full m-0 p-0") \
+#                     if beanops.count_beans(query=None, accuracy=None, tags=tags, kinds=kind[K_ID], sources=None, last_ndays=None, limit=1) else \
+#                         render_error_text(NOTHING_TRENDING)
+#             with render_card_container("Latest"):                    
+#                 render_beans_as_extendable_list(user, lambda start, limit: beanops.get_newest_beans(tags=tags, kinds=kind[K_ID], sources=None, last_ndays=1, start=start, limit=limit)).classes("w-full m-0 p-0") \
+#                     if beanops.count_beans(query=None, accuracy=None, tags=tags, kinds=kind[K_ID], sources=None, last_ndays=1, limit=1) else \
+#                         render_error_text(NOTHING_FOUND)
 
-    render_header(user)
-    with ui.row(wrap=False).classes("w-full"): 
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
-            ui.label(kind[K_TITLE]).classes("text-h4 banner")
+#     render_header(user)
+#     with ui.row(wrap=False).classes("w-full"): 
+#         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
+#         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+#             ui.label(kind[K_TITLE]).classes("text-h4 banner")
 
-            render_tags_to_filter(
-                load_tags=lambda: random.sample(beanops.get_tags_from_trending_beans(None, kind[K_ID], None, None, 0, MAX_LIMIT), DEFAULT_LIMIT), 
-                on_selection_changed=trigger_filter_func(load_beans))     
+#             render_filter_tags(
+#                 load_tags=lambda: random.sample(beanops.get_tags_from_trending_beans(None, kind[K_ID], None, None, 0, MAX_LIMIT), DEFAULT_LIMIT), 
+#                 on_selection_changed=filter_by_tags_func(load_beans))     
                    
-            bean_panels = ui.grid().classes(CONTENT_GRID_CLASSES)               
+#             bean_panels = ui.grid().classes(CONTENT_GRID_CLASSES)               
 
-    load_beans(None)                        
-    render_footer()
+#     load_beans(None)                        
+#     render_footer()
 
-async def render_trending_by_tag(user: dict, must_have_tags: str|list[str]): 
+tags_banner_text = lambda tags: tags if isinstance(tags, str) else ", ".join(tags)
+async def render_tags_page(user: dict, must_have_tags: str|list[str]): 
     must_have_tags = must_have_tags if isinstance(must_have_tags, list) else [must_have_tags]
+    tags, kinds, sort_by = must_have_tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default 
 
-    def load_beans(filter_tags: list[str]):
-        tags = [must_have_tags, filter_tags] if filter_tags else must_have_tags
-        panel.clear()
-        with panel:            
-            for kind in DEFAULT_KINDS:
-                with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
-                    render_beans_as_extendable_list(
-                        user, 
-                        lambda start, limit, kind=kind[K_ID]: \
-                            beanops.get_trending_beans(tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit)) \
-                                .classes("w-full m-0 p-0")        
+    def trigger_filter(filter_tags: list[str] = None, filter_kinds: str = None, filter_sort_by: str = None):
+        nonlocal tags, kinds, sort_by
+        if filter_tags: # explicitly mentioning is not None is important because that is the default value
+            tags = [must_have_tags, filter_tags] if filter_tags != REMOVE_FILTER else must_have_tags # filter_tags == [] means there is no additional tag to filter with
+        if filter_kinds:
+            kinds = filter_kinds if filter_kinds != REMOVE_FILTER else None
+        if filter_sort_by:
+            sort_by = filter_sort_by
 
-    render_header(user)
-    with ui.row(wrap=False).classes("w-full"): 
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
-            ui.label(tags_banner_text(must_have_tags)).classes("text-h4")
-
-            render_tags_to_filter(
-                load_tags=lambda: random.sample(beanops.get_tags_from_trending_beans(must_have_tags, None, None, None, 0, MAX_LIMIT), DEFAULT_LIMIT), 
-                on_selection_changed=trigger_filter_func(load_beans))   
-                     
-            with ui.tabs().classes("w-full") as tabs:
-                [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS]
-            panel = ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders")               
-
-    load_beans(None)                        
-    render_footer()
+        return lambda start, limit: \
+            beanops.get_trending_beans(tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit) \
+                if sort_by == TRENDING else \
+                    beanops.get_newest_beans(tags=tags, kinds=kinds, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
+    
+    render_page(
+        user, 
+        tags_banner_text(must_have_tags), 
+        lambda: beanops.get_tags(must_have_tags, None, None, None, 0, DEFAULT_LIMIT), 
+        trigger_filter)
 
 async def render_barista_page(user: dict, barista_id: str):    
     barista = espressops.get_barista(barista_id)
+    tags, kind, sort_by = barista.tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default values
     
-    def load_beans(filter_tags: list[str]):
-        tags = [barista.tags, filter_tags] if filter_tags else barista.tags
-        panel.clear()
-        with panel:            
-            for kind in DEFAULT_KINDS:
-                with ui.tab_panel(kind[K_ID]).classes("w-full p-0 overflow-hidden").classes("w-full"):
-                    render_beans_as_extendable_list(
-                        user, 
-                        lambda start, limit, kind=kind[K_ID]: \
-                            beanops.get_trending_beans(tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit)) \
-                                .classes("w-full m-0 p-0")
+    def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):
+        nonlocal tags, kind, sort_by
+        if filter_tags: # explicitly mentioning is not None is important because that is the default value
+            tags = [barista.tags, filter_tags] if filter_tags != REMOVE_FILTER else barista.tags # filter_tags == [] means there is no additional tag to filter with
+        if filter_kind:
+            kind = filter_kind if filter_kind != REMOVE_FILTER else None
+        if filter_sort_by:
+            sort_by = filter_sort_by
 
-    render_header(user)
+        return lambda start, limit: \
+            beanops.get_trending_beans(tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
+                if sort_by == TRENDING else \
+                    beanops.get_newest_beans(tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
+
+    render_page(
+        user, 
+        barista.title, 
+        lambda: beanops.get_tags(barista.tags, None, None, None, 0, DEFAULT_LIMIT), 
+        trigger_filter)
+
+def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable):
+    @ui.refreshable
+    def render_beans_panel(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):        
+        return render_beans_as_extendable_list(
+            user, 
+            trigger_filter_func(filter_tags, filter_kind, filter_sort_by), 
+            ui.grid().classes(CONTENT_GRID_CLASSES)
+        ).classes("w-full")
+
+    render_header(user)  
     with ui.row(wrap=False).classes("w-full"): 
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
             with ui.row(wrap=False, align_items="start").classes("justify-between q-mb-md w-full"):
-                ui.label(barista.title).classes("text-h4 banner")
+                ui.label(page_title).classes("text-h4 banner")
                 if user:
                     ui.button("Follow", icon="add").props("unelevated")
 
-            render_tags_to_filter(
-                load_tags=lambda: beanops.get_tags_from_trending_beans(barista.tags, None, None, None, 0, DEFAULT_LIMIT), 
-                on_selection_changed=trigger_filter_func(load_beans))
-
-            with ui.tabs().classes("w-full") as tabs:
-                [ui.tab(name=kind[K_ID], label=kind[K_TITLE]) for kind in DEFAULT_KINDS]
-            panel = ui.tab_panels(tabs, value=DEFAULT_KINDS[0][K_ID]).classes("w-full rounded-borders")
-                                           
-    load_beans(None)
+            render_filter_tags(
+                load_tags=get_filter_tags_func, 
+                on_selection_changed=lambda selected_tags: render_beans_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER)))
+            
+            with ui.row(wrap=False, align_items="stretch"):
+                ui.toggle(
+                    options=KIND_LABELS,
+                    value=DEFAULT_KIND,
+                    on_change=lambda e: render_beans_panel.refresh(filter_kind=(e.sender.value or REMOVE_FILTER))).props(TOGGLE_OPTIONS_PROPS)
+                
+                ui.toggle(
+                    options=SORT_BY_LABELS, 
+                    value=DEFAULT_SORT_BY, 
+                    on_change=lambda e: render_beans_panel.refresh(filter_sort_by=e.sender.value)).props("unelevated rounded no-caps color=dark")
+            render_beans_panel(filter_tags=None, filter_kind=None, filter_sort_by=None).classes("w-full")
     render_footer()
 
-SEARCH_PAGE_TABS = ["Beans", "Baristas"]  
-async def render_search(user, query: str, accuracy: float, kinds: str|list[str]):
-    tags = None
+SAVED_PAGE = "saved_page"
+SEARCH_PAGE_TABS = {**KIND_LABELS, **{SAVED_PAGE: "Pages"}}
+async def render_search(user, query: str, accuracy: float):
+    tags, kind, last_ndays = None, DEFAULT_KIND, DEFAULT_WINDOW
     # this is different from others
     # need to maintain a list of selected_tags.
     # if search is done by a tag then filtering by tag should take into account must presence of the search tag and then or relationship of the selected_tags
     # filtering by bean kind and slider should take into account the selected tags
-    def load_beans(filter_accuracy: float = None, filter_tags: str|list[str] = None, filter_kinds: str|list[str] = None):
-        nonlocal kinds, tags, accuracy
-        
-        if filter_kinds:
-            kinds = filter_kinds
-        if filter_tags:
-            tags = filter_tags
-        if filter_accuracy:
-            accuracy = filter_accuracy
+    @ui.refreshable
+    def render_result_panel(filter_accuracy: float = None, filter_tags: str|list[str] = None, filter_kind: str = None, filter_last_ndays: int = None):
+        nonlocal accuracy, tags, kind, last_ndays        
 
-        if is_valid_url(query) and (bean := beanops.get_bean(query)):
-            banner.set_text(bean.title)
+        if filter_accuracy:
+            accuracy = filter_accuracy        
+        if filter_tags:
+            tags = filter_tags if filter_tags != REMOVE_FILTER else None
+        if filter_kind:    
+            kind = filter_kind if filter_kind != REMOVE_FILTER else None
+        if filter_last_ndays:
+            last_ndays = filter_last_ndays
+
+        if kind == SAVED_PAGE:
+            result = espressops.search_baristas(query) if query else None
+            return render_barista_names(user, result) \
+                if result else \
+                    render_error_text(NOTHING_FOUND)
         
-        panel.clear()
-        with panel:            
-            render_paginated_beans(
-                user, 
-                lambda start, limit: beanops.vector_search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit), 
-                lambda: beanops.count_beans(query=query, accuracy=accuracy, tags=tags, kinds=kinds, sources=None, last_ndays=None, limit=MAX_LIMIT)) \
-                    .classes("w-full")
+        return render_paginated_beans(
+            user, 
+            lambda start, limit: beanops.vector_search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
+            lambda: beanops.count_beans(query=query, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"):
@@ -184,40 +205,31 @@ async def render_search(user, query: str, accuracy: float, kinds: str|list[str])
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
 
             trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
-            with ui.input(placeholder=SEARCH_PLACEHOLDER) \
+            with ui.input(placeholder=SEARCH_PLACEHOLDER, value=query) \
                 .props('rounded outlined input-class=mx-3').classes('w-full self-center lt-sm') \
                 .on('keydown.enter', trigger_search) as search_input:
                 ui.button(icon="send", on_click=trigger_search).bind_visibility_from(search_input, 'value').props("flat dense")  
 
-            if query: 
-                banner = ui.label(query).classes("text-h4 banner")                
-                    
-                render_tags_to_filter(
-                    load_tags=lambda: beanops.get_tags_from_searching_beans(query=query, accuracy=accuracy, tags=None, kinds=kinds, sources=None, last_ndays=None, start=0, limit=DEFAULT_LIMIT), 
-                    on_selection_changed=debounce(trigger_filter_func(lambda selected_tags: load_beans(filter_tags=selected_tags)), 1.5))
-                
-                # more filter options
-                with ui.grid().classes(CONTENT_GRID_CLASSES):   
-                    kind_filter = ui.toggle(
-                        options={kind[K_ID]: kind[K_TITLE] for kind in DEFAULT_KINDS}, 
-                        clearable=True,
-                        # there is intentially no debounce here for user experience
-                        on_change=lambda: load_beans(filter_kinds=kind_filter.value)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-ful")                    
-                    with ui.label("Accuracy").classes("q-mx-md"):
+            if query:             
+                with ui.grid(columns=2).classes("w-full"):                         
+                    with ui.label("Accuracy").classes("w-full"):
                         accuracy_filter = ui.slider(
                             min=0.1, max=1.0, step=0.05, 
                             value=(accuracy or DEFAULT_ACCURACY), 
-                            on_change=debounce(lambda: load_beans(filter_accuracy=accuracy_filter.value), 1.5)).props("label-always")
-                        
-                with ui.grid().classes(CONTENT_GRID_CLASSES):
-                    with render_card_container("Beans"):
-                        panel = ui.element()
-                    with render_card_container("Baristas"):
-                        result = espressops.search_baristas(query) if query else None
-                        render_barista_names(user, result) \
-                            if result else \
-                                render_error_text(NOTHING_FOUND)
-                load_beans()
+                            on_change=debounce(lambda: render_result_panel.refresh(filter_accuracy=accuracy_filter.value), 1.5)).props("label-always")
+
+                    with ui.label().classes("w-full") as last_ndays_label:
+                        last_ndays_filter = ui.slider(
+                            min=-30, max=-1, step=1, value=-last_ndays,
+                            on_change=debounce(lambda: render_result_panel.refresh(filter_last_ndays=-last_ndays_filter.value), 1.5))
+                        last_ndays_label.bind_text_from(last_ndays_filter, 'value', lambda x: f"Since {naturalday(ndays_ago(-x))}")
+
+                kind_filter = ui.toggle(
+                    options=SEARCH_PAGE_TABS, 
+                    value=DEFAULT_KIND, 
+                    on_change=lambda: render_result_panel.refresh(filter_kind=kind_filter.value or REMOVE_FILTER)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-full")               
+                
+                render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None).classes("w-full")
             # TODO: fill it up with popular searches
     render_footer()
 
@@ -227,12 +239,6 @@ async def render_doc(user, doc_id):
         ui.markdown(file.read()).classes("w-full md:w-2/3 lg:w-1/2  self-center")
     render_footer()
 
-def trigger_filter_func(filter_func: Callable):
-    selected_tags = []
-    def on_tag_selection_changed(tag: str, selected: bool):        
-        selected_tags.append(tag) if selected else selected_tags.remove(tag)
-        filter_func(selected_tags) 
-    return on_tag_selection_changed
 
 # def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int|None):
 #     selected_tags = []    

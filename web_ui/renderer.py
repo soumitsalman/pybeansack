@@ -2,6 +2,7 @@ from contextlib import contextmanager
 import random
 import threading
 from pybeansack.datamodels import *
+from pybeansack.utils import *
 from shared import beanops, espressops, utils
 from web_ui.custom_ui import *
 from nicegui import ui, background_tasks, run
@@ -49,7 +50,7 @@ def create_navigation_route(base_url, **kwargs):
     return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs))
 
 def create_barista_route(barista: espressops.Barista):
-    return lambda barista=barista: ui.navigate.to(f"/trending/{barista.id}")
+    return lambda barista=barista: ui.navigate.to(f"/barista/{barista.id}")
 
 def create_search_target(text):
     return create_navigation_target("/search", q=text) \
@@ -65,7 +66,8 @@ def render_header(user):
                 ui.image("images/cafecito.png")
             ui.label("Espresso").classes("q-ml-sm")
             
-        ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-sm")
+        # TODO: make this pull up side panel
+        # ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-sm")
         ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-sm")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
@@ -110,83 +112,59 @@ def render_barista_names(user, baristas: list[espressops.Barista]):
 
 def render_baristas_panel(user):
     baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
-    with render_card_container("Following" if user else "Popular Baristas", on_click=create_navigation_route("/trending")) as panel:        
+    with render_card_container("Following" if user else "Popular Baristas") as panel:        
         [ui.item(barista.title, on_click=create_barista_route(barista)) for barista in baristas]
     return panel
 
-def render_beans(user, load_beans: Callable, skeleton_count: int = 3):
+def render_beans(user, load_beans: Callable, container: ui.element = None):
     async def render():
         beans = await run.io_bound(load_beans)
-        view.clear()
-        with view:
-            [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans] \
-                if beans else ui.label(NOTHING_FOUND).classes("w-full text-center")
+        container.clear()
+        with container:
+            if not beans:
+                ui.label(NOTHING_FOUND).classes("w-full text-center")            
+            # NOTE: disabling carousel of related beans for now
+            # [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans] 
+            [render_bean(user, bean, False).classes("w-full") for bean in beans[:MAX_ITEMS_PER_PAGE]]
 
-    with ui.list() as view:
-        render_skeleton_beans(skeleton_count).classes("w-full")
-    background_tasks.create_lazy(render(), name=f"beans-{utils.now()}")
-    return view
+    container = container or ui.column(align_items="stretch")
+    with container:
+        render_skeleton_beans(3)
+    background_tasks.create_lazy(render(), name=f"beans-{now()}")
+    return container
 
-def render_beans_as_extendable_list(user, load_beans: Callable, skeleton_count: int = 3):
-    start = 0   
-    async def render():
-        with disable_button(more_btn):
-            nonlocal start
-            beans = await run.io_bound(load_beans, start, MAX_ITEMS_PER_PAGE+1)              
-            if start == 0:
-                holder.clear()
-            with holder:
-                if not beans and not start:
-                    ui.label(NOTHING_FOUND).classes("w-full text-center")
-                [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans[:MAX_ITEMS_PER_PAGE]]
-                    
-        # if there are no more beans, delete the more button
-        start += MAX_ITEMS_PER_PAGE
+def render_beans_as_extendable_list(user, load_beans: Callable, container: ui.element = None):
+    current_start = 0   
+
+    def current_page():
+        nonlocal current_start
+        beans = load_beans(current_start, MAX_ITEMS_PER_PAGE+1) 
+        current_start += MAX_ITEMS_PER_PAGE # moving the cursor
         if len(beans) <= MAX_ITEMS_PER_PAGE:
             more_btn.delete()
+        return beans
 
-    with ui.column(align_items="start") as view:
-        with ui.list().classes("w-full m-0 p-0") as holder:
-            render_skeleton_beans(skeleton_count)
-        more_btn = ui.button("More Stories", on_click=render).props("icon-right=chevron_right").classes("q-mx-sm")
-    background_tasks.create_lazy(render(), name=f"appendable-beans-{start}-{utils.now()}")
+    async def next_page():
+        with disable_button(more_btn):
+            beans = await run.io_bound(current_page)   
+            with beans_panel:
+                [render_bean(user, bean, False) for bean in beans[:MAX_ITEMS_PER_PAGE]]
+                # NOTE: disabling carousel of related beans for now
+                # [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans[:MAX_ITEMS_PER_PAGE]]
+
+    with ui.column() as view:
+        beans_panel = render_beans(user, current_page, container).classes("w-full")
+        more_btn = ui.button("More Stories", on_click=next_page).props("icon-right=chevron_right")
     return view  
 
-def render_paginated_beans(user, load_beans: Callable, get_items_count: Callable):
-    async def render():
-        beans_panel.clear()
-        with beans_panel:
-            render_skeleton_beans(2)
-
-        page = pagination_panel.value - 1
-        beans = await run.io_bound(load_beans, page*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE)    
-
-        beans_panel.clear()
-        with beans_panel:
-            [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans] \
-                if beans else ui.label(NOTHING_FOUND).classes("w-full text-center")
-
-    async def render_pagination():
-        with panel:
-            pagination_skeleton = ui.skeleton("rect", width="100%").classes("w-full")
-
-        items_count = await run.io_bound(get_items_count)
-        page_count = -(-items_count//MAX_ITEMS_PER_PAGE)
-
-        pagination_skeleton.delete()
-        if items_count > MAX_ITEMS_PER_PAGE:
-            pagination_panel.props(f"max={page_count}").set_visibility(True)
-        else:
-            pagination_panel.delete()
+def render_paginated_beans(user, load_beans: Callable, count_items: Callable):    
+    @ui.refreshable
+    def render(page):
+        return render_beans(user, lambda: load_beans((page-1)*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE))        
 
     with ui.column(align_items="stretch") as panel:
-        beans_panel = ui.list().classes("w-full")
-        pagination_panel = ui.pagination(min=1, max=5, direction_links=True, on_change=render).props("max-pages=7 ellipses")
-        pagination_panel.set_visibility(False)
-
-    background_tasks.create_lazy(render(), name=f"paginated-beans-{utils.now()}")
-    background_tasks.create_lazy(render_pagination(), name=f"pagination-numbers-{utils.now()}")
-
+        render(1)
+        render_pagination(count_items, lambda page: render.refresh(page))
     return panel
 
 def render_bean_with_related(user, bean: Bean):
@@ -205,7 +183,7 @@ def render_swipable_beans(user, beans: list[Bean]):
 render_bean = lambda user, bean, expanded: render_expandable_bean(user, bean, expanded)
 
 def render_expandable_bean(user, bean, expanded: bool = False):
-    with ui.expansion(value=expanded).props("dense hide-expand-icon").classes("bean-expansion") as expansion:
+    with ui.expansion(value=expanded).props("dense hide-expand-icon").classes("bg-dark rounded-borders") as expansion:
         header = expansion.add_slot("header")
         with header:
             render_bean_header(user, bean).classes(add="p-0")
@@ -251,7 +229,7 @@ def render_bean_body(user, bean):
 
 def render_bean_tags(bean: Bean):
     # make_tag = lambda tag: ui.chip(tag, color="secondary", on_click=create_navigation_route("/search", tag=tag)).props('outline dense').classes("tag tag-space")
-    make_tag = lambda tag: ui.link(tag, target=create_navigation_target("/trending", tag=tag)).classes("tag q-mr-md").style("color: secondary; text-decoration: none;")
+    make_tag = lambda tag: ui.link(tag, target=create_navigation_target("/beans", tag=tag)).classes("tag q-mr-md").style("color: secondary; text-decoration: none;")
     with ui.row(wrap=True, align_items="baseline").classes("w-full gap-0 m-0 p-0 text-caption") as view:
         [make_tag(tag) for tag in random.sample(bean.tags, min(MAX_TAGS_PER_BEAN, len(bean.tags)))]
     return view
@@ -280,44 +258,70 @@ def render_bean_actions(user, bean: Bean):
                         ui.button(on_click=publish, icon=ESPRESSO_ICON_URL).props("flat").tooltip("Publish on Espresso")
     return view  
 
-def render_tags_to_filter(load_tags: Callable, on_selection_changed: Callable):
+def render_filter_tags(load_tags: Callable, on_selection_changed: Callable):
+    selected_tags = []
+    def change_tag_selection(tag: str, selected: bool):        
+        selected_tags.append(tag) if selected else selected_tags.remove(tag)
+        on_selection_changed(selected_tags) 
+
     async def render():
         beans = await run.io_bound(load_tags)
         if beans:
             holder.clear()
             with holder:
-                [ui.chip(bean.tags, selectable=True, color="secondary", on_selection_change=lambda e: on_selection_changed(e.sender.text, e.sender.selected)).props("outline dense") for bean in beans]
+                [ui.chip(
+                    bean.tags, 
+                    selectable=True, 
+                    color="dark", 
+                    on_selection_change=lambda e: change_tag_selection(e.sender.text, e.sender.selected)).props("flat filled").classes(" h-full") for bean in beans]
         else:
             holder.delete() 
 
-    with ui.row(align_items="stretch").classes("gap-0 bg-dark rounded-borders q-px-xs") as holder:
-        ui.skeleton("rect", width="100%").classes("w-full")
-    background_tasks.create_lazy(render(), name=f"tags-{utils.now()}")
+    # with ui.scroll_area().classes("w-full h-20 p-0 m-0") as view:
+    with ui.row(align_items="stretch").classes("gap-0 p-0 m-0") as holder:
+        ui.skeleton("rect", width="100%").classes("w-full h-full")
+    background_tasks.create_lazy(render(), name=f"tags-{now()}")
+    # return view
     return holder
 
+def render_pagination(count_items: Callable, on_change: Callable):
+    async def render():
+        items_count = await run.io_bound(count_items)
+        page_count = -(-items_count//MAX_ITEMS_PER_PAGE)
+        view.clear()
+        if items_count > MAX_ITEMS_PER_PAGE:
+            with view:
+                ui.pagination(min=1, max=page_count, direction_links=True, on_change=lambda e: on_change(e.sender.value)).props("max-pages=7 ellipses")            
+
+    with ui.element() as view:
+        ui.skeleton("rect", width="100%").classes("w-full")
+    background_tasks.create_lazy(render(), name=f"pagination-{now()}")
+    return view
+
 def render_skeleton_beans(count = 3):
-    with ui.list() as holder:
-        for _ in range(count):
-            with ui.item():
-                with ui.item_section().props("side"):
-                    ui.skeleton("rect", size="8em")
-                with ui.item_section().props("top"):
-                    ui.skeleton("text", width="100%")
-                    ui.skeleton("text", width="100%")
-                    ui.skeleton("text", width="40%")
-                           
-    return holder 
+    skeletons = []
+    for _ in range(count):
+        with ui.item().classes("w-full") as item:
+            with ui.item_section().props("side"):
+                ui.skeleton("rect", size="8em")
+            with ui.item_section().props("top"):
+                ui.skeleton("text", width="100%")
+                ui.skeleton("text", width="100%")
+                ui.skeleton("text", width="40%")
+        skeletons.append(item)
+    return skeletons
 
 def render_skeleton_baristas(count = 3):
-    with ui.list() as holder:
-        for _ in range(count):
-            with ui.item():
-                with ui.item_section().props("side"):
-                    ui.skeleton("rect", size="8em")
-                with ui.item_section().props("top"):
-                    ui.skeleton("text", width="40%")
-                    ui.skeleton("text", width="100%")    
-    return holder 
+    skeletons = []
+    for _ in range(count):
+        with ui.item().classes("w-full") as item:
+            with ui.item_section().props("side"):
+                ui.skeleton("rect", size="8em")
+            with ui.item_section().props("top"):
+                ui.skeleton("text", width="40%")
+                ui.skeleton("text", width="100%")    
+        skeletons.append(item)
+    return skeletons
 
 def render_footer():
     ui.separator().style("height: 5px;").classes("w-full")
@@ -334,8 +338,6 @@ def render_card_container(label: str, on_click: Callable = None, header_classes:
             holder.props("clickable").tooltip("Click for more")
         ui.separator() 
     return panel
-
-
 
 @contextmanager
 def disable_button(button: ui.button):

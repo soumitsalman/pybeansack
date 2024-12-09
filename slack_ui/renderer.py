@@ -79,7 +79,7 @@ def render_home_blocks(settings):
     blocks.append(DIVIDER)
 
     categories = tuple(settings['search']['topics'])
-    tags = beanops.get_tags_from_trending_beans(None, categories, None, MIN_WINDOW, DEFAULT_LIMIT)    
+    tags = beanops.get_tags(None, categories, None, MIN_WINDOW, DEFAULT_LIMIT)    
     if tags:
         blocks.append(render_text_banner("Trending Tags", True))
         blocks.append(render_tags([tag.tags for tag in tags]))

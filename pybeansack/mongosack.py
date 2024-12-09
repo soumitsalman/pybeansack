@@ -372,6 +372,7 @@ class Beansack:
         return pipeline
    
     def _vector_search_pipeline(self, text, embedding, min_score, filter, sort_by, skip, limit, projection):    
+        sort_by = sort_by or { "search_score": -1 }
         pipeline = [            
             {
                 "$search": {
@@ -380,8 +381,7 @@ class Beansack:
                         "path":   K_EMBEDDING,
                         "filter": filter or {},
                         "k":      DEFAULT_VECTOR_SEARCH_LIMIT,
-                    },
-                    "returnStoredSource": True
+                    }
                 }
             },
             {
@@ -391,13 +391,13 @@ class Beansack:
                 "$match": { "search_score": {"$gte": min_score} }
             },
             {   
-                "$sort": { "search_score": -1 }
+                "$sort": sort_by
             },
             {
                 "$group": CLUSTER_GROUP
             },
             {   
-                "$sort": { "search_score": -1 }
+                "$sort": sort_by
             },
         ]  
         if skip:
