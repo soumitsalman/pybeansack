@@ -42,7 +42,7 @@ def log(function: str, user: str|User, **kwargs):
 
 def create_jwt_token(email: str):
     data = {
-        "email": email,
+        "email": ic(email),
         "iat": datetime.now(),
         "exp": jwt_token_exp()
     }
@@ -180,12 +180,14 @@ async def google_oauth_login(request: Request):
 
 @app.get("/oauth/google/redirect")
 async def google_oauth_redirect(request: Request):
-    try:
-        token = ic(await oauth.google.authorize_access_token(request))
-        return ic(process_oauth_result(token))
-    except Exception as err:
-        log("oauth_error", None, provider="google", error=str(err))
-        return RedirectResponse("/")
+    token = ic(await oauth.google.authorize_access_token(request))
+    return ic(process_oauth_result(token))
+    # try:
+    #     token = ic(await oauth.google.authorize_access_token(request))
+    #     return ic(process_oauth_result(token))
+    # except Exception as err:
+    #     log("oauth_error", None, provider="google", error=str(err))
+    #     return RedirectResponse("/")
 
 @app.get("/oauth/slack/login")
 async def slack_oauth_login(request: Request):

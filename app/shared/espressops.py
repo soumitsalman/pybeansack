@@ -49,7 +49,7 @@ class EspressoDB:
 
     @cached(max_size=10, ttl=ONE_DAY) 
     def get_user(self, email: str, linked_account: str = None) -> User|None:
-        user = self.users.find_one({"_id": email})
+        user = self.users.find_one({"email": email})
         if user:
             if linked_account:
                 self.link_account(email, linked_account)
