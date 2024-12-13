@@ -46,7 +46,7 @@ def create_jwt_token(email: str):
         "iat": datetime.now(),
         "exp": jwt_token_exp()
     }
-    return jwt.encode(ic(data), ic(APP_STORAGE_SECRET), algorithm="HS256")
+    return jwt.encode(data, APP_STORAGE_SECRET, algorithm="HS256")
 
 def decode_jwt_token(token: str):
     try:
@@ -180,8 +180,6 @@ async def google_oauth_login(request: Request):
 
 @app.get("/oauth/google/redirect")
 async def google_oauth_redirect(request: Request):
-    # token = await oauth.google.authorize_access_token(request)
-    # return process_oauth_result(token)
     try:
         token = await oauth.google.authorize_access_token(request)
         return process_oauth_result(token)

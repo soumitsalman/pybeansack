@@ -149,6 +149,8 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
 
 SAVED_PAGE = "saved_page"
 SEARCH_PAGE_TABS = {**KIND_LABELS, **{SAVED_PAGE: "Pages"}}
+# NOTE: if query length is small think of it as a domain/genre
+prep_query = lambda query: f"Domain / Genre / Category / Topic: {query}" if len(query.split()) > 3 else query
 async def render_search(user: User, query: str, accuracy: float):
     tags, kind, last_ndays = None, DEFAULT_KIND, DEFAULT_WINDOW
     # this is different from others
@@ -176,7 +178,7 @@ async def render_search(user: User, query: str, accuracy: float):
         
         return render_paginated_beans(
             user, 
-            lambda start, limit: beanops.vector_search_beans(query=query, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
+            lambda start, limit: beanops.vector_search_beans(query=prep_query(query), accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
             lambda: beanops.count_beans(query=query, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
 
     render_header(user)
