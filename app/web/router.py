@@ -42,11 +42,11 @@ def log(function: str, user: str|User, **kwargs):
 
 def create_jwt_token(email: str):
     data = {
-        "email": ic(email),
+        "email": email,
         "iat": datetime.now(),
         "exp": jwt_token_exp()
     }
-    return jwt.encode(data, APP_STORAGE_SECRET, algorithm="HS256")
+    return jwt.encode(ic(data), ic(APP_STORAGE_SECRET), algorithm="HS256")
 
 def decode_jwt_token(token: str):
     try:
@@ -152,12 +152,12 @@ def extract_user():
 REGISTRATION_INFO_KEY = "registration_info"
 
 def login_user(user: dict|User):
-    email = ic(user.email if isinstance(user, User) else user['email'])
-    app.storage.browser[JWT_TOKEN_KEY] = ic(create_jwt_token(email))
+    email = user.email if isinstance(user, User) else user['email']
+    app.storage.browser[JWT_TOKEN_KEY] = create_jwt_token(email)
     log("login_user", email)
 
 def process_oauth_result(result: dict):
-    existing_user = ic(espressops.db.get_user(ic(result['userinfo']['email']), result['userinfo']['iss']))
+    existing_user = espressops.db.get_user(result['userinfo']['email'], result['userinfo']['iss'])
     if existing_user:
         login_user(existing_user)        
         return RedirectResponse("/")
@@ -180,14 +180,14 @@ async def google_oauth_login(request: Request):
 
 @app.get("/oauth/google/redirect")
 async def google_oauth_redirect(request: Request):
-    token = ic(await oauth.google.authorize_access_token(request))
-    return ic(process_oauth_result(token))
-    # try:
-    #     token = ic(await oauth.google.authorize_access_token(request))
-    #     return ic(process_oauth_result(token))
-    # except Exception as err:
-    #     log("oauth_error", None, provider="google", error=str(err))
-    #     return RedirectResponse("/")
+    # token = await oauth.google.authorize_access_token(request)
+    # return process_oauth_result(token)
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        return process_oauth_result(token)
+    except Exception as err:
+        log("oauth_error", None, provider="google", error=str(err))
+        return RedirectResponse("/")
 
 @app.get("/oauth/slack/login")
 async def slack_oauth_login(request: Request):

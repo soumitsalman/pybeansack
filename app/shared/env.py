@@ -54,8 +54,8 @@ SLACK_SIGNING_SECRET = os.getenv("SLACKER_SIGNING_SECRET")
 # stuffs on app
 BASE_URL = os.getenv("BASE_URL")
 APP_NAME = os.getenv("APP_NAME")
-APP_STORAGE_SECRET = os.getenv("INTERNAL_AUTH_TOKEN")
-IN_MAINTENANCE = bool(os.getenv("IN_MAINTENANCE"))
+APP_STORAGE_SECRET = os.getenv("APP_STORAGE_SECRET")
+MODE = os.getenv("MODE")
 
 
 
