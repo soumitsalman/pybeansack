@@ -1,29 +1,29 @@
-import env
+import app.shared.env as env
 import logging
 from azure.monitor.opentelemetry import configure_azure_monitor
 
 configure_azure_monitor(
-    connection_string=env.az_insights_connection_string(), 
-    logger_name=env.app_name(), 
+    connection_string=env.APPINSIGHTS_CONNECTION_STRING, 
+    logger_name=env.APP_NAME, 
     instrumentation_options={"fastapi": {"enabled": True}})  
-logger: logging.Logger = logging.getLogger(env.app_name())
-logger.setLevel(logging.INFO)
+logger: logging.Logger = logging.getLogger(env.APP_NAME)
 
 from pybeansack.datamodels import *
 from pybeansack.embedding import *
-from shared import beanops
+from shared.beanops import *
 from shared.utils import *
-
-def initialize_server():
-    embedder = RemoteEmbeddings(env.llm_base_url(), env.llm_api_key(), env.embedder_model(), env.embedder_n_ctx()) \
-        if env.llm_base_url() else \
-        BeansackEmbeddings(env.embedder_model(), env.embedder_n_ctx())
-    beanops.initiatize(env.db_connection_str(), embedder)
-
 from fastapi import FastAPI, Query
 from icecream import ic
 
-app = FastAPI(title=env.app_name(), version="0.0.1", description="API for Espresso (Alpha)")
+app = FastAPI(title=env.APP_NAME, version="0.0.1", description="API for Espresso (Alpha)")
+
+@app.on_startup
+def initialize_server():
+    logger.setLevel(logging.INFO)
+    embedder = RemoteEmbeddings(env.LLM_BASE_URL, env.LLM_API_KEY, env.EMBEDDER_MODEL, env.EMBEDDER_N_CTX) \
+        if env.LLM_BASE_URL else \
+        BeansackEmbeddings(env.EMBEDDER_MODEL, env.EMBEDDER_N_CTX)
+    initiatize(env.DB_CONNECTION_STRING, embedder)
 
 @app.get("/beans", response_model=list[Bean]|None)
 async def get_beans(
@@ -37,17 +37,11 @@ async def get_beans(
     """
     Retrieves the bean(s) with the given URL(s).
     """
-    res = beanops.get_beans(url, tag, kind, source, ndays, start, limit)  
+    res = get_beans(url, tag, kind, source, ndays, start, limit)  
     log(logger, 'get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
-@app.get("/beans/embeddings", response_model=list[Bean]|None)
-async def get_embeddings(url: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    res = beanops.get_bean_embeddings(url)
-    log(logger, 'get_embeddings', url=url, num_returned=res)
-    return res
-
-@app.get("/beans/search", response_model=list[Bean]|None)
+@app.get("/search", response_model=list[Bean]|None)
 async def search_beans(
     q: str, 
     acc: float = Query(ge=0, le=1, default=DEFAULT_ACCURACY),
@@ -68,11 +62,11 @@ async def search_beans(
     start: start index
     limit: limit
     """
-    res = beanops.search_beans(q, acc, tag, kind, source, ndays, start, limit)
+    res = vector_search_beans(q, acc, tag, kind, source, ndays, start, limit)
     log(logger, 'search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
-@app.get("/beans/trending", response_model=list[Bean]|None)
+@app.get("/trending", response_model=list[Bean]|None)
 async def trending_beans(
     tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
     kind: list[str] | None = Query(default=None), 
@@ -85,11 +79,11 @@ async def trending_beans(
     To retrieve all the beans irrespective of cluster, use /beans endpoint.
     To retrieve the beans related to the beans in this result set, use /beans/related endpoint.
     """
-    res = beanops.get_trending_beans(tag, kind, source, ndays, start, limit)
+    res = get_trending_beans(tag, kind, source, ndays, start, limit)
     log(logger, 'trending_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
-@app.get("/beans/related", response_model=list[Bean]|None)
+@app.get("/related", response_model=list[Bean]|None)
 async def get_related_beans(
     url: str, 
     tag: list[str] | None = Query(max_length=MAX_LIMIT, default=None),
@@ -101,38 +95,37 @@ async def get_related_beans(
     """
     Retrieves the related beans to the given bean.
     """    
-    res = beanops.get_related(url, tag, kind, source, ndays, start, limit)
+    res = get_related(url, tag, kind, source, ndays, start, limit)
     log(logger, 'get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
-@app.get("/beans/chatters", response_model=list[Chatter]|None)
-async def get_chatters(url: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
-    """
-    Retrieves the latest social media stats for the given bean(s).
-    """
-    res = beanops.get_chatters(url)
-    log(logger, 'get_chatters', url=url, num_returned=res)
-    return res
+# @app.get("/chatters", response_model=list[Chatter]|None)
+# async def get_chatters(url: list[str] | None = Query(max_length=MAX_LIMIT, default=None)):
+#     """
+#     Retrieves the latest social media stats for the given bean(s).
+#     """
+#     res = shared.beanops.get_chatters(url)
+#     log(logger, 'get_chatters', url=url, num_returned=res)
+#     return res
 
-@app.get("/beans/sources", response_model=list|None)
+@app.get("/sources/all", response_model=list|None)
 async def get_sources():
     """
     Retrieves the list of sources.
     """
-    res = beanops.get_sources()
+    res = get_all_sources()
     log(logger, 'get_sources', num_returned=res)
     return res
 
-@app.get("/beans/tags", response_model=list|None)
+@app.get("/tags/all", response_model=list|None)
 async def get_tags():
     """
     Retrieves the list of tags.
     """
-    res = beanops.get_all_tags()
+    res = get_all_tags()
     log(logger, 'get_tags', num_returned=res)
     return res
 
-
-initialize_server()
+# initialize_server()
 
 

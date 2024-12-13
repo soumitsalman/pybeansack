@@ -1,11 +1,16 @@
-from env import *
 import logging
 from azure.monitor.opentelemetry import configure_azure_monitor
+from app.shared.env import *
 
 configure_azure_monitor(
     connection_string=APPINSIGHTS_CONNECTION_STRING, 
     logger_name=APP_NAME, 
     instrumentation_options={"fastapi": {"enabled": True}})  
+
+from app.pybeansack.embedding import *
+from app.shared import beanops, espressops
+from app.web import vanilla
+from app.shared.datamodel import *
 
 import jwt
 from datetime import datetime, timedelta
@@ -15,10 +20,6 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse, FileResponse
 from authlib.integrations.starlette_client import OAuth
 from nicegui import ui, app
-from pybeansack.embedding import *
-from shared import beanops, espressops
-from web_ui import vanilla
-from shared.datamodel import *
 
 JWT_TOKEN_KEY = 'espressotoken'
 JWT_TOKEN_LIFETIME = timedelta(days=7) # TODO: change this later to 30 days
@@ -30,8 +31,12 @@ jwt_token_needs_refresh = lambda data: (datetime.now() - JWT_TOKEN_REFRESH_WINDO
 logger: logging.Logger = logging.getLogger(APP_NAME)
 oauth = OAuth()
 
-def log(function: str, user: str|espressops.User = None, **kwargs):
-    kwargs["user_id"] = (user.email if isinstance(user, espressops.User) else user) if user else app.storage.browser.get("user_id")
+def log(function: str, user: str|User, **kwargs):
+    if user:        
+        kwargs["user_id"] = user if isinstance(user, str) else user.email
+    else:
+        kwargs["user_id"] = app.storage.browser.get("id")
+    
     kwargs = {key: ("|".join(value) if isinstance(value, list) else value) for key, value in kwargs.items() if value}
     logger.info(function, extra=kwargs)
 
@@ -57,9 +62,9 @@ def initialize_server():
 
     logger.setLevel(logging.INFO)
     
-    embedder = ic(RemoteEmbeddings(LLM_BASE_URL, LLM_API_KEY, EMBEDDER_MODEL, EMBEDDER_N_CTX) \
+    embedder = RemoteEmbeddings(LLM_BASE_URL, LLM_API_KEY, EMBEDDER_MODEL, EMBEDDER_N_CTX) \
         if LLM_BASE_URL else \
-        BeansackEmbeddings(EMBEDDER_MODEL, EMBEDDER_N_CTX))
+        BeansackEmbeddings(EMBEDDER_MODEL, EMBEDDER_N_CTX)
     beanops.initiatize(DB_CONNECTION_STRING, embedder)
     espressops.initialize(DB_CONNECTION_STRING, SB_CONNECTION_STRING, embedder)
 
@@ -119,12 +124,12 @@ def extract_barista(barista_id: str) -> Barista:
 def validate_doc(doc_id: str):
     if not bool(os.path.exists(f"docs/{doc_id}")):
         raise HTTPException(status_code=404, detail=f"{doc_id} does not exist")
-    return doc_id
+    return f"./docs/{doc_id}"
 
 def validate_image(image_id: str):
     if not bool(os.path.exists(f"images/{image_id}")):
         raise HTTPException(status_code=404, detail=f"{image_id} does not exist")
-    return image_id
+    return f"./images/{image_id}"
 
 def extract_user():
     token = app.storage.browser.get(JWT_TOKEN_KEY)
@@ -146,17 +151,18 @@ def extract_user():
 
 REGISTRATION_INFO_KEY = "registration_info"
 
-def login_user(email: str):
+def login_user(user: dict|User):
+    email = ic(user.email if isinstance(user, User) else user['email'])
     app.storage.browser[JWT_TOKEN_KEY] = ic(create_jwt_token(email))
     log("login_user", email)
 
 def process_oauth_result(result: dict):
-    existing_user = espressops.db.get_user(result['userinfo']['email'], result['userinfo']['iss'])
+    existing_user = ic(espressops.db.get_user(ic(result['userinfo']['email']), result['userinfo']['iss']))
     if existing_user:
-        login_user(existing_user.email)        
+        login_user(existing_user)        
         return RedirectResponse("/")
     else:
-        login_user(result['userinfo']['email'])
+        login_user(result['userinfo'])
         app.storage.user[REGISTRATION_INFO_KEY] = result['userinfo']
         return RedirectResponse("/user/register")
 
@@ -175,8 +181,8 @@ async def google_oauth_login(request: Request):
 @app.get("/oauth/google/redirect")
 async def google_oauth_redirect(request: Request):
     try:
-        token = await oauth.google.authorize_access_token(request)
-        return process_oauth_result(token)      
+        token = ic(await oauth.google.authorize_access_token(request))
+        return ic(process_oauth_result(token))
     except Exception as err:
         log("oauth_error", None, provider="google", error=str(err))
         return RedirectResponse("/")
@@ -224,32 +230,46 @@ async def delete_user(user: espressops.User = Depends(extract_user)):
         del app.storage.browser[JWT_TOKEN_KEY]
     return RedirectResponse("/")
 
-@ui.page("/")
+@app.get("/docs/{doc_id}")
+async def document(
+    user: espressops.User = Depends(extract_user),
+    doc_id: str = Depends(validate_doc)
+):
+    log('docs', user, page_id=doc_id)
+    return FileResponse(doc_id, media_type="text/markdown")
+    
+@app.get("/images/{image_id}")
+async def image(image_id: str = Depends(validate_image)):    
+    return FileResponse(image_id, media_type="image/png")
+
+@ui.page("/", title="Espresso")
 async def home(user: espressops.User = Depends(extract_user)):  
     log('home', user)
-    await vanilla.render_trending_snapshot(user)
+    await vanilla.render_home(user)
 
-@ui.page("/beans")
+@ui.page("/beans", title="Espresso: Beans")
 async def beans(
     user: espressops.User = Depends(extract_user),
     tag: list[str] | None = Query(max_length=beanops.MAX_LIMIT, default=None),
     kind: str | None = Query(default=None)
 ):
     log('beans', user, tag=tag, kind=kind)
-    if tag:
-        await vanilla.render_tags_page(user, tag, kind)
-    else:
-        await vanilla.render_trending_snapshot(user)
+    await vanilla.render_beans_page(user, tag, kind)
 
-@ui.page("/barista/{barista_id}")
+@ui.page("/baristas", title="Espresso: Snapshot")
+async def snapshot(user: User = Depends(extract_user)): 
+    log('baristas', user) 
+    await vanilla.render_trending_snapshot(user)
+
+@ui.page("/baristas/{barista_id}", title="Espresso")
 async def barista(
     user: User = Depends(extract_user),
     barista: Barista = Depends(extract_barista, use_cache=True)
 ): 
-    log('barista', user, page_id=barista.id) 
+    log('baristas', user, page_id=barista.id) 
     await vanilla.render_barista_page(user, barista)
 
-@ui.page("/search")
+@ui.page("/search", title="Espresso: Search")
 async def search(
     user: espressops.User = Depends(extract_user),
     q: str = None,
@@ -261,22 +281,10 @@ async def search(
     log('search', user, q=q, acc=acc, ndays=ndays)
     await vanilla.render_search(user, q, acc)
 
-@ui.page("/user/register", title="Registration")
+@ui.page("/user/register", title="Espresso: User Registration")
 async def register_user(userinfo: dict = Depends(extract_registration_info)):
     log('register_user', userinfo)
     await vanilla.render_registration(userinfo)
-
-@ui.page("/docs/{doc_id}")
-async def document(
-    user: espressops.User = Depends(extract_user),
-    doc_id: str = Depends(validate_doc)
-):
-    log('docs', user, page_id=doc_id)
-    await vanilla.render_doc(user, doc_id)  
-    
-@app.get("/images/{image_id}")
-async def image(image_id: str = Depends(validate_image)):    
-    return FileResponse(f"./images/{image_id}", media_type="image/png")
     
 GOOGLE_ANALYTICS_SCRIPT = '''
 <!-- Google tag (gtag.js) -->
@@ -299,9 +307,5 @@ def run():
         favicon="./images/favicon.ico", 
         port=8080, 
         show=False,
-        uvicorn_reload_includes="*.py,*/web_ui/styles.css",
-        uvicorn_logging_level="info"
+        uvicorn_reload_includes="*.py,*/web_ui/styles.css"
     )
-
-if __name__ in {"__main__", "__mp_main__"}:
-    run()

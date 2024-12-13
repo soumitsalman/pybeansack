@@ -1,11 +1,11 @@
 from datetime import datetime
 from pymongo import MongoClient
 from pymongo.collection import Collection
-from pybeansack.embedding import Embeddings
-from shared.utils import *
-from shared.datamodel import *
-# from azure.servicebus import ServiceBusClient, ServiceBusMessage, ServiceBusSender
 from memoization import cached
+from app.pybeansack.embedding import Embeddings
+from app.shared.utils import *
+from app.shared.datamodel import *
+# from azure.servicebus import ServiceBusClient, ServiceBusMessage, ServiceBusSender
 
 SYSTEM = "__SYSTEM__"
 ID = "_id"
@@ -89,6 +89,14 @@ class EspressoDB:
     def get_baristas(self, ids: list[str]):
         filter = {ID: {"$in": ids}} if ids else {}
         return [Barista(**barista) for barista in self.baristas.find(filter, sort={TITLE: 1}, projection={EMBEDDING: 0})]
+    
+    @cached(max_size=10, ttl=ONE_DAY) 
+    def sample_baristas(self, limit: int):
+        pipeline = [
+            { "$sample": {"size": limit} },
+            { "$project": {ID: 1, TITLE: 1, DESCRIPTION: 1, IMAGE_URL: 1} }
+        ]
+        return [Barista(**barista) for barista in self.baristas.aggregate(pipeline)]
     
     @cached(max_size=10, ttl=ONE_DAY) 
     def get_following_baristas(self, user: User):

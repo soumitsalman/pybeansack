@@ -1,9 +1,9 @@
 import re
 from memoization import cached
 from icecream import ic
-from pybeansack.mongosack import *
-from pybeansack.datamodels import *
-from shared.utils import *
+from app.pybeansack.mongosack import *
+from app.pybeansack.datamodels import *
+from app.shared.utils import *
 
 DEFAULT_ACCURACY = 0.8
 DEFAULT_WINDOW = 7
@@ -21,18 +21,16 @@ def initiatize(db_conn, embedder: Embeddings):
     global db
     db=Beansack(db_conn, embedder)
 
+@cached(max_size=1, ttl=ONE_WEEK)
 def get_all_kinds():
     return db.beanstore.distinct(K_KIND)
 
-# @cached(max_size=1, ttl=ONE_WEEK)
 def get_all_sources():
     return db.beanstore.distinct(K_SOURCE)
 
-# @cached(max_size=1, ttl=ONE_DAY)
 def get_all_tags():
     return db.beanstore.distinct(K_TAGS)
 
-# @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def get_beans(urls: str|list[str], tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     filter=_create_filter(tags, kinds, sources, last_ndays, None, None, None)
     if urls:
@@ -80,21 +78,21 @@ def get_chatters(urls: str|list[str]):
 def get_tags(must_have_tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     # searching by updated-after for a wider net
     filter=_create_filter(must_have_tags, kinds, sources, None, last_ndays, None, None)
-    return db.get_trending_tags(filter=filter, skip=start, limit=limit)
+    return db.get_tags(filter=filter, skip=start, limit=limit)
 
 @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def search_tags(query: str, accuracy: float, tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
+def vector_search_tags(query: str, accuracy: float, tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     # searching by updated-after for a wider net
     filter=_create_filter(tags, kinds, sources, None, last_ndays, None, None)
     # if the query is a valid url, then we use the embedding of the bean to search for it
     if is_valid_url(query):
         bean = db.beanstore.find_one(filter={K_URL: query}, projection={K_EMBEDDING: 1, K_URL: 1, K_ID: 0})
-        return db.vector_search_trending_tags(embedding=bean[K_EMBEDDING], min_score=accuracy, filter=filter, skip=start, limit=limit) if bean else []
+        return db.vector_search_tags(embedding=bean[K_EMBEDDING], min_score=accuracy, filter=filter, skip=start, limit=limit) if bean else []
     if query:
-        return db.vector_search_trending_tags(query=query, min_score=accuracy, filter=filter, skip=start, limit=limit)
+        return db.vector_search_tags(query=query, min_score=accuracy, filter=filter, skip=start, limit=limit)
     return []
     
-@cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
+@cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
 def count_beans(query: str, accuracy: float, tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, limit: int) -> int:
     filter = _create_filter(tags, kinds, sources, last_ndays, None, None, None)
     if is_valid_url(query):

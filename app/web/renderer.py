@@ -1,15 +1,14 @@
 from contextlib import contextmanager
 import random
 import threading
-from pybeansack.utils import *
-from pybeansack.datamodels import *
-from shared.datamodel import *
-from shared import utils, beanops, espressops
-from shared.messages import *
+from typing import Callable
+from app.pybeansack.utils import *
+from app.pybeansack.datamodels import *
+from app.shared.datamodel import *
+from app.shared import utils, beanops, espressops
+from app.shared.messages import *
 from urllib.parse import urlencode
-from web_ui.custom_ui import *
 from nicegui import ui, background_tasks, run
-from icecream import ic
 
 MAX_ITEMS_PER_PAGE = 5
 MAX_PAGES = 10
@@ -20,7 +19,7 @@ PRIMARY_COLOR = "#4e392a"
 SECONDARY_COLOR = "#b79579"
 IMAGE_DIMENSIONS = "w-32 h-28"
 
-CSS_FILE = "./web_ui/styles.css"
+CSS_FILE = "./app/web/styles.css"
 
 GOOGLE_ICON = "img:https://www.google.com/favicon.ico"
 REDDIT_ICON = "img:https://www.reddit.com/favicon.ico"
@@ -66,7 +65,7 @@ def create_navigation_route(base_url, **kwargs):
     return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs))
 
 def create_barista_route(barista: espressops.Barista):
-    return lambda barista=barista: ui.navigate.to(f"/barista/{barista.id}")
+    return lambda barista=barista: ui.navigate.to(f"/baristas/{barista.id}")
 
 def create_search_target(text):
     return create_navigation_target("/search", q=text) \
@@ -83,7 +82,8 @@ def render_header(user):
             ui.label("Espresso").classes("q-ml-sm")
             
         # TODO: make this pull up side panel
-        # ui.button(icon="trending_up", on_click=create_navigation_route("/trending")).props("unelevated").classes("lt-sm")
+        # bookmarks browse library_books
+        ui.button(icon="bookmarks", on_click=create_navigation_route("/baristas")).props("unelevated").classes("lt-sm")
         ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-sm")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
@@ -126,7 +126,7 @@ def render_barista_names(user: User, baristas: list[Barista]):
 
 def render_baristas_panel(user: User):    
     baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS)
-    with render_card_container("Following" if user else "Popular Baristas") as panel:        
+    with render_card_container("Following" if user else "Popular Baristas", on_click=create_navigation_route("/baristas")) as panel:        
         [ui.item(barista.title, on_click=create_barista_route(barista)) for barista in baristas]
     return panel
 
@@ -136,10 +136,9 @@ def render_beans(user: User, load_beans: Callable, container: ui.element = None)
         container.clear()
         with container:
             if not beans:
-                ui.label(NOTHING_FOUND).classes("w-full text-center")            
-            # NOTE: disabling carousel of related beans for now
-            # [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans] 
-            [render_bean(user, bean, False).classes("w-full") for bean in beans[:MAX_ITEMS_PER_PAGE]]
+                ui.label(NOTHING_FOUND).classes("w-full text-center") 
+            # [render_bean(user, bean, False).classes("w-full") for bean in beans[:MAX_ITEMS_PER_PAGE]] 
+            [render_bean_with_related(user, bean).classes("w-full w-full m-0 p-0") for bean in beans] 
 
     container = container or ui.column(align_items="stretch")
     with container:
@@ -162,9 +161,8 @@ def render_beans_as_extendable_list(user: User, load_beans: Callable, container:
         with disable_button(more_btn):
             beans = await run.io_bound(current_page)   
             with beans_panel:
-                [render_bean(user, bean, False) for bean in beans[:MAX_ITEMS_PER_PAGE]]
-                # NOTE: disabling carousel of related beans for now
-                # [render_bean_with_related(user, bean).classes("w-full w-full q-mb-sm p-0") for bean in beans[:MAX_ITEMS_PER_PAGE]]
+                # [render_bean(user, bean, False) for bean in beans[:MAX_ITEMS_PER_PAGE]]
+                [render_bean_with_related(user, bean).classes("w-full w-full m-0 p-0") for bean in beans[:MAX_ITEMS_PER_PAGE]]
 
     with ui.column() as view:
         beans_panel = render_beans(user, current_page, container).classes("w-full")
@@ -182,15 +180,15 @@ def render_paginated_beans(user: User, load_beans: Callable, count_items: Callab
     return panel
 
 def render_bean_with_related(user: User, bean: Bean):
-    with_related_beans = [bean] + beanops.get_related(url=bean.url, tags=None, kinds=bean.kind, sources=None, last_ndays=None, start=0, limit=MAX_RELATED_ITEMS)
+    with_related_beans = [bean] + beanops.get_related(url=bean.url, tags=None, kinds=None, sources=None, last_ndays=None, start=0, limit=MAX_RELATED_ITEMS)
     return render_swipable_beans(user, with_related_beans)
 
 def render_swipable_beans(user: User, beans: list[Bean]):
     with ui.item() as view:  # Added rounded-borders class here
-        with ui.carousel(animated=True, arrows=True).props("swipeable control-color=secondary").classes("rounded-borders bg-grey-10 w-full h-full"):
+        with ui.carousel(animated=True, arrows=True).props("swipeable control-color=secondary").classes("rounded-borders w-full h-full"):
             for i, bean in enumerate(beans):
-                with ui.carousel_slide(bean.url).classes("w-full m-0 q-pa-sm no-wrap"):  # Added rounded-borders class here
-                    render_bean(user, bean, i!=0).classes("w-full")
+                with ui.carousel_slide(bean.url).classes("w-full m-0 p-0 no-wrap"):  # Added rounded-borders class here
+                    render_bean(user, bean, i!=0).classes("w-full m-0 p-0")
     return view
 
 # render_bean = lambda user, bean, expandable: render_expandable_bean(user, bean) if expandable else render_whole_bean(user, bean)
@@ -304,7 +302,7 @@ def render_pagination(count_items: Callable, on_change: Callable):
         view.clear()
         if items_count > MAX_ITEMS_PER_PAGE:
             with view:
-                ui.pagination(min=1, max=page_count, direction_links=True, on_change=lambda e: on_change(e.sender.value)).props("max-pages=7 ellipses")            
+                ui.pagination(min=1, max=page_count, direction_links=True, on_change=lambda e: on_change(e.sender.value)).props("max-pages=10 ellipses")            
 
     with ui.element() as view:
         ui.skeleton("rect", width="100%").classes("w-full")
@@ -338,7 +336,7 @@ def render_skeleton_baristas(count = 3):
 
 def render_footer():
     ui.separator().style("height: 5px;").classes("w-full")
-    text = "[[Terms of Use](/docs/terms-of-use.md)]   [[Privacy Policy](/docs/privacy-policy.md)]   [[Espresso](/docs/espresso.md)]   [[Project Cafecito](/docs/project-cafecito.md)]\n\nCopyright © 2024 Project Cafecito. All rights reserved."
+    text = "[[Terms of Use](https://github.com/soumitsalman/espresso/blob/main/docs/terms-of-use.md)]   [[Privacy Policy](https://github.com/soumitsalman/espresso/blob/main/docs/privacy-policy.md)]   [[Espresso](https://github.com/soumitsalman/espresso/blob/main/README.md)]   [[Project Cafecito](https://github.com/soumitsalman/espresso/blob/main/docs/project-cafecito.md)]\n\nCopyright © 2024 Project Cafecito. All rights reserved."
     return ui.markdown(text).classes("w-full text-caption text-center")
 
 def render_error_text(msg: str):
@@ -349,7 +347,7 @@ def render_card_container(label: str, on_click: Callable = None, header_classes:
         holder = ui.item(label, on_click=on_click).classes(header_classes)
         if on_click:
             holder.props("clickable").tooltip("Click for more")
-        ui.separator() 
+        ui.separator().classes("q-mb-xs") 
     return panel
 
 @contextmanager

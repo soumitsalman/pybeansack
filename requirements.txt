@@ -1,13 +1,8 @@
 icecream
 slack-bolt
-azure-data-tables
-pandas
 pydantic
 nicegui
 fastapi[standard]
-tiktoken
-llama-cpp-python
-langchain
 pymongo
 motor
 retry

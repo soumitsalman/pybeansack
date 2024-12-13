@@ -167,7 +167,7 @@ class Beansack:
         result = self.beanstore.aggregate(pipeline)
         return next(iter(result))['total_count'] if result else 0
     
-    def get_trending_tags(self, filter, skip = 0, limit = 0):
+    def get_tags(self, filter, skip = 0, limit = 0):
         match_filter = {K_TAGS: {"$exists": True}}
         if filter:
             match_filter.update(filter)
@@ -224,7 +224,7 @@ class Beansack:
             pipeline.append({"$limit": limit})   
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
-    def vector_search_trending_tags(self, 
+    def vector_search_tags(self, 
             query: str = None,
             embedding: list[float] = None, 
             min_score = DEFAULT_VECTOR_SEARCH_SCORE, 
