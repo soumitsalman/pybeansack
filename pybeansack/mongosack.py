@@ -176,59 +176,48 @@ class Beansack:
         # take one bean from each cluster for diversification.
         # then for each tag, use an aggregated valuee of latest and trending
         # sort by that sort and then return the list
+        # pipeline = [
+        #     { "$match": match_filter },
+        #     { "$sort": LATEST_AND_TRENDING },
+        #     {
+        #         # for each cluster tag the tags of the bean with the latest and highest trend 
+        #         "$group": {
+        #             "_id": "$cluster_id",    
+        #             "url": {"$first": "$url"},                
+        #             "updated": { "$first": "$updated" },
+        #             "trend_score": { "$first": "$trend_score" },
+        #             "tags": {"$first": "$tags"}
+        #         }
+        #     },
+        #     { "$unwind": "$tags" },
+        #     {
+        #         "$group": {
+        #             "_id": "$tags",
+        #             "tags": {"$first": "$tags"},
+        #             "updated": { "$max": "$updated" },
+        #             "trend_score": { "$sum": "$trend_score" },
+        #             "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
+        #         }
+        #     },
+        #     { "$sort": LATEST_AND_TRENDING }
+        # ]
+        # Option 2:
+        # flatten the tags within the filter
+        # take the ones that show up the most
+        # sort by the number of times the tags appear
         pipeline = [
             { "$match": match_filter },
-            { "$sort": LATEST_AND_TRENDING },
-            {
-                # for each cluster tag the tags of the bean with the latest and highest trend 
-                "$group": {
-                    "_id": "$cluster_id",    
-                    "url": {"$first": "$url"},                
-                    "updated": { "$first": "$updated" },
-                    "trend_score": { "$first": "$trend_score" },
-                    "tags": {"$first": "$tags"}
-                }
-            },
             { "$unwind": "$tags" },
             {
                 "$group": {
                     "_id": "$tags",
                     "tags": {"$first": "$tags"},
-                    "updated": { "$max": "$updated" },
-                    "trend_score": { "$sum": "$trend_score" },
+                    "trend_score": { "$sum": 1 },
                     "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
             },
-            { "$sort": LATEST_AND_TRENDING }
+            { "$sort": TRENDING }
         ]
-        # Option 2:
-        # flatten the tags
-        # group by cluster
-        # sort by the number of times the tags appear
-        # then take the top tags
-        # pipeline = [
-        #     {"$match": match_filter},
-        #     {"$unwind": "$tags"}, 
-        #     {
-        #         "$group": {
-        #             "_id": "$tags",
-        #             "cluster_id": {"$first": "$cluster_id"},
-        #             "trend_score": { "$sum": "$trend_score" },
-        #             "updated": { "$max": "$updated" }
-        #         }
-        #     },
-        #     { "$sort": LATEST_AND_TRENDING },
-        #     {
-        #         "$group": {
-        #             "_id": "$cluster_id",
-        #             "url": {"$first": "$cluster_id"},
-        #             "tags": { "$first": "$_id" },
-        #             "trend_score": { "$first": "$trend_score" },
-        #             "updated": { "$first": "$updated" }
-        #         }
-        #     },
-        #     { "$sort": LATEST_AND_TRENDING }
-        # ]
         if skip:
             pipeline.append({"$skip": skip})    
         if limit:
@@ -265,34 +254,30 @@ class Beansack:
             {
                 "$match": { "search_score": {"$gte": min_score} }
             },
-            {
-                "$sort": LATEST_AND_TRENDING
-            },
-            {
-                # for each cluster tag the tags of the bean with the latest and highest trend 
-                "$group": {
-                    "_id": "$cluster_id",    
-                    "url": {"$first": "$url"},                
-                    "updated": { "$first": "$updated" },
-                    "trend_score": { "$first": "$trend_score" },
-                    "tags": {"$first": "$tags"}
-                }
-            },
-            { 
-                "$unwind": "$tags" 
-            },
+            # NOTE: removing clustering and only keeping the tags that show up the most
+            # {
+            #     "$sort": LATEST_AND_TRENDING
+            # },
+            # {
+            #     # for each cluster tag the tags of the bean with the latest and highest trend 
+            #     "$group": {
+            #         "_id": "$cluster_id",    
+            #         "url": {"$first": "$url"},                
+            #         "updated": { "$first": "$updated" },
+            #         "trend_score": { "$first": "$trend_score" },
+            #         "tags": {"$first": "$tags"}
+            #     }
+            # },
+            { "$unwind": "$tags" },
             {
                 "$group": {
                     "_id": "$tags",
                     "tags": {"$first": "$tags"},
-                    "updated": { "$max": "$updated" },
-                    "trend_score": { "$sum": "$trend_score" },
+                    "trend_score": { "$sum": 1 },
                     "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
             },
-            { 
-                "$sort": LATEST_AND_TRENDING 
-            }
+            { "$sort": TRENDING }
         ]
         if skip:
             pipeline.append({"$skip": skip})

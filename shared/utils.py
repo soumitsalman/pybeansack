@@ -1,52 +1,6 @@
-from datetime import datetime
-
 import humanize
 import tldextract
-from pybeansack.datamodels import *
 from urllib.parse import urlparse
-
-SLACK = "slack"
-REDDIT = "reddit"
-
-# search settings
-DEFAULT_ACCURACY = 0.8
-DEFAULT_WINDOW = 7
-MIN_WINDOW = 1
-MAX_WINDOW = 30
-DEFAULT_LIMIT = 10
-MIN_LIMIT = 1
-MAX_LIMIT = 100
-MAX_ITEMS_PER_PAGE = 5
-MAX_PAGES = 10
-MAX_TAGS_PER_BEAN = 5
-MAX_RELATED_ITEMS = 5
-
-DEFAULT_KIND = NEWS
-TRENDING, LATEST = "trending", "latest"
-DEFAULT_SORT_BY = LATEST
-KIND_LABELS = {NEWS: "News", POST: "Posts", BLOG: "Blogs"}
-SORT_BY_LABELS = {LATEST: LATEST.capitalize(), TRENDING: TRENDING.capitalize()}
-
-DEFAULT_BARISTAS = [
-    "artificial-intelligence--ai-",
-    "automotive---logistics",
-    "aviation---aerospace",
-    "business---finance",
-    "career---professional-development",
-    "cryptocurrency---blockchain",
-    "cybersecurity",
-    "entrepreneurship---startups",
-    "environment---clean-energy",
-    "food---health",
-    "gadgets---iot",
-    "government---politics",
-    "hpc---datacenters",
-    "management---leadership",
-    "robotics---manufacturing",
-    "science---mathematics",
-    "software-engineering",
-    "video-games---virtual-reality"
-]
 
 # cache settings
 ONE_HOUR = 3600

@@ -128,7 +128,7 @@ async def get_tags():
     """
     Retrieves the list of tags.
     """
-    res = beanops.get_tags()
+    res = beanops.get_all_tags()
     log(logger, 'get_tags', num_returned=res)
     return res
 

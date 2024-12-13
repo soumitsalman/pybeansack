@@ -3,7 +3,8 @@ from connectors import redditor
 import env
 from shared.utils import *
 from shared.messages import *
-from shared import beanops, espressops, prompt_parser
+from shared.espressops import *
+from shared.beanops import *
 from pybeansack.datamodels import *
 from pybeansack.utils import ndays_ago
 from web_ui.custom_ui import *
@@ -11,7 +12,11 @@ from nicegui import ui, background_tasks, run
 from icecream import ic
 from .renderer import *
 
-APP_NAME = env.app_name()
+KIND_LABELS = {NEWS: "News", POST: "Posts", BLOG: "Blogs"}
+TRENDING, LATEST = "Trending", "Latest"
+DEFAULT_SORT_BY = LATEST
+SORT_BY_LABELS = {LATEST: LATEST, TRENDING: TRENDING}
+
 REMOVE_FILTER = "remove-filter"
 CONTENT_GRID_CLASSES = "w-full grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
 BARISTAS_PANEL_CLASSES = "w-1/4 gt-xs"
@@ -35,8 +40,10 @@ TOGGLE_OPTIONS_PROPS = "unelevated rounded no-caps color=dark toggle-color=prima
 #                 render_barista_names(user, random.sample(espressops.get_baristas(None), 5))
 #     render_footer()
 
+# get_baristas = lambda user: espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS)
+
 async def render_trending_snapshot(user):
-    baristas = espressops.get_following_baristas(user) or espressops.get_baristas(utils.DEFAULT_BARISTAS)
+    baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS)
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
@@ -50,6 +57,7 @@ async def render_trending_snapshot(user):
                             for kind in KIND_LABELS.keys()
                         ]))
                         render_beans(user, get_beans_func, ui.grid().classes(CONTENT_GRID_CLASSES))
+                        pass
                     else:
                         render_error_text(NOTHING_TRENDING)                            
     render_footer()
@@ -84,23 +92,23 @@ async def render_trending_snapshot(user):
 #     render_footer()
 
 tags_banner_text = lambda tags: tags if isinstance(tags, str) else ", ".join(tags)
-async def render_tags_page(user: dict, must_have_tags: str|list[str]): 
+async def render_tags_page(user: User, must_have_tags: str|list[str], kind: str = DEFAULT_KIND): 
     must_have_tags = must_have_tags if isinstance(must_have_tags, list) else [must_have_tags]
-    tags, kinds, sort_by = must_have_tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default 
+    tags, sort_by = must_have_tags, DEFAULT_SORT_BY # starting default 
 
-    def trigger_filter(filter_tags: list[str] = None, filter_kinds: str = None, filter_sort_by: str = None):
-        nonlocal tags, kinds, sort_by
+    def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):
+        nonlocal tags, kind, sort_by
         if filter_tags: # explicitly mentioning is not None is important because that is the default value
             tags = [must_have_tags, filter_tags] if filter_tags != REMOVE_FILTER else must_have_tags # filter_tags == [] means there is no additional tag to filter with
-        if filter_kinds:
-            kinds = filter_kinds if filter_kinds != REMOVE_FILTER else None
+        if filter_kind:
+            kind = filter_kind if filter_kind != REMOVE_FILTER else None
         if filter_sort_by:
             sort_by = filter_sort_by
 
         return lambda start, limit: \
-            beanops.get_trending_beans(tags=tags, kinds=kinds, sources=None, last_ndays=None, start=start, limit=limit) \
+            beanops.get_trending_beans(tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit) \
                 if sort_by == TRENDING else \
-                    beanops.get_newest_beans(tags=tags, kinds=kinds, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
+                    beanops.get_newest_beans(tags=tags, kinds=kind, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
     
     render_page(
         user, 
@@ -108,8 +116,7 @@ async def render_tags_page(user: dict, must_have_tags: str|list[str]):
         lambda: beanops.get_tags(must_have_tags, None, None, None, 0, DEFAULT_LIMIT), 
         trigger_filter)
 
-async def render_barista_page(user: dict, barista_id: str):    
-    barista = espressops.get_barista(barista_id)
+async def render_barista_page(user: User, barista: Barista):    
     tags, kind, sort_by = barista.tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default values
     
     def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):
@@ -145,10 +152,10 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
     with ui.row(wrap=False).classes("w-full"): 
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
-            with ui.row(wrap=False, align_items="start").classes("justify-between q-mb-md w-full"):
+            with ui.row(wrap=False, align_items="start").classes("q-mb-md w-full"):
                 ui.label(page_title).classes("text-h4 banner")
-                if user:
-                    ui.button("Follow", icon="add").props("unelevated")
+                # if user:
+                #     ui.button("Follow", icon="add").props("unelevated")
 
             render_filter_tags(
                 load_tags=get_filter_tags_func, 
@@ -169,7 +176,7 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
 
 SAVED_PAGE = "saved_page"
 SEARCH_PAGE_TABS = {**KIND_LABELS, **{SAVED_PAGE: "Pages"}}
-async def render_search(user, query: str, accuracy: float):
+async def render_search(user: User, query: str, accuracy: float):
     tags, kind, last_ndays = None, DEFAULT_KIND, DEFAULT_WINDOW
     # this is different from others
     # need to maintain a list of selected_tags.
@@ -233,12 +240,41 @@ async def render_search(user, query: str, accuracy: float):
             # TODO: fill it up with popular searches
     render_footer()
 
-async def render_doc(user, doc_id):
+async def render_registration(userinfo: dict):
+    render_header(None)
+
+    async def success():
+        espressops.db.create_user(userinfo)
+        ui.navigate.to("/")
+
+    with ui.card(align_items="stretch").classes("self-center"):
+        ui.label("You look new!").classes("text-h4")
+        ui.label("Let's get you signed up.").classes("text-caption")
+        
+        with ui.row(wrap=False).classes("justify-between"):
+            with ui.column(align_items="start"):
+                ui.label("User Agreement").classes("text-h6")
+                ui.link("What is Espresso", "/docs/espresso.md", new_tab=True)
+                ui.link("Terms of Use", "/docs/terms-of-use.md", new_tab=True)
+                ui.link("Privacy Policy", "/docs/privacy-policy.md", new_tab=True)                
+            ui.separator().props("vertical")
+            with ui.column(align_items="end"):   
+                if "picture" in userinfo:
+                    ui.image(userinfo["picture"]).classes("w-24")  
+                ui.label(userinfo["name"]).classes("text-bold")
+                ui.label(userinfo["email"]).classes("text-caption")
+        
+        agreement = ui.checkbox(text="I have read and understood every single word in each of the links above. I agree to the terms and conditions.") \
+            .tooltip("We are legally obligated to ask you this question. Please read the documents to reduce our chances of going to jail.")
+        with ui.row():
+            ui.button("Agreed", color="primary", icon="thumb_up", on_click=success).bind_enabled_from(agreement, "value").props("unelevated")
+            ui.button('Nope!', color="negative", icon="cancel", on_click=lambda: ui.navigate.to("/")).props("outline")
+
+async def render_doc(user: User, doc_id: str):
     render_header(user)
     with open(f"./docs/{doc_id}", 'r') as file:
         ui.markdown(file.read()).classes("w-full md:w-2/3 lg:w-1/2  self-center")
     render_footer()
-
 
 # def _render_beans_page(user, banner: str, urls: list[str], categories: str|list[str], last_ndays: int|None):
 #     selected_tags = []    
@@ -456,24 +492,24 @@ async def render_doc(user, doc_id):
 #         ui.space()
 #         ui.button("Delete Account", color="negative", on_click=delete_user).props("flat").classes("self-right").tooltip("Deletes your account, all connections and preferences")
 
-def render_user_registration(settings: dict, temp_user: dict, success_func: Callable, failure_func: Callable):
-    render_header()
+# def render_user_registration(settings: dict, temp_user: dict, success_func: Callable, failure_func: Callable):
+#     render_header()
 
-    if not temp_user:
-        ui.label("You really thought I wouldn't check for this?!")
-        ui.button("My Bad!", on_click=failure_func)
-        return
+#     if not temp_user:
+#         ui.label("You really thought I wouldn't check for this?!")
+#         ui.button("My Bad!", on_click=failure_func)
+#         return
     
-    with ui.stepper().props("vertical").classes("w-full") as stepper:
-        with ui.step("You Look New! Let's Get You Signed-up.") :
-            ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
-            ui.link("What is Espresso", "/docs/espresso.md", new_tab=True)
-            ui.link("Terms of Use", "/docs/terms-of-use.md", new_tab=True)
-            ui.link("Privacy Policy", "/docs/privacy-policy.md", new_tab=True)
-            user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above. And I agree to selling to the terms and conditions.").tooltip("We are legally obligated to ask you this question.")
-            with ui.stepper_navigation():
-                ui.button("Done", color="primary", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user))).bind_enabled_from(user_agreement, "value").props("unelevated")
-                ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
+#     with ui.stepper().props("vertical").classes("w-full") as stepper:
+#         with ui.step("You Look New! Let's Get You Signed-up.") :
+#             ui.label("User Agreement").classes("text-h6").tooltip("Kindly read the documents and agree to the terms to reduce our chances of going to jail.")
+#             ui.link("What is Espresso", "/docs/espresso.md", new_tab=True)
+#             ui.link("Terms of Use", "/docs/terms-of-use.md", new_tab=True)
+#             ui.link("Privacy Policy", "/docs/privacy-policy.md", new_tab=True)
+#             user_agreement = ui.checkbox(text="I have read and understood every single word in each of the links above. And I agree to selling to the terms and conditions.").tooltip("We are legally obligated to ask you this question.")
+#             with ui.stepper_navigation():
+#                 ui.button("Done", color="primary", icon="thumb_up", on_click=lambda: success_func(espressops.register_user(temp_user))).bind_enabled_from(user_agreement, "value").props("unelevated")
+#                 ui.button('Nope!', color="negative", icon="cancel", on_click=failure_func).props("outline")
         #     with ui.stepper_navigation():
         #         ui.button('Agreed', color="primary", on_click=stepper.next).props("unelevated").bind_enabled_from(user_agreement, "value")
         #         ui.button('Hell No!', color="negative", icon="cancel", on_click=failure_func).props("outline")
