@@ -60,10 +60,11 @@ def tags_banner_text(tags: str|list[str], kind: str = None):
     tag_label = None
     if tags:
         tag_label = ", ".join(tags) if isinstance(tags, list) else tags
-    return f"{KIND_LABELS[kind]} on {tag_label}" if kind and tags else (KIND_LABELS[kind] or tag_label)
+    return f"{KIND_LABELS.get(kind)} on {tag_label}" if ((kind in KIND_LABELS) and tags) else (KIND_LABELS.get(kind) or tag_label)
 
 async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str = DEFAULT_KIND): 
-    # must_have_tags = must_have_tags if isinstance(must_have_tags, list) else [must_have_tags]
+    if must_have_tags:
+        must_have_tags = must_have_tags if isinstance(must_have_tags, list) else [must_have_tags]
     tags, sort_by = must_have_tags, DEFAULT_SORT_BY # starting default 
 
     def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):
@@ -112,7 +113,7 @@ async def render_barista_page(user: User, barista: Barista):
         lambda: beanops.get_tags(barista.tags, None, None, None, 0, DEFAULT_LIMIT), 
         trigger_filter)
 
-def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable, initial_kind: str = DEFAULT_KIND):
+def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable):
     @ui.refreshable
     def render_beans_panel(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):        
         return render_beans_as_extendable_list(

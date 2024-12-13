@@ -167,10 +167,10 @@ class Beansack:
         result = self.beanstore.aggregate(pipeline)
         return next(iter(result))['total_count'] if result else 0
     
-    def get_tags(self, filter, skip = 0, limit = 0):
-        match_filter = {K_TAGS: {"$exists": True}}
-        if filter:
-            match_filter.update(filter)
+    def get_tags(self, beans_in_scope, exclude_from_result, skip = 0, limit = 0):
+        filter = {K_TAGS: {"$exists": True}}
+        if beans_in_scope:
+            filter.update(beans_in_scope)
         # Option 1:
         # for the beans in scope
         # take one bean from each cluster for diversification.
@@ -206,7 +206,7 @@ class Beansack:
         # take the ones that show up the most
         # sort by the number of times the tags appear
         pipeline = [
-            { "$match": match_filter },
+            { "$match": filter },
             { "$unwind": "$tags" },
             {
                 "$group": {
@@ -215,9 +215,11 @@ class Beansack:
                     "trend_score": { "$sum": 1 },
                     "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
-            },
-            { "$sort": TRENDING }
+            }         
         ]
+        if exclude_from_result:
+            pipeline.append({"$match": {"_id": {"$nin": exclude_from_result}}})
+        pipeline.append({"$sort": TRENDING})
         if skip:
             pipeline.append({"$skip": skip})    
         if limit:
@@ -228,14 +230,15 @@ class Beansack:
             query: str = None,
             embedding: list[float] = None, 
             min_score = DEFAULT_VECTOR_SEARCH_SCORE, 
-            filter = None, 
+            beans_in_scope = None, 
+            exclude_from_result = None,
             skip = None,
             limit = DEFAULT_VECTOR_SEARCH_LIMIT
         ) -> list[Bean]:
 
         match_filter = {K_TAGS: {"$exists": True}}
-        if filter:
-            match_filter.update(filter)
+        if beans_in_scope:
+            match_filter.update(beans_in_scope)
         pipeline = [            
             {
                 "$search": {
@@ -276,9 +279,11 @@ class Beansack:
                     "trend_score": { "$sum": 1 },
                     "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
-            },
-            { "$sort": TRENDING }
+            }            
         ]
+        if exclude_from_result:
+            pipeline.append({"$match": {"_id": {"$nin": exclude_from_result}}})
+        pipeline.append({"$sort": TRENDING})
         if skip:
             pipeline.append({"$skip": skip})
         if limit:
