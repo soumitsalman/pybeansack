@@ -14,6 +14,7 @@ MAX_ITEMS_PER_PAGE = 5
 MAX_PAGES = 10
 MAX_TAGS_PER_BEAN = 5
 MAX_RELATED_ITEMS = 5
+MAX_FILTER_TAGS = 7
 
 PRIMARY_COLOR = "#4e392a"
 SECONDARY_COLOR = "#b79579"
@@ -288,8 +289,8 @@ def render_filter_tags(load_tags: Callable, on_selection_changed: Callable):
         else:
             holder.delete() 
 
-    # with ui.scroll_area().classes("w-full h-20 p-0 m-0") as view:
-    with ui.row(align_items="stretch").classes("gap-0 p-0 m-0") as holder:
+    # with ui.scroll_area().classes("h-16 p-0 m-0") as view:
+    with ui.row().classes("gap-0 p-0 m-0 sm:flex-wrap overflow-x-hidden").style("max-width: 100%;") as holder:
         ui.skeleton("rect", width="100%").classes("w-full h-full")
     background_tasks.create_lazy(render(), name=f"tags-{now()}")
     # return view

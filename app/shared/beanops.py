@@ -65,10 +65,8 @@ def vector_search_beans(query: str, accuracy: float, tags: str|list[str]|list[li
 
 @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
 def get_related(url: str, tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
-    bean = db.beanstore.find_one({K_URL: url}, projection={K_CLUSTER_ID: 1})
-    if bean:
-        filter = _create_filter(tags, kinds, sources, None, last_ndays, bean[K_CLUSTER_ID], url)
-        return db.get_beans(filter=filter, skip=start, limit=limit, sort_by=NEWEST_AND_TRENDING, projection=PROJECTION)
+    filter = _create_filter(tags, kinds, sources, None, last_ndays, None, None)
+    return db.sample_related_beans(url=url, filter=filter, limit=limit)
 
 def get_chatters(urls: str|list[str]):
     """Retrieves the latest social media status from different mediums."""
@@ -102,10 +100,10 @@ def count_beans(query: str, accuracy: float, tags: str|list[str]|list[list[str]]
         return db.count_vector_search_beans(query=query, min_score=accuracy, filter=filter, limit=limit)
     return db.count_unique_beans(filter=filter, limit=limit)
 
-@cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
-def count_related_beans(cluster_id: str, url: str, limit: int) -> int:
-    filter = _create_filter(None, None, None, None, cluster_id, url)
-    return db.beanstore.count_documents(filter=filter, limit=limit)
+# @cached(max_size=CACHE_SIZE, ttl=FOUR_HOURS)
+# def count_related_beans(cluster_id: str, url: str, limit: int) -> int:
+#     filter = _create_filter(None, None, None, None, cluster_id, url)
+#     return db.beanstore.count_documents(filter=filter, limit=limit)
     
 def _create_filter(
         tags: str|list[str]|list[list[str]], 

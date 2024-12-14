@@ -130,6 +130,22 @@ class Beansack:
     def get_beans(self, filter, sort_by = None, skip = 0, limit = 0,  projection = None) -> list[Bean]:
         cursor = self.beanstore.find(filter = filter, projection = projection, sort=sort_by, skip = skip, limit=limit)
         return _deserialize_beans(cursor)
+    
+    def sample_related_beans(self, url: str, filter: dict = None, limit: int = 0) -> list[Bean]:
+        if bean := self.beanstore.find_one({K_URL: url}, projection={K_CLUSTER_ID: 1}):
+            match_filter = {
+                K_URL: {"$ne": url},
+                K_CLUSTER_ID: bean[K_CLUSTER_ID]
+            }
+            if filter:
+                match_filter.update(filter)
+            pipeline = [
+                { "$match": match_filter },
+                { "$sample": {"size": limit} },
+                { "$sort": NEWEST_AND_TRENDING }
+            ]
+            return _deserialize_beans(self.beanstore.aggregate(pipeline))
+        return []
 
     def vector_search_beans(self, 
             query: str = None,

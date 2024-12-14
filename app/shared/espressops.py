@@ -47,7 +47,7 @@ class EspressoDB:
         self.baristas = client["espresso"]["baristas"]
         self.embedder = embedder
 
-    @cached(max_size=10, ttl=ONE_DAY) 
+    # @cached(max_size=10, ttl=ONE_DAY) 
     def get_user(self, email: str, linked_account: str = None) -> User|None:
         user = self.users.find_one({"email": email})
         if user:
@@ -81,16 +81,16 @@ class EspressoDB:
     def delete_user(self, email: str):
         self.users.delete_one({"_id": email})
 
-    @cached(max_size=1000, ttl=ONE_DAY) 
+    @cached(max_size=1000, ttl=ONE_HOUR) 
     def get_barista(self, id: str) -> Barista:
         return Barista(**self.baristas.find_one({ID: id}, projection={EMBEDDING: 0}))
 
-    @cached(max_size=10, ttl=ONE_DAY) 
+    @cached(max_size=10, ttl=ONE_HOUR) 
     def get_baristas(self, ids: list[str]):
         filter = {ID: {"$in": ids}} if ids else {}
         return [Barista(**barista) for barista in self.baristas.find(filter, sort={TITLE: 1}, projection={EMBEDDING: 0})]
     
-    @cached(max_size=10, ttl=ONE_DAY) 
+    @cached(max_size=10, ttl=ONE_HOUR) 
     def sample_baristas(self, limit: int):
         pipeline = [
             { "$sample": {"size": limit} },
@@ -98,13 +98,13 @@ class EspressoDB:
         ]
         return [Barista(**barista) for barista in self.baristas.aggregate(pipeline)]
     
-    @cached(max_size=10, ttl=ONE_DAY) 
+    @cached(max_size=10, ttl=ONE_HOUR) 
     def get_following_baristas(self, user: User):
         following = self.users.find_one({ID: user.email}, {"following": 1})
         if following:
             return self.get_baristas(following["following"])
 
-    @cached(max_size=10, ttl=ONE_DAY) 
+    @cached(max_size=10, ttl=ONE_HOUR) 
     def search_baristas(self, query: str|list[str]):
         pipeline = [
             {   "$match": {"$text": {"$search": query if isinstance(query, str) else " ".join(query)}} },            

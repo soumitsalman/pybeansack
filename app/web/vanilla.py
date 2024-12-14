@@ -87,7 +87,7 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
     render_page(
         user, 
         tags_banner_text(must_have_tags, kind), 
-        lambda: beanops.get_tags(must_have_tags, None, None, None, 0, DEFAULT_LIMIT), 
+        lambda: beanops.get_tags(must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
         trigger_filter)
 
 async def render_barista_page(user: User, barista: Barista):    
@@ -110,7 +110,7 @@ async def render_barista_page(user: User, barista: Barista):
     render_page(
         user, 
         barista.title, 
-        lambda: beanops.get_tags(barista.tags, None, None, None, 0, DEFAULT_LIMIT), 
+        lambda: beanops.get_tags(barista.tags, None, None, None, 0, MAX_FILTER_TAGS), 
         trigger_filter)
 
 def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable):

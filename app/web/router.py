@@ -31,12 +31,15 @@ jwt_token_needs_refresh = lambda data: (datetime.now() - JWT_TOKEN_REFRESH_WINDO
 logger: logging.Logger = logging.getLogger(APP_NAME)
 oauth = OAuth()
 
-def log(function: str, user: str|User, **kwargs):
-    if user:        
-        kwargs["user_id"] = user if isinstance(user, str) else user.email
-    else:
-        kwargs["user_id"] = app.storage.browser.get("id")
-    
+def log(function: str, user: str|dict|User, **kwargs):
+    kwargs["user_id"] = app.storage.browser.get("id")
+    if isinstance(user, User):        
+        kwargs["user_id"] = user.email
+    elif isinstance(user, dict):
+        kwargs["user_id"] = user["email"]
+    elif isinstance(user, str):
+        kwargs["user_id"] = user
+
     kwargs = {key: ("|".join(value) if isinstance(value, list) else value) for key, value in kwargs.items() if value}
     logger.info(function, extra=kwargs)
 
@@ -163,14 +166,14 @@ def process_oauth_result(result: dict):
         return RedirectResponse("/")
     else:
         login_user(result['userinfo'])
-        app.storage.user[REGISTRATION_INFO_KEY] = result['userinfo']
+        app.storage.browser[REGISTRATION_INFO_KEY] = result['userinfo']
         return RedirectResponse("/user/register")
 
 def extract_registration_info():
-    val = app.storage.user.get(REGISTRATION_INFO_KEY)
+    val = app.storage.browser.get(REGISTRATION_INFO_KEY)
     if not val:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    del app.storage.user[REGISTRATION_INFO_KEY]
+    del app.storage.browser[REGISTRATION_INFO_KEY]
     return val
 
 @app.get("/oauth/google/login")
@@ -233,13 +236,13 @@ async def delete_user(user: espressops.User = Depends(extract_user)):
 @app.get("/docs/{doc_id}")
 async def document(
     user: espressops.User = Depends(extract_user),
-    doc_id: str = Depends(validate_doc)
+    doc_id: str = Depends(validate_doc, use_cache=True)
 ):
     log('docs', user, page_id=doc_id)
     return FileResponse(doc_id, media_type="text/markdown")
     
 @app.get("/images/{image_id}")
-async def image(image_id: str = Depends(validate_image)):    
+async def image(image_id: str = Depends(validate_image, use_cache=True)):    
     return FileResponse(image_id, media_type="image/png")
 
 @ui.page("/", title="Espresso")
