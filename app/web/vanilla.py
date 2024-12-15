@@ -4,10 +4,11 @@ from app.shared.messages import *
 from app.shared.espressops import *
 from app.shared.beanops import *
 from app.pybeansack.datamodels import *
+from app.web.renderer import *
 from app.pybeansack.utils import ndays_ago
 from nicegui import ui
 from icecream import ic
-from app.web.renderer import *
+import inflect
 
 KIND_LABELS = {NEWS: "News", POST: "Posts", BLOG: "Blogs"}
 TRENDING, LATEST = "Trending", "Latest"
@@ -26,10 +27,10 @@ async def render_home(user):
         with ui.grid().classes(CONTENT_GRID_CLASSES):
             # render trending blogs, posts and news
             for id, label in KIND_LABELS.items():
-                with render_card_container(label, header_classes="text-h6 bg-dark").classes("bg-transparent"):
+                with render_card_container(label, header_classes="text-h6 bg-dark", on_click=create_navigation_route("/beans", kind=id)).classes("bg-transparent"):
                     # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
-                    render_beans(user, lambda kind_id=id: beanops.get_trending_beans(tags=None, kinds=kind_id, sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
-                        if beanops.count_beans(query=None, accuracy=None, tags=None, kinds=id, sources=None, last_ndays=1, limit=1) else \
+                    render_beans(user, lambda kind_id=id: beanops.get_trending_beans(embedding=None, accuracy=None, tags=None, kinds=kind_id, sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
+                        if beanops.count_beans(query=None, embedding=None, accuracy=None, tags=None, kinds=id, sources=None, last_ndays=1, limit=1) else \
                             render_error_text(NOTHING_TRENDING)
             # render trending pages
             with render_card_container("Explore"):                
@@ -37,7 +38,7 @@ async def render_home(user):
     render_footer()
 
 async def render_trending_snapshot(user):
-    baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS)
+    baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS, projection=None)
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
@@ -45,22 +46,25 @@ async def render_trending_snapshot(user):
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
             for barista in baristas:
                 with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap bg-dark").classes("bg-transparent"):
-                    if beanops.count_beans(query=None, accuracy=None, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
-                        get_beans_func = lambda barista=barista: list(chain(*[
-                            beanops.get_newest_beans(tags=barista.tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=0, limit=MIN_LIMIT) \
+                    if beanops.count_beans(query=None, embedding=barista.embedding, accuracy=barista.accuracy, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
+                        get_beans_func = lambda b=barista: list(chain(*[
+                            beanops.get_newest_beans(embedding=b.embedding, accuracy=b.accuracy, tags=b.tags, kinds=kind, sources=b.sources, last_ndays=MIN_WINDOW, start=0, limit=MIN_LIMIT) \
                             for kind in KIND_LABELS.keys()
                         ]))
                         render_beans(user, get_beans_func, ui.grid().classes(CONTENT_GRID_CLASSES))
-                        pass
                     else:
                         render_error_text(NOTHING_TRENDING)                            
     render_footer()
 
+inflect_engine = inflect.engine()
 def tags_banner_text(tags: str|list[str], kind: str = None):
-    tag_label = None
     if tags:
-        tag_label = ", ".join(tags) if isinstance(tags, list) else tags
-    return f"{KIND_LABELS.get(kind)} on {tag_label}" if ((kind in KIND_LABELS) and tags) else (KIND_LABELS.get(kind) or tag_label)
+        return inflect_engine.join(tags)
+    else:
+        return inflect_engine.join(list(KIND_LABELS.values()))
+    # if tags:
+    #     return ", ".join(tags) if isinstance(tags, list) else tags
+    # return ", ".join(KIND_LABELS.values())
 
 async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str = DEFAULT_KIND): 
     if must_have_tags:
@@ -80,15 +84,17 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
             sort_by = filter_sort_by
 
         return lambda start, limit: \
-            beanops.get_trending_beans(tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit) \
+            beanops.get_trending_beans(embedding=None, accuracy=None, tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit) \
                 if sort_by == TRENDING else \
-                    beanops.get_newest_beans(tags=tags, kinds=kind, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
+                    beanops.get_newest_beans(embedding=None, accuracy=None, tags=tags, kinds=kind, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
     
     render_page(
         user, 
         tags_banner_text(must_have_tags, kind), 
-        lambda: beanops.get_tags(must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
-        trigger_filter)
+        lambda: beanops.get_tags(None, None, None, must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
+        trigger_filter,
+        kind
+    )
 
 async def render_barista_page(user: User, barista: Barista):    
     tags, kind, sort_by = barista.tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default values
@@ -103,17 +109,19 @@ async def render_barista_page(user: User, barista: Barista):
             sort_by = filter_sort_by
 
         return lambda start, limit: \
-            beanops.get_trending_beans(tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
+            beanops.get_trending_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
                 if sort_by == TRENDING else \
-                    beanops.get_newest_beans(tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
+                    beanops.get_newest_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
 
     render_page(
         user, 
         barista.title, 
-        lambda: beanops.get_tags(barista.tags, None, None, None, 0, MAX_FILTER_TAGS), 
-        trigger_filter)
+        lambda: beanops.get_tags(None, barista.embedding, barista.accuracy, barista.tags, None, barista.sources, None, 0, MAX_FILTER_TAGS), 
+        trigger_filter,
+        kind
+    )
 
-def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable):
+def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable, initial_kind: str):
     @ui.refreshable
     def render_beans_panel(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):        
         return render_beans_as_extendable_list(
@@ -138,7 +146,7 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
             with ui.row(wrap=False, align_items="stretch"):
                 ui.toggle(
                     options=KIND_LABELS,
-                    value=DEFAULT_KIND,
+                    value=initial_kind,
                     on_change=lambda e: render_beans_panel.refresh(filter_kind=(e.sender.value or REMOVE_FILTER))).props(TOGGLE_OPTIONS_PROPS)
                 
                 ui.toggle(
@@ -179,8 +187,8 @@ async def render_search(user: User, query: str, accuracy: float):
         
         return render_paginated_beans(
             user, 
-            lambda start, limit: beanops.vector_search_beans(query=prep_query(query), accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
-            lambda: beanops.count_beans(query=query, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
+            lambda start, limit: beanops.vector_search_beans(query=prep_query(query), embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
+            lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
 
     render_header(user)
     with ui.row(wrap=False).classes("w-full"):

@@ -16,24 +16,28 @@ DESCRIPTION = "description"
 EMBEDDING = "embedding"
 
 DEFAULT_BARISTAS = [
-    "artificial-intelligence--ai-",
-    "automotive---logistics",
+    "artificial-intelligence",
+    "automotive",
     "aviation---aerospace",
     "business---finance",
-    "career---professional-development",
+    "career---professional-skills",
     "cryptocurrency---blockchain",
-    "cybersecurity",
-    "entrepreneurship---startups",
-    "environment---clean-energy",
-    "food---health",
+    "cybersecurity",    
+    # "environment---clean-energy",
+    # "food---health",
     "gadgets---iot",
     "government---politics",
+    "hackernews",
     "hpc---datacenters",
-    "management---leadership",
+    # "leadership---people-management",
+    # "logistics---transportation",
+    "reddit",
     "robotics---manufacturing",
     "science---mathematics",
     "software-engineering",
-    "video-games---virtual-reality"
+    "solar-energy",
+    "startups---vcs",
+    # "video-games---virtual-reality"
 ]
 
 class EspressoDB: 
@@ -81,14 +85,14 @@ class EspressoDB:
     def delete_user(self, email: str):
         self.users.delete_one({"_id": email})
 
-    @cached(max_size=1000, ttl=ONE_HOUR) 
+    # @cached(max_size=1000, ttl=ONE_HOUR) 
     def get_barista(self, id: str) -> Barista:
-        return Barista(**self.baristas.find_one({ID: id}, projection={EMBEDDING: 0}))
+        return Barista(**self.baristas.find_one({ID: id}))
 
-    @cached(max_size=10, ttl=ONE_HOUR) 
-    def get_baristas(self, ids: list[str]):
+    # @cached(max_size=10, ttl=ONE_HOUR) 
+    def get_baristas(self, ids: list[str], projection: dict = {EMBEDDING: 0}):
         filter = {ID: {"$in": ids}} if ids else {}
-        return [Barista(**barista) for barista in self.baristas.find(filter, sort={TITLE: 1}, projection={EMBEDDING: 0})]
+        return [Barista(**barista) for barista in self.baristas.find(filter, sort={TITLE: 1}, projection=projection)]
     
     @cached(max_size=10, ttl=ONE_HOUR) 
     def sample_baristas(self, limit: int):

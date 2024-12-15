@@ -2,7 +2,7 @@ from datetime import datetime as dt, timedelta, timezone
 import math
 import tiktoken
 
-DEFAULT_VECTOR_SEARCH_SCORE = 0.75
+DEFAULT_VECTOR_SEARCH_SCORE = 0.8
 DEFAULT_VECTOR_SEARCH_LIMIT = 1000
 
 _encoding = tiktoken.get_encoding("cl100k_base")

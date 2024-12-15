@@ -150,7 +150,7 @@ class Beansack:
     def vector_search_beans(self, 
             query: str = None,
             embedding: list[float] = None, 
-            min_score = DEFAULT_VECTOR_SEARCH_SCORE, 
+            min_score = None, 
             filter = None, 
             sort_by = None,
             skip = None,
@@ -227,9 +227,9 @@ class Beansack:
             {
                 "$group": {
                     "_id": "$tags",
-                    "tags": {"$first": "$tags"},
+                    # "tags": {"$first": "$tags"},
                     "trend_score": { "$sum": 1 },
-                    "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
+                    # "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
             }         
         ]
@@ -240,12 +240,13 @@ class Beansack:
             pipeline.append({"$skip": skip})    
         if limit:
             pipeline.append({"$limit": limit})   
-        return _deserialize_beans(self.beanstore.aggregate(pipeline))
+        return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]
+        # return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
     def vector_search_tags(self, 
             query: str = None,
             embedding: list[float] = None, 
-            min_score = DEFAULT_VECTOR_SEARCH_SCORE, 
+            min_score = None, 
             beans_in_scope = None, 
             exclude_from_result = None,
             skip = None,
@@ -271,7 +272,7 @@ class Beansack:
                 "$addFields": { "search_score": {"$meta": "searchScore"} }
             },
             {
-                "$match": { "search_score": {"$gte": min_score} }
+                "$match": { "search_score": {"$gte": min_score or DEFAULT_VECTOR_SEARCH_SCORE} }
             },
             # NOTE: removing clustering and only keeping the tags that show up the most
             # {
@@ -290,21 +291,22 @@ class Beansack:
             { "$unwind": "$tags" },
             {
                 "$group": {
-                    "_id": "$tags",
-                    "tags": {"$first": "$tags"},
-                    "trend_score": { "$sum": 1 },
-                    "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
+                    K_ID: "$tags",
+                    # "tags": {"$first": "$tags"},
+                    K_TRENDSCORE: { "$sum": 1 },
+                    # "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
                 }
             }            
         ]
         if exclude_from_result:
-            pipeline.append({"$match": {"_id": {"$nin": exclude_from_result}}})
+            pipeline.append({"$match": {K_ID: {"$nin": exclude_from_result}}})
         pipeline.append({"$sort": TRENDING})
         if skip:
             pipeline.append({"$skip": skip})
         if limit:
             pipeline.append({"$limit": limit})
-        return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
+        return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]
+        # return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
 
     def get_cluster_sizes(self, urls: list[str]) -> list:
         pipeline = [            
@@ -386,7 +388,7 @@ class Beansack:
                         "vector": embedding or self.embedder.embed_query(text),
                         "path":   K_EMBEDDING,
                         "filter": filter or {},
-                        "k":      DEFAULT_VECTOR_SEARCH_LIMIT,
+                        "k":      DEFAULT_VECTOR_SEARCH_LIMIT if limit > 1 else 1, # if limit is 1, then we don't need to search for more than 1
                     }
                 }
             },
@@ -394,7 +396,7 @@ class Beansack:
                 "$addFields": { "search_score": {"$meta": "searchScore"} }
             },
             {
-                "$match": { "search_score": {"$gte": min_score} }
+                "$match": { "search_score": {"$gte": min_score or DEFAULT_VECTOR_SEARCH_SCORE} }
             },
             {   
                 "$sort": sort_by

@@ -17,3 +17,4 @@ humanize
 memoization
 azure-monitor-opentelemetry
 python-dotenv
+inflect

@@ -9,6 +9,7 @@ from app.shared import utils, beanops, espressops
 from app.shared.messages import *
 from urllib.parse import urlencode
 from nicegui import ui, background_tasks, run
+from icecream import ic
 
 MAX_ITEMS_PER_PAGE = 5
 MAX_PAGES = 10
@@ -156,7 +157,7 @@ def render_beans_as_extendable_list(user: User, load_beans: Callable, container:
         current_start += MAX_ITEMS_PER_PAGE # moving the cursor
         if len(beans) <= MAX_ITEMS_PER_PAGE:
             more_btn.delete()
-        return beans
+        return beans[:MAX_ITEMS_PER_PAGE]
 
     async def next_page():
         with disable_button(more_btn):
@@ -277,15 +278,13 @@ def render_filter_tags(load_tags: Callable, on_selection_changed: Callable):
         on_selection_changed(selected_tags) 
 
     async def render():
-        beans = await run.io_bound(load_tags)
-        if beans:
+        tags = await run.io_bound(load_tags)
+        if tags:
             holder.clear()
             with holder:
-                [ui.chip(
-                    bean.tags, 
-                    selectable=True, 
-                    color="dark", 
-                    on_selection_change=lambda e: change_tag_selection(e.sender.text, e.sender.selected)).props("flat filled").classes(" h-full") for bean in beans]
+                [ui.chip(tag, 
+                    selectable=True, color="dark", 
+                    on_selection_change=lambda e: change_tag_selection(e.sender.text, e.sender.selected)).props("flat filled").classes(" h-full") for tag in tags]
         else:
             holder.delete() 
 
