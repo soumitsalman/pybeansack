@@ -187,7 +187,7 @@ async def google_oauth_redirect(request: Request):
         token = await oauth.google.authorize_access_token(request)
         return process_oauth_result(token)
     except Exception as err:
-        log("oauth_error", None, provider="google", error=str(err))
+        log("oauth_error", None, provider="google", error=str(ic(err)))
         return RedirectResponse("/")
 
 @app.get("/oauth/slack/login")
@@ -201,7 +201,7 @@ async def slack_oauth_redirect(request: Request):
         token = await oauth.slack.authorize_access_token(request)
         return process_oauth_result(token)  
     except Exception as err:
-        log("oauth_error", None, provider="slack", error=str(err))
+        log("oauth_error", None, provider="slack", error=str(ic(err)))
         return RedirectResponse("/")
     
 @app.get("/oauth/linkedin/login")
@@ -250,7 +250,7 @@ async def home(user: espressops.User = Depends(extract_user)):
     log('home', user)
     await vanilla.render_home(user)
 
-@ui.page("/beans", title="Espresso: Beans")
+@ui.page("/beans", title="Espresso Beans")
 async def beans(
     user: espressops.User = Depends(extract_user),
     tag: list[str] | None = Query(max_length=beanops.MAX_LIMIT, default=None),
@@ -259,7 +259,7 @@ async def beans(
     log('beans', user, tag=tag, kind=kind)
     await vanilla.render_beans_page(user, tag, kind)
 
-@ui.page("/baristas", title="Espresso: Snapshot")
+@ui.page("/baristas", title="Espresso Shots")
 async def snapshot(user: User = Depends(extract_user)): 
     log('baristas', user) 
     await vanilla.render_trending_snapshot(user)
@@ -272,7 +272,7 @@ async def barista(
     log('baristas', user, page_id=barista.id) 
     await vanilla.render_barista_page(user, barista)
 
-@ui.page("/search", title="Espresso: Search")
+@ui.page("/search", title="Espresso Search")
 async def search(
     user: espressops.User = Depends(extract_user),
     q: str = None,
@@ -310,5 +310,5 @@ def run():
         favicon="./images/favicon.ico", 
         port=8080, 
         show=False,
-        uvicorn_reload_includes="*.py,*/web_ui/styles.css"
+        uvicorn_reload_includes="*.py,*/web/styles.css"
     )

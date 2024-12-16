@@ -5,6 +5,7 @@ from app.shared.espressops import *
 from app.shared.beanops import *
 from app.pybeansack.datamodels import *
 from app.web.renderer import *
+from app.web.custom_ui import *
 from app.pybeansack.utils import ndays_ago
 from nicegui import ui
 from icecream import ic
@@ -16,7 +17,7 @@ DEFAULT_SORT_BY = LATEST
 SORT_BY_LABELS = {LATEST: LATEST, TRENDING: TRENDING}
 
 REMOVE_FILTER = "remove-filter"
-CONTENT_GRID_CLASSES = "w-full grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+CONTENT_GRID_CLASSES = "w-full m-0 p-0 grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
 BARISTAS_PANEL_CLASSES = "w-1/4 gt-xs"
 TOGGLE_OPTIONS_PROPS = "unelevated rounded no-caps color=dark toggle-color=primary"
 
@@ -43,28 +44,30 @@ async def render_trending_snapshot(user):
     render_header(user)
     with ui.row(wrap=False).classes("w-full"): 
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+        # with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+        with ui.grid().classes(CONTENT_GRID_CLASSES):
             for barista in baristas:
                 with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap bg-dark").classes("bg-transparent"):
                     if beanops.count_beans(query=None, embedding=barista.embedding, accuracy=barista.accuracy, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
-                        get_beans_func = lambda b=barista: list(chain(*[
-                            beanops.get_newest_beans(embedding=b.embedding, accuracy=b.accuracy, tags=b.tags, kinds=kind, sources=b.sources, last_ndays=MIN_WINDOW, start=0, limit=MIN_LIMIT) \
-                            for kind in KIND_LABELS.keys()
-                        ]))
-                        render_beans(user, get_beans_func, ui.grid().classes(CONTENT_GRID_CLASSES))
+                        # get_beans_func = lambda b=barista: list(chain(*[
+                        #     beanops.get_newest_beans(embedding=b.embedding, accuracy=b.accuracy, tags=b.tags, kinds=kind, sources=b.sources, last_ndays=MIN_WINDOW, start=0, limit=MIN_LIMIT) \
+                        #     for kind in KIND_LABELS.keys()
+                        # ]))
+                        get_beans_func = lambda b=barista: beanops.get_newest_beans(
+                            embedding=b.embedding, 
+                            accuracy=b.accuracy, 
+                            tags=b.tags, 
+                            kinds=None, 
+                            sources=b.sources, 
+                            last_ndays=MIN_WINDOW, 
+                            start=0, limit=MIN_LIMIT)
+                        render_beans(user, get_beans_func)
                     else:
                         render_error_text(NOTHING_TRENDING)                            
     render_footer()
 
 inflect_engine = inflect.engine()
-def tags_banner_text(tags: str|list[str], kind: str = None):
-    if tags:
-        return inflect_engine.join(tags)
-    else:
-        return inflect_engine.join(list(KIND_LABELS.values()))
-    # if tags:
-    #     return ", ".join(tags) if isinstance(tags, list) else tags
-    # return ", ".join(KIND_LABELS.values())
+tags_banner_text = lambda tags: inflect_engine.join(tags) if tags else inflect_engine.join(list(KIND_LABELS.values()))
 
 async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str = DEFAULT_KIND): 
     if must_have_tags:
@@ -90,10 +93,12 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
     
     render_page(
         user, 
-        tags_banner_text(must_have_tags, kind), 
+        tags_banner_text(must_have_tags), 
         lambda: beanops.get_tags(None, None, None, must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
         trigger_filter,
-        kind
+        is_page_followed=False,
+        page_follow_func=None,
+        initial_kind=kind
     )
 
 async def render_barista_page(user: User, barista: Barista):    
@@ -113,15 +118,20 @@ async def render_barista_page(user: User, barista: Barista):
                 if sort_by == TRENDING else \
                     beanops.get_newest_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
 
+    async def follow_unfollow(value: bool):
+        return espressops.db.follow_barista(user.email, barista.id) if value else espressops.db.unfollow_barista(user.email, barista.id)
+    
     render_page(
         user, 
-        barista.title, 
+        barista.title,
         lambda: beanops.get_tags(None, barista.embedding, barista.accuracy, barista.tags, None, barista.sources, None, 0, MAX_FILTER_TAGS), 
         trigger_filter,
-        kind
+        is_page_followed=barista.id in user.following if user else False,
+        page_follow_func=follow_unfollow if user else None,
+        initial_kind=kind
     )
 
-def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable, initial_kind: str):
+def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable, is_page_followed: bool, page_follow_func: Callable, initial_kind: str):
     @ui.refreshable
     def render_beans_panel(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):        
         return render_beans_as_extendable_list(
@@ -134,11 +144,17 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
     with ui.row(wrap=False).classes("w-full"): 
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
-            with ui.row(wrap=False, align_items="start").classes("q-mb-md w-full"):
+            with ui.row(wrap=False, align_items="start").classes("m-0"):
                 ui.label(page_title).classes("text-h4 banner")
-                # if user:
-                #     ui.button("Follow", icon="add").props("unelevated")
-
+                    
+                if user and page_follow_func:
+                    SwitchButton(
+                        value=is_page_followed,
+                        unswitched_text="Follow", 
+                        switched_text="Unfollow", 
+                        unswitched_icon="playlist_add", 
+                        switched_icon="playlist_remove"
+                    ).props("unelevated").on_click(lambda e: page_follow_func(e.sender.value))
             render_filter_tags(
                 load_tags=get_filter_tags_func, 
                 on_selection_changed=lambda selected_tags: render_beans_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER)))
@@ -179,15 +195,15 @@ async def render_search(user: User, query: str, accuracy: float):
         if filter_last_ndays:
             last_ndays = filter_last_ndays
 
-        if kind == SAVED_PAGE:
-            result = espressops.search_baristas(query) if query else None
+        if kind == SAVED_PAGE and query:
+            result = espressops.db.search_baristas(query)
             return render_barista_names(user, result) \
                 if result else \
                     render_error_text(NOTHING_FOUND)
         
         return render_paginated_beans(
             user, 
-            lambda start, limit: beanops.vector_search_beans(query=prep_query(query), embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
+            lambda start, limit: beanops.vector_search_beans(query=prep_query(query), accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
             lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
 
     render_header(user)

@@ -37,10 +37,18 @@ body {
     max-width: 1200ch; 
 }
 
+.ellipsis-60 {
+    overflow: hidden; 
+    text-overflow: ellipsis; 
+    max-width: 60ch; 
+    white-space: nowrap;
+}
+
 .tag * {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 30ch; 
+    white-space: nowrap;
 }
 
 .banner {
@@ -48,7 +56,8 @@ body {
     text-overflow: ellipsis;
     width: 100%;
     max-width: 100%;
-    box-sizing: border-box;
+    box-sizing: border-box;    
+    white-space: nowrap;
 }
 
 .wide-no-p-m {

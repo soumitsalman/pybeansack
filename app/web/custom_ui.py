@@ -6,8 +6,7 @@ from datetime import datetime as dt
 from itertools import groupby
 from typing import Callable
 from icecream import ic
-from shared import beanops
-from shared.utils import *
+from app.shared.utils import *
 
 def groupby_date(items: list, date_field):
     flatten_date = lambda item: dt.fromtimestamp(date_field(item)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -34,13 +33,13 @@ class BindableTimeline(ui.timeline):
                     date = self.date_field(item)
                     with ui.timeline_entry(
                         title=self.header_field(item), 
-                        subtitle=(beanops.naturalday(date) if isinstance(date, (int, float)) else date)):
+                        subtitle=(naturalday(date) if isinstance(date, (int, float)) else date)):
                         self.render_item(item)
             else:                
                 for date, group in groupby_date(items, self.date_field).items():
                     with ui.timeline_entry(
                         title=", ".join(self.header_field(item) for item in group), 
-                        subtitle=(beanops.naturalday(date) if isinstance(date, (int, float)) else date)):
+                        subtitle=(naturalday(date) if isinstance(date, (int, float)) else date)):
                         for item in group:
                             self.render_item(item)
 
@@ -127,18 +126,27 @@ class HighlightableItem(ui.item):
         bind_from(self, "highlight", target_object, target_name, backward)
         return self
     
-class ExpandButton(ui.button):
-    def __init__(self, icon="unfold_more", expanded_icon="unfold_less", *args, **kwargs):        
-        self.value = False
-        self.expanded_icon = expanded_icon
-        self.unexpanded_icon = icon
-        super().__init__(*args, **kwargs)
-        self.props("icon-right="+self.unexpanded_icon).on_click(self.toggle)
+class SwitchButton(ui.button):
+    value = BindableProperty(on_change=lambda sender, value: cast(Self, sender).render(value))
+    switched_icon: str
+    unswitched_icon: str
+    switched_text: str
+    unswitched_text: str
+
+    def __init__(self, value=False, unswitched_text: str = "On", switched_text: str = "Off", unswitched_icon="unfold_more", switched_icon="unfold_less", *args, **kwargs):        
+        super().__init__(unswitched_text, icon=unswitched_icon, *args, **kwargs)
+        self.value = value
+        self.switched_text = switched_text
+        self.unswitched_text = unswitched_text
+        self.switched_icon = switched_icon
+        self.unswitched_icon = unswitched_icon
+        self.on_click(lambda: self.render(not self.value))
+        self.render(value)
     
-    def toggle(self):
-        self.value = not self.value
-        self.props("icon-right="+(self.expanded_icon if self.value else self.unexpanded_icon))
-      
+    def render(self, value):
+        self.value = value
+        self.set_icon(self.switched_icon if self.value else self.unswitched_icon)
+        self.set_text(self.switched_text if self.value else self.unswitched_text)
     
 class BindablePagination(ui.pagination):
     max_pages: int

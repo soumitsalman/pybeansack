@@ -4,9 +4,10 @@ import threading
 from typing import Callable
 from app.pybeansack.utils import *
 from app.pybeansack.datamodels import *
-from app.shared.datamodel import *
-from app.shared import utils, beanops, espressops
+from app.shared.utils import *
 from app.shared.messages import *
+from app.shared.datamodel import *
+from app.shared import beanops, espressops
 from urllib.parse import urlencode
 from nicegui import ui, background_tasks, run
 from icecream import ic
@@ -71,7 +72,7 @@ def create_barista_route(barista: espressops.Barista):
 
 def create_search_target(text):
     return create_navigation_target("/search", q=text) \
-        if not utils.is_valid_url(text) else \
+        if not is_valid_url(text) else \
             create_navigation_target("/search", url=text)
 
 def render_header(user):
@@ -85,7 +86,7 @@ def render_header(user):
             
         # TODO: make this pull up side panel
         # bookmarks browse library_books
-        ui.button(icon="bookmarks", on_click=create_navigation_route("/baristas")).props("unelevated").classes("lt-sm")
+        ui.button(icon="library_books", on_click=create_navigation_route("/baristas")).props("unelevated").classes("lt-sm")
         ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-sm")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
@@ -221,7 +222,7 @@ def render_bean_header(user: User, bean: Bean):
 
 def render_bean_stats(user: User, bean: Bean): 
     with ui.row(align_items="stretch").classes("w-full") as view:       
-        ui.label(f"{beanops.naturalday(bean.created or bean.updated)}'s {bean.kind}")
+        ui.label(f"{naturalday(bean.created or bean.updated)}'s {bean.kind}")
         if bean.comments:
             ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")
         if bean.likes:
