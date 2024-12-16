@@ -11,6 +11,7 @@ from app.pybeansack.embedding import *
 from app.shared import beanops, espressops
 from app.web import vanilla
 from app.shared.datamodel import *
+from app.shared.utils import log
 
 import jwt
 from datetime import datetime, timedelta
@@ -27,21 +28,10 @@ JWT_TOKEN_REFRESH_WINDOW = timedelta(hours=1) # TODO: change this later to 5 min
 
 jwt_token_exp = lambda: datetime.now() + JWT_TOKEN_LIFETIME
 jwt_token_needs_refresh = lambda data: (datetime.now() - JWT_TOKEN_REFRESH_WINDOW).timestamp() < data['exp']
+user_id = lambda user: user.email if user else app.storage.browser.get("id")
 
 logger: logging.Logger = logging.getLogger(APP_NAME)
 oauth = OAuth()
-
-def log(function: str, user: str|dict|User, **kwargs):
-    kwargs["user_id"] = app.storage.browser.get("id")
-    if isinstance(user, User):        
-        kwargs["user_id"] = user.email
-    elif isinstance(user, dict):
-        kwargs["user_id"] = user["email"]
-    elif isinstance(user, str):
-        kwargs["user_id"] = user
-
-    kwargs = {key: ("|".join(value) if isinstance(value, list) else value) for key, value in kwargs.items() if value}
-    logger.info(function, extra=kwargs)
 
 def create_jwt_token(email: str):
     data = {
@@ -56,7 +46,7 @@ def decode_jwt_token(token: str):
         data = jwt.decode(token, APP_STORAGE_SECRET, algorithms=["HS256"], verify=True)
         return data if (data and "email" in data) else None
     except Exception as err:
-        log("JWT token decode error", None, error=str(err))
+        log("jwt_token_decode_error", app.storage.browser.get("id"), error=str(err))
         return None
 
 @app.on_startup
@@ -115,7 +105,7 @@ def initialize_server():
         user_agent=APP_NAME
     )    
     
-    logger.info("Web UI server initialized")
+    log("server_initialized")
 
 def extract_barista(barista_id: str) -> Barista:
     barista_id = barista_id.lower()
@@ -152,12 +142,18 @@ def extract_user():
     #     app.storage.browser[JWT_TOKEN_KEY] = create_jwt_token(data["email"])
     return user
 
+def logged_in_user():
+    user = extract_user()
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return user
+
 REGISTRATION_INFO_KEY = "registration_info"
 
 def login_user(user: dict|User):
     email = user.email if isinstance(user, User) else user['email']
     app.storage.browser[JWT_TOKEN_KEY] = create_jwt_token(email)
-    log("login_user", email)
+    log("login_user", user_id=email)
 
 def process_oauth_result(result: dict):
     existing_user = espressops.db.get_user(result['userinfo']['email'], result['userinfo']['iss'])
@@ -178,7 +174,7 @@ def extract_registration_info():
 
 @app.get("/oauth/google/login")
 async def google_oauth_login(request: Request):
-    log("oauth_login", None, provider="google")
+    log("oauth_login", user_id=app.storage.browser.get("id"), provider="google")
     return await oauth.google.authorize_redirect(request, os.getenv("BASE_URL") + "/oauth/google/redirect")
 
 @app.get("/oauth/google/redirect")
@@ -187,12 +183,12 @@ async def google_oauth_redirect(request: Request):
         token = await oauth.google.authorize_access_token(request)
         return process_oauth_result(token)
     except Exception as err:
-        log("oauth_error", None, provider="google", error=str(ic(err)))
+        log("oauth_error", user_id=app.storage.browser.get("id"), provider="google", error=str(ic(err)))
         return RedirectResponse("/")
 
 @app.get("/oauth/slack/login")
 async def slack_oauth_login(request: Request):
-    log("oauth_login", None, provider="slack")
+    log("oauth_login", user_id=app.storage.browser.get("id"), provider="slack")
     return await oauth.slack.authorize_redirect(request, os.getenv("BASE_URL") + "/oauth/slack/redirect")
 
 @app.get("/oauth/slack/redirect")
@@ -201,12 +197,12 @@ async def slack_oauth_redirect(request: Request):
         token = await oauth.slack.authorize_access_token(request)
         return process_oauth_result(token)  
     except Exception as err:
-        log("oauth_error", None, provider="slack", error=str(ic(err)))
+        log("oauth_error", user_id=app.storage.browser.get("id"), provider="slack", error=str(ic(err)))
         return RedirectResponse("/")
     
 @app.get("/oauth/linkedin/login")
 async def linkedin_oauth_login(request: Request):
-    log("oauth_login", None, provider="linkedin")
+    log("oauth_login", user_id=app.storage.browser.get("id"), provider="linkedin")
     return await oauth.linkedin.authorize_redirect(request, os.getenv("BASE_URL") + "/oauth/linkedin/redirect")
 
 @app.get("/oauth/linkedin/redirect")
@@ -215,19 +211,19 @@ async def linkedin_oauth_redirect(request: Request):
         token = await oauth.linkedin.authorize_access_token(request)
         return process_oauth_result(token) 
     except Exception as err:
-        log("oauth_error", None, provider="linkedin", error=str(err))
+        log("oauth_error", user_id=app.storage.browser.get("id"), provider="linkedin", error=str(err))
         return RedirectResponse("/")
 
 @app.get("/user/me/logout")
-async def logout_user(user: espressops.User = Depends(extract_user)):
-    log("logout_user", user)
+async def logout_user(user: espressops.User = Depends(logged_in_user)):
+    log("logout_user", user_id=user_id(user))
     if JWT_TOKEN_KEY in app.storage.browser:
         del app.storage.browser[JWT_TOKEN_KEY]
     return RedirectResponse("/")
 
 @app.get("/user/me/delete")
-async def delete_user(user: espressops.User = Depends(extract_user)):
-    log("delete_user", user)
+async def delete_user(user: espressops.User = Depends(logged_in_user)):
+    log("delete_user", user_id=user_id(user))
     espressops.db.delete_user(user.email)
     if JWT_TOKEN_KEY in app.storage.browser:
         del app.storage.browser[JWT_TOKEN_KEY]
@@ -238,7 +234,7 @@ async def document(
     user: espressops.User = Depends(extract_user),
     doc_id: str = Depends(validate_doc, use_cache=True)
 ):
-    log('docs', user, page_id=doc_id)
+    log('docs', user_id=user_id(user), page_id=doc_id)
     return FileResponse(doc_id, media_type="text/markdown")
     
 @app.get("/images/{image_id}")
@@ -247,7 +243,7 @@ async def image(image_id: str = Depends(validate_image, use_cache=True)):
 
 @ui.page("/", title="Espresso")
 async def home(user: espressops.User = Depends(extract_user)):  
-    log('home', user)
+    log('home', user_id=user_id(user))
     await vanilla.render_home(user)
 
 @ui.page("/beans", title="Espresso Beans")
@@ -256,12 +252,12 @@ async def beans(
     tag: list[str] | None = Query(max_length=beanops.MAX_LIMIT, default=None),
     kind: str | None = Query(default=None)
 ):
-    log('beans', user, tag=tag, kind=kind)
+    log('beans', user_id=user_id(user), tag=tag, kind=kind)
     await vanilla.render_beans_page(user, tag, kind)
 
 @ui.page("/baristas", title="Espresso Shots")
 async def snapshot(user: User = Depends(extract_user)): 
-    log('baristas', user) 
+    log('baristas', user_id=user_id(user)) 
     await vanilla.render_trending_snapshot(user)
 
 @ui.page("/baristas/{barista_id}", title="Espresso")
@@ -269,7 +265,7 @@ async def barista(
     user: User = Depends(extract_user),
     barista: Barista = Depends(extract_barista, use_cache=True)
 ): 
-    log('baristas', user, page_id=barista.id) 
+    log('baristas', user_id=user_id(user), page_id=barista.id) 
     await vanilla.render_barista_page(user, barista)
 
 @ui.page("/search", title="Espresso Search")
@@ -281,12 +277,12 @@ async def search(
     kind: str | None = Query(default=None),
     ndays: int = Query(ge=beanops.MIN_WINDOW, le=beanops.MAX_WINDOW, default=beanops.DEFAULT_WINDOW)
 ):
-    log('search', user, q=q, acc=acc, ndays=ndays)
+    log('search', user_id=user_id(user), q=q, acc=acc, ndays=ndays)
     await vanilla.render_search(user, q, acc)
 
 @ui.page("/user/register", title="Espresso: User Registration")
 async def register_user(userinfo: dict = Depends(extract_registration_info)):
-    log('register_user', userinfo)
+    log('register_user', user_id=userinfo['email'])
     await vanilla.render_registration(userinfo)
     
 GOOGLE_ANALYTICS_SCRIPT = '''

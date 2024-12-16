@@ -74,22 +74,24 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
         must_have_tags = must_have_tags if isinstance(must_have_tags, list) else [must_have_tags]
     tags, sort_by = must_have_tags, DEFAULT_SORT_BY # starting default 
 
+    def get_beans(start, limit):
+        result = beanops.get_trending_beans(embedding=None, accuracy=None, tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit) \
+            if sort_by == TRENDING else \
+                beanops.get_newest_beans(embedding=None, accuracy=None, tags=tags, kinds=kind, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
+        log("beans_page", user_id=user.email if user else None, tags=tags, kind=kind, sort_by=sort_by, start=start, urls=[bean.url for bean in result])
+        return result
+
     def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):
         nonlocal tags, kind, sort_by
         if filter_tags == REMOVE_FILTER:
             tags = must_have_tags
         else:
-            tags = [must_have_tags, filter_tags] if (must_have_tags and filter_tags) else (must_have_tags or filter_tags) # filter_tags == [] means there is no additional tag to filter with
-        
+            tags = [must_have_tags, filter_tags] if (must_have_tags and filter_tags) else (must_have_tags or filter_tags) # filter_tags == [] means there is no additional tag to filter with     
         if filter_kind:
             kind = filter_kind if filter_kind != REMOVE_FILTER else None
         if filter_sort_by:
             sort_by = filter_sort_by
-
-        return lambda start, limit: \
-            beanops.get_trending_beans(embedding=None, accuracy=None, tags=tags, kinds=kind, sources=None, last_ndays=None, start=start, limit=limit) \
-                if sort_by == TRENDING else \
-                    beanops.get_newest_beans(embedding=None, accuracy=None, tags=tags, kinds=kind, sources=None, last_ndays=MIN_WINDOW, start=start, limit=limit)
+        return get_beans
     
     render_page(
         user, 
@@ -103,23 +105,33 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
 
 async def render_barista_page(user: User, barista: Barista):    
     tags, kind, sort_by = barista.tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default values
+
+    def get_beans(start, limit):
+        result = beanops.get_trending_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
+            if sort_by == TRENDING else \
+                beanops.get_newest_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
+        log("barista_page", user_id=user.email if user else None, page_id=barista.id, tags=tags, kind=kind, sort_by=sort_by, start=start, urls=[bean.url for bean in result])
+        return result
     
-    def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):
+    def trigger_filter(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None) -> Callable:
         nonlocal tags, kind, sort_by
-        if filter_tags: # explicitly mentioning is not None is important because that is the default value
-            tags = [barista.tags, filter_tags] if filter_tags != REMOVE_FILTER else barista.tags # filter_tags == [] means there is no additional tag to filter with
+        if filter_tags == REMOVE_FILTER: # explicitly mentioning is not None is important because that is the default value
+            tags = barista.tags
+        else:
+            tags = [barista.tags, filter_tags] if (barista.tags and filter_tags) else (barista.tags or filter_tags) # filter_tags == [] means there is no additional tag to filter with
         if filter_kind:
             kind = filter_kind if filter_kind != REMOVE_FILTER else None
         if filter_sort_by:
             sort_by = filter_sort_by
-
-        return lambda start, limit: \
-            beanops.get_trending_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
-                if sort_by == TRENDING else \
-                    beanops.get_newest_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
-
+        return get_beans
+            
     async def follow_unfollow(value: bool):
-        return espressops.db.follow_barista(user.email, barista.id) if value else espressops.db.unfollow_barista(user.email, barista.id)
+        if value:
+            espressops.db.follow_barista(user.email, barista.id)
+            log("following", user_id=user.email if user else None, page_id=barista.id)
+        else:
+            espressops.db.unfollow_barista(user.email, barista.id)
+            log("unfollowing", user_id=user.email if user else None, page_id=barista.id)
     
     render_page(
         user, 
@@ -145,8 +157,7 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
         render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
         with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
             with ui.row(wrap=False, align_items="start").classes("m-0"):
-                ui.label(page_title).classes("text-h4 banner")
-                    
+                ui.label(page_title).classes("text-h5 banner")                    
                 if user and page_follow_func:
                     SwitchButton(
                         value=is_page_followed,
@@ -178,10 +189,12 @@ SEARCH_PAGE_TABS = {**KIND_LABELS, **{SAVED_PAGE: "Pages"}}
 prep_query = lambda query: f"Domain / Genre / Category / Topic: {query}" if len(query.split()) > 3 else query
 async def render_search(user: User, query: str, accuracy: float):
     tags, kind, last_ndays = None, DEFAULT_KIND, DEFAULT_WINDOW
-    # this is different from others
-    # need to maintain a list of selected_tags.
-    # if search is done by a tag then filtering by tag should take into account must presence of the search tag and then or relationship of the selected_tags
-    # filtering by bean kind and slider should take into account the selected tags
+    
+    def get_beans(start, limit):
+        result = beanops.vector_search_beans(query=prep_query(query), accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit)
+        log("search", user_id=user.email if user else None, query=query, accuracy=accuracy, tags=tags, kind=kind, last_ndays=last_ndays, start=start, urls=[bean.url for bean in result])
+        return result
+    
     @ui.refreshable
     def render_result_panel(filter_accuracy: float = None, filter_tags: str|list[str] = None, filter_kind: str = None, filter_last_ndays: int = None):
         nonlocal accuracy, tags, kind, last_ndays        
@@ -197,13 +210,14 @@ async def render_search(user: User, query: str, accuracy: float):
 
         if kind == SAVED_PAGE and query:
             result = espressops.db.search_baristas(query)
+            log("search", user_id=user.email if user else None, query=query, tags=tags, kind=kind)
             return render_barista_names(user, result) \
                 if result else \
                     render_error_text(NOTHING_FOUND)
         
         return render_paginated_beans(
             user, 
-            lambda start, limit: beanops.vector_search_beans(query=prep_query(query), accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit), 
+            get_beans, 
             lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
 
     render_header(user)
