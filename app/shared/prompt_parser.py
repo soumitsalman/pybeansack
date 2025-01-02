@@ -64,7 +64,7 @@ def _translate_ctype(ctype: ContentType):
     elif ctype in [ContentType.BLOGS, ContentType.NEWSLETTER]:
         return BLOG
     elif ctype == ContentType.COMMENTS:
-        return COMMENT  
+        return COMMENTS  
     else:
         return ctype.value
     

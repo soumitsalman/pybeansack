@@ -75,9 +75,14 @@ def create_search_target(text):
         if not is_valid_url(text) else \
             create_navigation_target("/search", url=text)
 
-def render_header(user):
+def render_shell(user):
     ui.add_css(CSS_FILE)
     ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)    
+    
+    with ui.left_drawer(bordered=False).props("breakpoint=1024 show-if-above").classes("p-0") as barista_panel:                 
+        with ui.scroll_area().classes("w-full h-full p-0 m-0 fit"):
+            render_baristas_panel(user)
+        
     with ui.header(wrap=False).props("reveal").classes("justify-between items-stretch rounded-borders p-1 q-ma-xs") as header:     
         with ui.button(on_click=create_navigation_route("/")).props("unelevated").classes("q-px-xs"):
             with ui.avatar(square=True, size="md").classes("rounded-borders"):
@@ -85,14 +90,14 @@ def render_header(user):
             ui.label("Espresso").classes("q-ml-sm")
             
         # TODO: make this pull up side panel
-        # bookmarks browse library_books
-        ui.button(icon="library_books", on_click=create_navigation_route("/baristas")).props("unelevated").classes("lt-sm")
-        ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-sm")
+        # bookmarks library_books
+        ui.button(icon="bookmarks", on_click=lambda: barista_panel.toggle()).props("unelevated").classes("lt-md")
+        ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-md")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
         with ui.input(placeholder=SEARCH_PLACEHOLDER) \
             .props('item-aligned clearable dense rounded outlined maxlength=1000 bg-color=dark clear-icon=close') \
-            .classes("gt-xs w-1/2 m-0 p-0") \
+            .classes("gt-sm w-1/2 m-0 p-0") \
             .on("keydown.enter", trigger_search) as search_input:    
             prepend = search_input.add_slot("prepend")   
             with prepend:
@@ -110,7 +115,7 @@ def render_login():
     return view
 
 def render_user(user: User):
-    with ui.button(icon="person").props("round").classes("border-2 border-solid") as view:
+    with ui.button(icon="person").classes("border-2 border-solid") as view:
         with ui.menu():
             with ui.card():
                 if user.image_url:
@@ -129,9 +134,11 @@ def render_barista_names(user: User, baristas: list[Barista]):
 
 def render_baristas_panel(user: User):    
     baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS)
-    with render_card_container("Following" if user else "Popular Baristas", on_click=create_navigation_route("/baristas")) as panel:        
+    with ui.list().classes("w-full p-0 m-0 rounded-borders") as panel:
+        ui.item("Following" if user else "Popular Baristas", on_click=create_navigation_route("/baristas")).classes("text-h6")
+        ui.separator()
         [ui.item(barista.title, on_click=create_barista_route(barista)) for barista in baristas]
-    return panel
+    return panel    
 
 def render_beans(user: User, load_beans: Callable, container: ui.element = None):
     async def render():
@@ -140,7 +147,6 @@ def render_beans(user: User, load_beans: Callable, container: ui.element = None)
         with container:
             if not beans:
                 ui.label(NOTHING_FOUND).classes("w-full text-center") 
-            # [render_bean(user, bean, False).classes("w-full") for bean in beans[:MAX_ITEMS_PER_PAGE]] 
             [render_bean_with_related(user, bean).classes("w-full w-full m-0 p-0") for bean in beans] 
 
     container = container or ui.column(align_items="stretch")
@@ -164,7 +170,6 @@ def render_beans_as_extendable_list(user: User, load_beans: Callable, container:
         with disable_button(more_btn):
             beans = await run.io_bound(current_page)   
             with beans_panel:
-                # [render_bean(user, bean, False) for bean in beans[:MAX_ITEMS_PER_PAGE]]
                 [render_bean_with_related(user, bean).classes("w-full w-full m-0 p-0") for bean in beans[:MAX_ITEMS_PER_PAGE]]
 
     with ui.column() as view:
@@ -243,7 +248,6 @@ def render_bean_body(user, bean):
     return view
 
 def render_bean_tags(bean: Bean):
-    # make_tag = lambda tag: ui.chip(tag, color="secondary", on_click=create_navigation_route("/search", tag=tag)).props('outline dense').classes("tag tag-space")
     make_tag = lambda tag: ui.link(tag, target=create_navigation_target("/beans", tag=tag)).classes("tag q-mr-md").style("color: secondary; text-decoration: none;")
     with ui.row(wrap=True, align_items="baseline").classes("w-full gap-0 m-0 p-0 text-caption") as view:
         [make_tag(tag) for tag in random.sample(bean.tags, min(MAX_TAGS_PER_BEAN, len(bean.tags)))]
@@ -290,7 +294,7 @@ def render_filter_tags(load_tags: Callable, on_selection_changed: Callable):
             holder.delete() 
 
     # with ui.scroll_area().classes("h-16 p-0 m-0") as view:
-    with ui.row().classes("gap-0 p-0 m-0 sm:flex-wrap overflow-x-hidden").style("max-width: 100%;") as holder:
+    with ui.row().classes("gap-0 p-0 m-0 sm:flex-wrap overflow-x-hidden") as holder:
         ui.skeleton("rect", width="100%").classes("w-full h-full")
     background_tasks.create_lazy(render(), name=f"tags-{now()}")
     # return view

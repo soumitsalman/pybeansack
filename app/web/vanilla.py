@@ -17,53 +17,43 @@ DEFAULT_SORT_BY = LATEST
 SORT_BY_LABELS = {LATEST: LATEST, TRENDING: TRENDING}
 
 REMOVE_FILTER = "remove-filter"
-CONTENT_GRID_CLASSES = "w-full m-0 p-0 grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+CONTENT_GRID_CLASSES = "w-full m-0 p-0 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
 BARISTAS_PANEL_CLASSES = "w-1/4 gt-xs"
 TOGGLE_OPTIONS_PROPS = "unelevated rounded no-caps color=dark toggle-color=primary"
 
 async def render_home(user):
-    render_header(user)
-    with ui.row(wrap=False).classes("w-full"): 
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.grid().classes(CONTENT_GRID_CLASSES):
-            # render trending blogs, posts and news
-            for id, label in KIND_LABELS.items():
-                with render_card_container(label, header_classes="text-h6 bg-dark", on_click=create_navigation_route("/beans", kind=id)).classes("bg-transparent"):
-                    # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
-                    render_beans(user, lambda kind_id=id: beanops.get_trending_beans(embedding=None, accuracy=None, tags=None, kinds=kind_id, sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
-                        if beanops.count_beans(query=None, embedding=None, accuracy=None, tags=None, kinds=id, sources=None, last_ndays=1, limit=1) else \
-                            render_error_text(NOTHING_TRENDING)
-            # render trending pages
-            with render_card_container("Explore"):                
-                render_barista_names(user, espressops.db.sample_baristas(5))
+    render_shell(user)       
+    with ui.grid().classes(CONTENT_GRID_CLASSES):
+        # render trending blogs, posts and news
+        for id, label in KIND_LABELS.items():
+            with render_card_container(label, header_classes="text-h6 bg-dark", on_click=create_navigation_route("/beans", kind=id)).classes("bg-transparent"):
+                # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
+                render_beans(user, lambda kind_id=id: beanops.get_trending_beans(embedding=None, accuracy=None, tags=None, kinds=kind_id, sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
+                    if beanops.count_beans(query=None, embedding=None, accuracy=None, tags=None, kinds=id, sources=None, last_ndays=1, limit=1) else \
+                        render_error_text(NOTHING_TRENDING)
+        # render trending pages
+        with render_card_container("Explore"):                
+            render_barista_names(user, espressops.db.sample_baristas(5))
     render_footer()
 
 async def render_trending_snapshot(user):
-    baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS, projection=None)
-
-    render_header(user)
-    with ui.row(wrap=False).classes("w-full"): 
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        # with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
-        with ui.grid().classes(CONTENT_GRID_CLASSES):
-            for barista in baristas:
-                with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap bg-dark").classes("bg-transparent"):
-                    if beanops.count_beans(query=None, embedding=barista.embedding, accuracy=barista.accuracy, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
-                        # get_beans_func = lambda b=barista: list(chain(*[
-                        #     beanops.get_newest_beans(embedding=b.embedding, accuracy=b.accuracy, tags=b.tags, kinds=kind, sources=b.sources, last_ndays=MIN_WINDOW, start=0, limit=MIN_LIMIT) \
-                        #     for kind in KIND_LABELS.keys()
-                        # ]))
-                        get_beans_func = lambda b=barista: beanops.get_newest_beans(
-                            embedding=b.embedding, 
-                            accuracy=b.accuracy, 
-                            tags=b.tags, 
-                            kinds=None, 
-                            sources=b.sources, 
-                            last_ndays=MIN_WINDOW, 
-                            start=0, limit=MIN_LIMIT)
-                        render_beans(user, get_beans_func)
-                    else:
-                        render_error_text(NOTHING_TRENDING)                            
+    render_shell(user)
+    with ui.grid().classes(CONTENT_GRID_CLASSES):
+        baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS, projection=None)
+        for barista in baristas:
+            with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap bg-dark").classes("bg-transparent"):
+                if beanops.count_beans(query=None, embedding=barista.embedding, accuracy=barista.accuracy, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
+                    get_beans_func = lambda b=barista: beanops.get_newest_beans(
+                        embedding=b.embedding, 
+                        accuracy=b.accuracy, 
+                        tags=b.tags, 
+                        kinds=None, 
+                        sources=b.sources, 
+                        last_ndays=MIN_WINDOW, 
+                        start=0, limit=MIN_LIMIT)
+                    render_beans(user, get_beans_func)
+                else:
+                    render_error_text(NOTHING_TRENDING)                            
     render_footer()
 
 inflect_engine = inflect.engine()
@@ -152,35 +142,32 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
             ui.grid().classes(CONTENT_GRID_CLASSES)
         ).classes("w-full")
 
-    render_header(user)  
-    with ui.row(wrap=False).classes("w-full"): 
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):  
-            with ui.row(wrap=False, align_items="start").classes("m-0"):
-                ui.label(page_title).classes("text-h5 banner")                    
-                if user and page_follow_func:
-                    SwitchButton(
-                        value=is_page_followed,
-                        unswitched_text="Follow", 
-                        switched_text="Unfollow", 
-                        unswitched_icon="playlist_add", 
-                        switched_icon="playlist_remove"
-                    ).props("unelevated").on_click(lambda e: page_follow_func(e.sender.value))
-            render_filter_tags(
-                load_tags=get_filter_tags_func, 
-                on_selection_changed=lambda selected_tags: render_beans_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER)))
-            
-            with ui.row(wrap=False, align_items="stretch"):
-                ui.toggle(
-                    options=KIND_LABELS,
-                    value=initial_kind,
-                    on_change=lambda e: render_beans_panel.refresh(filter_kind=(e.sender.value or REMOVE_FILTER))).props(TOGGLE_OPTIONS_PROPS)
-                
-                ui.toggle(
-                    options=SORT_BY_LABELS, 
-                    value=DEFAULT_SORT_BY, 
-                    on_change=lambda e: render_beans_panel.refresh(filter_sort_by=e.sender.value)).props("unelevated rounded no-caps color=dark")
-            render_beans_panel(filter_tags=None, filter_kind=None, filter_sort_by=None).classes("w-full")
+    render_shell(user)  
+    with ui.row(wrap=False, align_items="start").classes("m-0"):
+        ui.label(page_title).classes("text-h5 banner")                    
+        if user and page_follow_func:
+            SwitchButton(
+                value=is_page_followed,
+                unswitched_text="Follow", 
+                switched_text="Unfollow", 
+                unswitched_icon="playlist_add", 
+                switched_icon="playlist_remove"
+            ).props("unelevated").on_click(lambda e: page_follow_func(e.sender.value))
+    render_filter_tags(
+        load_tags=get_filter_tags_func, 
+        on_selection_changed=lambda selected_tags: render_beans_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER))).classes("w-full")
+    
+    with ui.row(wrap=False, align_items="stretch"):
+        ui.toggle(
+            options=KIND_LABELS,
+            value=initial_kind,
+            on_change=lambda e: render_beans_panel.refresh(filter_kind=(e.sender.value or REMOVE_FILTER))).props(TOGGLE_OPTIONS_PROPS)
+        
+        ui.toggle(
+            options=SORT_BY_LABELS, 
+            value=DEFAULT_SORT_BY, 
+            on_change=lambda e: render_beans_panel.refresh(filter_sort_by=e.sender.value)).props("unelevated rounded no-caps color=dark")
+    render_beans_panel(filter_tags=None, filter_kind=None, filter_sort_by=None).classes("w-full")
     render_footer()
 
 SAVED_PAGE = "saved_page"
@@ -220,42 +207,38 @@ async def render_search(user: User, query: str, accuracy: float):
             get_beans, 
             lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
 
-    render_header(user)
-    with ui.row(wrap=False).classes("w-full"):
-        render_baristas_panel(user).classes(BARISTAS_PANEL_CLASSES)
-        with ui.column(align_items="stretch").classes("w-full m-0 p-0"):
+    render_shell(user)
+    trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
+    with ui.input(placeholder=SEARCH_PLACEHOLDER, value=query) \
+        .props('rounded outlined input-class=mx-3').classes('w-full self-center lt-sm') \
+        .on('keydown.enter', trigger_search) as search_input:
+        ui.button(icon="send", on_click=trigger_search).bind_visibility_from(search_input, 'value').props("flat dense")  
 
-            trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
-            with ui.input(placeholder=SEARCH_PLACEHOLDER, value=query) \
-                .props('rounded outlined input-class=mx-3').classes('w-full self-center lt-sm') \
-                .on('keydown.enter', trigger_search) as search_input:
-                ui.button(icon="send", on_click=trigger_search).bind_visibility_from(search_input, 'value').props("flat dense")  
+    if query:             
+        with ui.grid(columns=2).classes("w-full"):                         
+            with ui.label("Accuracy").classes("w-full"):
+                accuracy_filter = ui.slider(
+                    min=0.1, max=1.0, step=0.05, 
+                    value=(accuracy or DEFAULT_ACCURACY), 
+                    on_change=debounce(lambda: render_result_panel.refresh(filter_accuracy=accuracy_filter.value), 1.5)).props("label-always")
 
-            if query:             
-                with ui.grid(columns=2).classes("w-full"):                         
-                    with ui.label("Accuracy").classes("w-full"):
-                        accuracy_filter = ui.slider(
-                            min=0.1, max=1.0, step=0.05, 
-                            value=(accuracy or DEFAULT_ACCURACY), 
-                            on_change=debounce(lambda: render_result_panel.refresh(filter_accuracy=accuracy_filter.value), 1.5)).props("label-always")
+            with ui.label().classes("w-full") as last_ndays_label:
+                last_ndays_filter = ui.slider(
+                    min=-30, max=-1, step=1, value=-last_ndays,
+                    on_change=debounce(lambda: render_result_panel.refresh(filter_last_ndays=-last_ndays_filter.value), 1.5))
+                last_ndays_label.bind_text_from(last_ndays_filter, 'value', lambda x: f"Since {naturalday(ndays_ago(-x))}")
 
-                    with ui.label().classes("w-full") as last_ndays_label:
-                        last_ndays_filter = ui.slider(
-                            min=-30, max=-1, step=1, value=-last_ndays,
-                            on_change=debounce(lambda: render_result_panel.refresh(filter_last_ndays=-last_ndays_filter.value), 1.5))
-                        last_ndays_label.bind_text_from(last_ndays_filter, 'value', lambda x: f"Since {naturalday(ndays_ago(-x))}")
-
-                kind_filter = ui.toggle(
-                    options=SEARCH_PAGE_TABS, 
-                    value=DEFAULT_KIND, 
-                    on_change=lambda: render_result_panel.refresh(filter_kind=kind_filter.value or REMOVE_FILTER)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-full")               
-                
-                render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None).classes("w-full")
-            # TODO: fill it up with popular searches
+        kind_filter = ui.toggle(
+            options=SEARCH_PAGE_TABS, 
+            value=DEFAULT_KIND, 
+            on_change=lambda: render_result_panel.refresh(filter_kind=kind_filter.value or REMOVE_FILTER)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-full")               
+        
+        render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None).classes("w-full")
+    # TODO: fill it up with popular searches
     render_footer()
 
 async def render_registration(userinfo: dict):
-    render_header(None)
+    render_shell(None)
 
     async def success():
         espressops.db.create_user(userinfo)
@@ -285,7 +268,7 @@ async def render_registration(userinfo: dict):
             ui.button('Nope!', color="negative", icon="cancel", on_click=lambda: ui.navigate.to("/")).props("outline")
 
 async def render_doc(user: User, doc_id: str):
-    render_header(user)
+    render_shell(user)
     with open(f"./docs/{doc_id}", 'r') as file:
         ui.markdown(file.read()).classes("w-full md:w-2/3 lg:w-1/2  self-center")
     render_footer()

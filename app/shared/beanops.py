@@ -64,7 +64,9 @@ def vector_search_beans(query: str, accuracy: float, tags: str|list[str]|list[li
     """Searches and looks for news articles, social media posts, blog articles that match user interest, topic or query represented by `topic`."""
     filter=_create_filter(tags, kinds, sources, last_ndays, None, None, None)    
     if is_valid_url(query):
-        bean =  db.beanstore.find_one(filter={K_URL: query}, projection={K_EMBEDDING: 1, K_URL: 1, K_ID: 0})
+        bean =  db.beanstore.find_one(filter={K_URL: query}, projection={K_EMBEDDING: 1, K_URL: 1, K_ID: 0, K_TAGS: 1})
+        if K_TAGS in bean:
+            filter.update({K_TAGS: {"$in": bean[K_TAGS]}})
         return db.vector_search_beans(embedding=bean[K_EMBEDDING], min_score=accuracy, filter=filter, skip=start, limit=limit, projection=PROJECTION) if bean else []
     if query:
         return db.vector_search_beans(query=query, min_score=accuracy, filter=filter, skip=start, limit=limit, projection=PROJECTION) 
