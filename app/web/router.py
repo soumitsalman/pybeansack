@@ -46,7 +46,7 @@ def decode_jwt_token(token: str):
         data = jwt.decode(token, APP_STORAGE_SECRET, algorithms=["HS256"], verify=True)
         return data if (data and "email" in data) else None
     except Exception as err:
-        log("jwt_token_decode_error", app.storage.browser.get("id"), error=str(err))
+        log("jwt_token_decode_error", user_id=app.storage.browser.get("id"), error=str(err))
         return None
 
 @app.on_startup

@@ -38,7 +38,7 @@ async def get_beans(
     Retrieves the bean(s) with the given URL(s).
     """
     res = get_beans(url, tag, kind, source, ndays, start, limit)  
-    log(logger, 'get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
+    log('get_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
 @app.get("/search", response_model=list[Bean]|None)
@@ -63,7 +63,7 @@ async def search_beans(
     limit: limit
     """
     res = vector_search_beans(q, acc, tag, kind, source, ndays, start, limit)
-    log(logger, 'search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
+    log('search_beans', q=q, acc=acc, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
 @app.get("/trending", response_model=list[Bean]|None)
@@ -80,7 +80,7 @@ async def trending_beans(
     To retrieve the beans related to the beans in this result set, use /beans/related endpoint.
     """
     res = get_trending_beans(tag, kind, source, ndays, start, limit)
-    log(logger, 'trending_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
+    log('trending_beans', tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
 @app.get("/related", response_model=list[Bean]|None)
@@ -96,7 +96,7 @@ async def get_related_beans(
     Retrieves the related beans to the given bean.
     """    
     res = get_related(url, tag, kind, source, ndays, start, limit)
-    log(logger, 'get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
+    log('get_related_beans', url=url, tag=tag, kind=kind, source=source, ndays=ndays, start=start, limit=limit, num_returned=res)
     return res
 
 # @app.get("/chatters", response_model=list[Chatter]|None)
@@ -114,7 +114,7 @@ async def get_sources():
     Retrieves the list of sources.
     """
     res = get_all_sources()
-    log(logger, 'get_sources', num_returned=res)
+    log('get_sources', num_returned=res)
     return res
 
 @app.get("/tags/all", response_model=list|None)
@@ -123,7 +123,7 @@ async def get_tags():
     Retrieves the list of tags.
     """
     res = get_all_tags()
-    log(logger, 'get_tags', num_returned=res)
+    log('get_tags', num_returned=res)
     return res
 
 # initialize_server()
