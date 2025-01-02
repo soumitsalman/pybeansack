@@ -115,7 +115,7 @@ def render_login():
     return view
 
 def render_user(user: User):
-    with ui.button(icon="person").classes("border-2 border-solid") as view:
+    with ui.button(icon="person") as view:
         with ui.menu():
             with ui.card():
                 if user.image_url:

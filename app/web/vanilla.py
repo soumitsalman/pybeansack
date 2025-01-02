@@ -143,7 +143,7 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
         ).classes("w-full")
 
     render_shell(user)  
-    with ui.row(wrap=False, align_items="start").classes("m-0"):
+    with ui.row(wrap=False).classes("m-0 w-full"):
         ui.label(page_title).classes("text-h5 banner")                    
         if user and page_follow_func:
             SwitchButton(
@@ -152,12 +152,13 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
                 switched_text="Unfollow", 
                 unswitched_icon="playlist_add", 
                 switched_icon="playlist_remove"
-            ).props("unelevated").on_click(lambda e: page_follow_func(e.sender.value))
+        ).props("unelevated").on_click(lambda e: page_follow_func(e.sender.value))
+            
     render_filter_tags(
         load_tags=get_filter_tags_func, 
         on_selection_changed=lambda selected_tags: render_beans_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER))).classes("w-full")
     
-    with ui.row(wrap=False, align_items="stretch"):
+    with ui.row(wrap=False, align_items="stretch").classes("w-full"):
         ui.toggle(
             options=KIND_LABELS,
             value=initial_kind,
