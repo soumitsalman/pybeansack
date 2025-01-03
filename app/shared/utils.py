@@ -3,6 +3,7 @@ import tldextract
 from urllib.parse import urlparse
 import logging
 from app.shared.env import *
+from icecream import ic
 
 # cache settings
 ONE_HOUR = 3600
@@ -19,3 +20,4 @@ def log(function, **kwargs):
 is_valid_url = lambda url: urlparse(url).scheme in ["http", "https"]
 favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+tldextract.extract(bean.url).registered_domain
 naturalday = lambda date_val: humanize.naturalday(date_val, format="%a, %b %d")
+user_id = lambda user: user.email if user else None

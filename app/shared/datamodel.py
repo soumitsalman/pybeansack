@@ -17,6 +17,7 @@ class Barista(BaseModel):
     owner: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
+    urls: Optional[list[str]] = None
     query: Optional[str] = None
     embedding: Optional[list[float]] = None
     accuracy: Optional[float] = None

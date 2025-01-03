@@ -15,7 +15,9 @@ IMAGE_URL = "image_url"
 TITLE = "title"
 DESCRIPTION = "description"
 EMBEDDING = "embedding"
-
+URL = "url"
+CREATED = "created"
+OWNER = "owner"
 DEFAULT_BARISTAS = [
     "artificial-intelligence",
     "automotive",
@@ -78,8 +80,7 @@ class EspressoDB:
         self.users.update_one(
             {"email": email}, 
             {
-                "$addToSet": {"linked_accounts": account},
-                "$set": {"updated": datetime.now()}
+                "$addToSet": {"linked_accounts": account}
             }
         )
 
@@ -90,8 +91,7 @@ class EspressoDB:
         self.users.update_one(
             {"email": email}, 
             {
-                "$addToSet": {"following": barista_id},
-                "$set": {"updated": datetime.now()}
+                "$addToSet": {"following": barista_id}
             }
         )
         return self.users.find_one({"email": email})["following"]
@@ -100,15 +100,16 @@ class EspressoDB:
         self.users.update_one(
             {"email": email}, 
             {
-                "$pull": {"following": barista_id},
-                "$set": {"updated": datetime.now()}
+                "$pull": {"following": barista_id}
             }
         )
         return self.users.find_one({"email": email})["following"]
 
-    # @cached(max_size=1000, ttl=ONE_HOUR) 
+    # @cached(max_size=20, ttl=ONE_HOUR) 
     def get_barista(self, id: str) -> Barista:
-        return Barista(**self.baristas.find_one({ID: id}))
+        barista = self.baristas.find_one({ID: id})
+        if barista:
+            return Barista(**barista)
 
     # @cached(max_size=10, ttl=ONE_HOUR) 
     def get_baristas(self, ids: list[str], projection: dict = {EMBEDDING: 0}):
@@ -139,6 +140,20 @@ class EspressoDB:
             {   "$limit": 10 }     
         ]        
         return [Barista(**barista) for barista in self.baristas.aggregate(pipeline)]
+
+    def publish(self, user: User, url: str):
+        return self.baristas.update_one(
+            filter = {ID: user.email}, 
+            update = { 
+                "$addToSet": { "urls": url },
+                "$setOnInsert": { 
+                    OWNER: user.email,
+                    TITLE: user.name,
+                    DESCRIPTION: "News, blogs and posts shared by " + user.name
+                }
+            },
+            upsert = True
+        ).acknowledged
 
 db: EspressoDB = None
 def initialize(db_connection_string: str, sb_connection_string: str, embedder: Embeddings):

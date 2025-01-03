@@ -17,16 +17,16 @@ DEFAULT_SORT_BY = LATEST
 SORT_BY_LABELS = {LATEST: LATEST, TRENDING: TRENDING}
 
 REMOVE_FILTER = "remove-filter"
-CONTENT_GRID_CLASSES = "w-full m-0 p-0 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+CONTENT_GRID_CLASSES = "w-full m-0 p-0 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
 BARISTAS_PANEL_CLASSES = "w-1/4 gt-xs"
 TOGGLE_OPTIONS_PROPS = "unelevated rounded no-caps color=dark toggle-color=primary"
 
 async def render_home(user):
-    render_shell(user)       
+    render_header(user)       
     with ui.grid().classes(CONTENT_GRID_CLASSES):
         # render trending blogs, posts and news
         for id, label in KIND_LABELS.items():
-            with render_card_container(label, header_classes="text-h6 bg-dark", on_click=create_navigation_route("/beans", kind=id)).classes("bg-transparent"):
+            with render_card_container(label, header_classes="text-h6 bg-dark", on_click=create_navigation_func("/beans", kind=id)).classes("bg-transparent"):
                 # TODO: add a condition with count_beans to check if there are any beans. If not, then render a label with NOTHING TRENDING
                 render_beans(user, lambda kind_id=id: beanops.get_trending_beans(embedding=None, accuracy=None, tags=None, kinds=kind_id, sources=None, last_ndays=1, start=0, limit=MAX_ITEMS_PER_PAGE)) \
                     if beanops.count_beans(query=None, embedding=None, accuracy=None, tags=None, kinds=id, sources=None, last_ndays=1, limit=1) else \
@@ -37,11 +37,11 @@ async def render_home(user):
     render_footer()
 
 async def render_trending_snapshot(user):
-    render_shell(user)
+    render_header(user)
     with ui.grid().classes(CONTENT_GRID_CLASSES):
         baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS, projection=None)
         for barista in baristas:
-            with render_card_container(barista.title, on_click=create_barista_route(barista), header_classes="text-wrap bg-dark").classes("bg-transparent"):
+            with render_card_container(barista.title, on_click=create_barista_navigate_func(barista), header_classes="text-wrap bg-dark").classes("bg-transparent"):
                 if beanops.count_beans(query=None, embedding=barista.embedding, accuracy=barista.accuracy, tags=barista.tags, kinds=None, sources=None, last_ndays=1, limit=1):  
                     get_beans_func = lambda b=barista: beanops.get_newest_beans(
                         embedding=b.embedding, 
@@ -86,7 +86,7 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
     render_page(
         user, 
         tags_banner_text(must_have_tags), 
-        lambda: beanops.get_tags(None, None, None, must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
+        lambda: beanops.get_tags(None, None, None, None, must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
         trigger_filter,
         is_page_followed=False,
         page_follow_func=None,
@@ -97,9 +97,15 @@ async def render_barista_page(user: User, barista: Barista):
     tags, kind, sort_by = barista.tags, DEFAULT_KIND, DEFAULT_SORT_BY # starting default values
 
     def get_beans(start, limit):
-        result = beanops.get_trending_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
-            if sort_by == TRENDING else \
-                beanops.get_newest_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
+        # if specific urls are provided (applicable for pages that are from user shares)
+        if barista.urls:
+            result = beanops.get_beans(urls=barista.urls, tags=tags, kinds=kind, sources=barista.sources, last_ndays=None, sort_by=LATEST_AND_TRENDING, start=start, limit=limit) \
+                if sort_by == TRENDING else \
+                    beanops.get_beans(urls=barista.urls, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, sort_by=NEWEST_AND_TRENDING, start=start, limit=limit)
+        else:
+            result = beanops.get_trending_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=barista.last_ndays, start=start, limit=limit) \
+                if sort_by == TRENDING else \
+                    beanops.get_newest_beans(embedding=barista.embedding, accuracy=barista.accuracy, tags=tags, kinds=kind, sources=barista.sources, last_ndays=MIN_WINDOW, start=start, limit=limit)
         log("barista_page", user_id=user.email if user else None, page_id=barista.id, tags=tags, kind=kind, sort_by=sort_by, start=start, urls=[bean.url for bean in result])
         return result
     
@@ -126,7 +132,7 @@ async def render_barista_page(user: User, barista: Barista):
     render_page(
         user, 
         barista.title,
-        lambda: beanops.get_tags(None, barista.embedding, barista.accuracy, barista.tags, None, barista.sources, None, 0, MAX_FILTER_TAGS), 
+        lambda: beanops.get_tags(barista.urls, None, barista.embedding, barista.accuracy, barista.tags, None, barista.sources, None, 0, MAX_FILTER_TAGS), 
         trigger_filter,
         is_page_followed=barista.id in user.following if user else False,
         page_follow_func=follow_unfollow if user else None,
@@ -142,9 +148,9 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
             ui.grid().classes(CONTENT_GRID_CLASSES)
         ).classes("w-full")
 
-    render_shell(user)  
-    with ui.row(wrap=False).classes("m-0 w-full"):
-        ui.label(page_title).classes("text-h5 banner")                    
+    render_header(user)  
+    with ui.row(wrap=False).classes("w-full justify-between"):
+        ui.label(page_title).classes("text-h6")                 
         if user and page_follow_func:
             SwitchButton(
                 value=is_page_followed,
@@ -206,9 +212,9 @@ async def render_search(user: User, query: str, accuracy: float):
         return render_paginated_beans(
             user, 
             get_beans, 
-            lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT))                
+            lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT)).classes("w-full")               
 
-    render_shell(user)
+    render_header(user)
     trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
     with ui.input(placeholder=SEARCH_PLACEHOLDER, value=query) \
         .props('rounded outlined input-class=mx-3').classes('w-full self-center lt-sm') \
@@ -234,12 +240,16 @@ async def render_search(user: User, query: str, accuracy: float):
             value=DEFAULT_KIND, 
             on_change=lambda: render_result_panel.refresh(filter_kind=kind_filter.value or REMOVE_FILTER)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-full")               
         
-        render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None).classes("w-full")
+        render_filter_tags(
+            load_tags=lambda: beanops.get_tags(None, prep_query(query), None, accuracy, None, None, None, None, 0, MAX_FILTER_TAGS), 
+            on_selection_changed=lambda selected_tags: render_result_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER))).classes("w-full")
+        
+        render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None)
     # TODO: fill it up with popular searches
     render_footer()
 
 async def render_registration(userinfo: dict):
-    render_shell(None)
+    render_header(None)
 
     async def success():
         espressops.db.create_user(userinfo)
@@ -269,7 +279,7 @@ async def render_registration(userinfo: dict):
             ui.button('Nope!', color="negative", icon="cancel", on_click=lambda: ui.navigate.to("/")).props("outline")
 
 async def render_doc(user: User, doc_id: str):
-    render_shell(user)
+    render_header(user)
     with open(f"./docs/{doc_id}", 'r') as file:
         ui.markdown(file.read()).classes("w-full md:w-2/3 lg:w-1/2  self-center")
     render_footer()

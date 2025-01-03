@@ -50,24 +50,18 @@ LOGIN_OPTIONS = [
     # }
 ]
 
-reddit_share_url = lambda bean: create_navigation_route("https://www.reddit.com/submit", url=bean.url, title=bean.title, link="LINK")
-twitter_share_url = lambda bean: create_navigation_route("https://x.com/intent/tweet", url=bean.url, text=bean.summary)
-linkedin_share_url = lambda bean: create_navigation_route("https://www.linkedin.com/shareArticle", url=bean.url, text=bean.title, mini=True)
-whatsapp_share_url = lambda bean: create_navigation_route("https://wa.me/", text=f"{bean.title}\n{bean.url}")
-slack_share_url = lambda bean: create_navigation_route("https://slack.com/share/url", url=bean.url, text=bean.title)
-
 rounded_number = lambda counter: str(counter) if counter < beanops.MAX_LIMIT else str(beanops.MAX_LIMIT-1)+'+'
 rounded_number_with_max = lambda counter, top: str(counter) if counter <= top else str(top)+'+'
 
-def create_navigation_target(base_url, **kwargs):
+def create_navigation_target(base_url: str, **kwargs) -> str:
     if kwargs:
         return base_url+"?"+urlencode(query={key:value for key, value in kwargs.items() if value})
     return base_url
 
-def create_navigation_route(base_url, **kwargs):
+def create_navigation_func(base_url, **kwargs):
     return lambda base_url=base_url, kwargs=kwargs: ui.navigate.to(create_navigation_target(base_url, **kwargs))
 
-def create_barista_route(barista: espressops.Barista):
+def create_barista_navigate_func(barista: espressops.Barista):
     return lambda barista=barista: ui.navigate.to(f"/baristas/{barista.id}")
 
 def create_search_target(text):
@@ -75,35 +69,35 @@ def create_search_target(text):
         if not is_valid_url(text) else \
             create_navigation_target("/search", url=text)
 
-def render_shell(user):
+def render_header(user: User):
     ui.add_css(CSS_FILE)
     ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)    
     
-    with ui.left_drawer(bordered=False).props("breakpoint=1024 show-if-above").classes("p-0") as barista_panel:                 
+    with ui.left_drawer(bordered=False).props("width=250 breakpoint=600 show-if-above").classes("p-0") as barista_panel:                 
         with ui.scroll_area().classes("w-full h-full p-0 m-0 fit"):
-            render_baristas_panel(user)
+            render_navigation_panel(user)
         
     with ui.header(wrap=False).props("reveal").classes("justify-between items-stretch rounded-borders p-1 q-ma-xs") as header:     
-        with ui.button(on_click=create_navigation_route("/")).props("unelevated").classes("q-px-xs"):
+        with ui.button(on_click=create_navigation_func("/")).props("unelevated").classes("q-px-xs"):
             with ui.avatar(square=True, size="md").classes("rounded-borders"):
                 ui.image("images/cafecito.png")
             ui.label("Espresso").classes("q-ml-sm")
             
         # TODO: make this pull up side panel
         # bookmarks library_books
-        ui.button(icon="bookmarks", on_click=lambda: barista_panel.toggle()).props("unelevated").classes("lt-md")
-        ui.button(icon="search", on_click=create_navigation_route("/search")).props("unelevated").classes("lt-md")
+        ui.button(icon="local_cafe", on_click=lambda: barista_panel.toggle()).props("unelevated").classes("lt-sm")
+        ui.button(icon="search", on_click=create_navigation_func("/search")).props("unelevated").classes("lt-sm")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
         with ui.input(placeholder=SEARCH_PLACEHOLDER) \
             .props('item-aligned clearable dense rounded outlined maxlength=1000 bg-color=dark clear-icon=close') \
-            .classes("gt-sm w-1/2 m-0 p-0") \
+            .classes("gt-xs w-1/2 m-0 p-0") \
             .on("keydown.enter", trigger_search) as search_input:    
             prepend = search_input.add_slot("prepend")   
             with prepend:
                 ui.button(icon="search", color="secondary", on_click=trigger_search).props("flat rounded").classes("m-0")
                 
-        (render_user(user) if user else render_login()).props("unelevated").classes("q-mx-xs")
+        (render_user(user) if user else render_login()).props("unelevated")
     return header
 
 def render_login():
@@ -116,28 +110,37 @@ def render_login():
 
 def render_user(user: User):
     with ui.button(icon="person") as view:
+        # with ui.avatar(color="transparent", rounded=True, size="md") as view:
+        #     ui.image(user.image_url) if user.image_url else ui.icon("person")
         with ui.menu():
-            with ui.card():
-                if user.image_url:
-                    ui.image(user.image_url).classes("w-24")
-                ui.label(user.name).classes("text-bold")                   
-                with ui.row(wrap=False):        
-                    ui.button("Log Out", icon="logout", color="negative", on_click=lambda: ui.navigate.to("/user/me/logout")).props("unelevated size=sm")   
-                    # TODO: add other settings options here          
-                    # ui.button("Delete Account", icon="cancel", color="negative").props("flat size=sm")
+            with ui.item(user.name):
+                ui.avatar(icon="img:"+user.image_url if user.image_url else "person", color="transparent", rounded=True)
+            
+            if espressops.db.get_barista(user.email):
+                with ui.menu_item(on_click=create_navigation_func("/baristas/"+user.email)):
+                    with ui.label("Bookmarks Barista"):
+                        ui.label("/baristas/"+user.email).classes("text-caption")
+                    ui.avatar("bookmarks", color="transparent", square=True)
+                    
+            with ui.menu_item("Settings",on_click=lambda: ui.notify("Coming soon")):
+                ui.avatar("settings", color="transparent", square=True)
+
+            ui.separator()
+            with ui.menu_item("Log Out", on_click=create_navigation_func("/user/me/logout")).classes("text-negative justify-start"):
+                ui.avatar("logout", color="transparent", square=True)
     return view
 
 def render_barista_names(user: User, baristas: list[Barista]):
     with ui.row(align_items="stretch").classes("q-pa-sm") as panel:
-        [ui.item(barista.title, on_click=create_barista_route(barista)).classes(f"rounded-borders text-lg bg-primary") for barista in baristas]
+        [ui.item(barista.title, on_click=create_barista_navigate_func(barista)).classes(f"rounded-borders text-lg bg-primary") for barista in baristas]
     return panel
 
-def render_baristas_panel(user: User):    
+def render_navigation_panel(user: User):    
     baristas = espressops.db.get_baristas(user.following if user else espressops.DEFAULT_BARISTAS)
     with ui.list().classes("w-full p-0 m-0 rounded-borders") as panel:
-        ui.item("Following" if user else "Popular Baristas", on_click=create_navigation_route("/baristas")).classes("text-h6")
+        ui.item("Following" if user else "Popular Baristas", on_click=create_navigation_func("/baristas")).classes("text-h6")
         ui.separator()
-        [ui.item(barista.title, on_click=create_barista_route(barista)) for barista in baristas]
+        [ui.item(barista.title, on_click=create_barista_navigate_func(barista)) for barista in baristas]
     return panel    
 
 def render_beans(user: User, load_beans: Callable, container: ui.element = None):
@@ -180,7 +183,7 @@ def render_beans_as_extendable_list(user: User, load_beans: Callable, container:
 def render_paginated_beans(user: User, load_beans: Callable, count_items: Callable):    
     @ui.refreshable
     def render(page):
-        return render_beans(user, lambda: load_beans((page-1)*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE))        
+        return render_beans(user, lambda: load_beans((page-1)*MAX_ITEMS_PER_PAGE, MAX_ITEMS_PER_PAGE)).classes("w-full")     
 
     with ui.column(align_items="stretch") as panel:
         render(1)
@@ -193,7 +196,12 @@ def render_bean_with_related(user: User, bean: Bean):
 
 def render_swipable_beans(user: User, beans: list[Bean]):
     with ui.item() as view:  # Added rounded-borders class here
-        with ui.carousel(animated=True, arrows=True).props("swipeable control-color=secondary").classes("rounded-borders w-full h-full"):
+        with ui.carousel(
+            animated=True, 
+            arrows=True, 
+            value=beans[0].url,
+            # on_value_change=lambda e: log("read", user_id=user_id(user), url=e.sender.value)
+        ).props("swipeable control-color=secondary").classes("rounded-borders w-full h-full"):
             for i, bean in enumerate(beans):
                 with ui.carousel_slide(bean.url).classes("w-full m-0 p-0 no-wrap"):  # Added rounded-borders class here
                     render_bean(user, bean, i!=0).classes("w-full m-0 p-0")
@@ -202,8 +210,11 @@ def render_swipable_beans(user: User, beans: list[Bean]):
 # render_bean = lambda user, bean, expandable: render_expandable_bean(user, bean) if expandable else render_whole_bean(user, bean)
 render_bean = lambda user, bean, expanded: render_expandable_bean(user, bean, expanded)
 
-def render_expandable_bean(user: User, bean, expanded: bool = False):
-    with ui.expansion(value=expanded).props("dense hide-expand-icon").classes("bg-dark rounded-borders") as expansion:
+def render_expandable_bean(user: User, bean: Bean, expanded: bool = False):
+    with ui.expansion(
+        value=expanded,
+        on_value_change=lambda e: log("read", user_id=user_id(user), url=bean.url) if e.sender.value else None
+    ).props("dense hide-expand-icon").classes("bg-dark rounded-borders") as expansion:
         header = expansion.add_slot("header")
         with header:
             render_bean_header(user, bean).classes(add="p-0")
@@ -227,7 +238,7 @@ def render_bean_header(user: User, bean: Bean):
 
 def render_bean_stats(user: User, bean: Bean): 
     with ui.row(align_items="stretch").classes("w-full") as view:       
-        ui.label(f"{naturalday(bean.created or bean.updated)}'s {bean.kind}")
+        ui.label(naturalday(bean.created or bean.updated))
         if bean.comments:
             ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")
         if bean.likes:
@@ -236,44 +247,52 @@ def render_bean_stats(user: User, bean: Bean):
             ui.label(f"🔗 {bean.shares}").tooltip(f"{bean.shares} shares across various social media sources") # another option 🗞️
     return view
 
-def render_bean_body(user, bean):
+def render_bean_body(user: User, bean: Bean):
     with ui.column(align_items="stretch").classes("w-full m-0 p-0") as view:
         if bean.tags:
-            render_bean_tags(bean)
+            render_bean_tags(user, bean)
         if bean.summary:
             ui.markdown(bean.summary).classes("bean-body")
         with ui.row(wrap=False, align_items="stretch").classes("w-full justify-between p-0 m-0"):
-            render_bean_source(bean).classes("text-caption bean-source")
+            render_bean_source(user, bean).classes("text-caption bean-source")
             render_bean_actions(user, bean)
     return view
 
-def render_bean_tags(bean: Bean):
+def render_bean_tags(user: User, bean: Bean):
     make_tag = lambda tag: ui.link(tag, target=create_navigation_target("/beans", tag=tag)).classes("tag q-mr-md").style("color: secondary; text-decoration: none;")
     with ui.row(wrap=True, align_items="baseline").classes("w-full gap-0 m-0 p-0 text-caption") as view:
         [make_tag(tag) for tag in random.sample(bean.tags, min(MAX_TAGS_PER_BEAN, len(bean.tags)))]
     return view
 
-def render_bean_source(bean: Bean):
+def render_bean_source(user: User, bean: Bean):
     with ui.row(wrap=False, align_items="center").classes("gap-0") as view:        
         ui.avatar("img:"+beanops.favicon(bean), size="xs", color="transparent")
-        ui.link(bean.source, bean.url, new_tab=True).classes("ellipsis-30")
+        ui.link(bean.source, bean.url, new_tab=True).classes("ellipsis-30").on("click", lambda : log("opened", user_id=user_id(user), url=bean.url))
     return view
 
-def render_bean_actions(user: User, bean: Bean):
-    # publish = lambda: ui.notify(PUBLISHED if espressops.publish(user, bean.url) else UNKNOWN_ERROR)
-    share_button = lambda url_func, icon: ui.button(on_click=url_func(bean), icon=icon).props("flat")
+def render_bean_actions(user: User, bean: Bean): 
+    share_text = f"{bean.summary}\n\n{bean.url}"  
+    def share_func(target: str):
+        return lambda: [
+            log("shared", user_id=user_id(user), url=bean.url, target=target),
+            ui.notify(PUBLISHED if espressops.db.publish(user, bean.url) else UNKNOWN_ERROR) \
+                if target == "espresso" else \
+                    ui.navigate.to(create_navigation_target(target, url=bean.url, text=share_text), new_tab=True)
+        ]
+    share_button = lambda target, icon: ui.button(on_click=share_func(target), icon=icon, color="transparent").props("flat")
+        
     with ui.button_group().props("flat size=sm").classes("p-0 m-0"):
-        ui.button(icon="more", color="secondary", on_click=create_navigation_route("/search", q=bean.url)).props("flat size=sm").tooltip("More like this")
+        ui.button(icon="more", color="secondary", on_click=create_navigation_func("/search", q=bean.url)).props("flat size=sm").tooltip("More like this")
         with ui.button(icon="share", color="secondary").props("flat size=sm") as view:
-            with ui.menu():
+            with ui.menu().props("auto-close"):
                 with ui.row(wrap=False, align_items="stretch").classes("gap-1 m-0 p-0"):
-                    share_button(reddit_share_url, REDDIT_ICON).tooltip("Share on Reddit")
-                    share_button(linkedin_share_url, LINKEDIN_ICON).tooltip("Share on LinkedIn")
-                    share_button(twitter_share_url, TWITTER_ICON).tooltip("Share on X")
-                    share_button(whatsapp_share_url, WHATSAPP_ICON).tooltip("Share on WhatsApp")
-                    # share_button(slack_share_url, SLACK_ICON).tooltip("Share on Slack") 
-                    # if user:
-                    #     ui.button(on_click=publish, icon=ESPRESSO_ICON).props("flat").tooltip("Publish on Espresso")
+                    share_button("https://www.reddit.com/submit", REDDIT_ICON).tooltip("Share on Reddit")
+                    share_button("https://www.linkedin.com/shareArticle", LINKEDIN_ICON).tooltip("Share on LinkedIn")
+                    share_button("https://x.com/intent/tweet", TWITTER_ICON).tooltip("Share on X")
+                    share_button("https://wa.me/", WHATSAPP_ICON).tooltip("Share on WhatsApp")
+                    # share_button("https://slack.com/share/url", SLACK_ICON).tooltip("Share on Slack") 
+        if user:
+            ui.button(icon="bookmark", color="secondary", on_click=share_func("espresso")).props("flat size=sm").tooltip("Publish on your Espresso profile")
     return view  
 
 def render_filter_tags(load_tags: Callable, on_selection_changed: Callable):

@@ -31,11 +31,11 @@ def get_all_sources():
 def get_all_tags():
     return db.beanstore.distinct(K_TAGS)
 
-def get_beans(urls: str|list[str], tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
+def get_beans(urls: str|list[str], tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, sort_by, start: int, limit: int) -> list[Bean]:
     filter=_create_filter(tags, kinds, sources, last_ndays, None, None, None)
     if urls:
         filter[K_URL] = {"$in": urls} if isinstance(urls, list) else urls
-    return db.get_beans(filter=filter, skip=start, limit=limit)
+    return db.get_beans(filter=filter, sort_by=sort_by, skip=start, limit=limit, projection=PROJECTION)
 
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
 def get_newest_beans(embedding: list[float], accuracy: float, tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int):
@@ -82,7 +82,7 @@ def get_chatters(urls: str|list[str]):
     return db.get_chatter_stats(urls)
     
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
-def get_tags(query: str, embedding: list[float], accuracy: float, must_have_tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
+def get_tags(urls: list[str], query: str, embedding: list[float], accuracy: float, must_have_tags: str|list[str]|list[list[str]], kinds: str|list[str], sources: str|list[str], last_ndays: int, start: int, limit: int) -> list[Bean]:
     # searching by updated-after for a wider net
     filter=_create_filter(must_have_tags, kinds, sources, None, last_ndays, None, None)
     if embedding:
@@ -90,7 +90,11 @@ def get_tags(query: str, embedding: list[float], accuracy: float, must_have_tags
     if is_valid_url(query):
         bean = db.beanstore.find_one(filter={K_URL: query}, projection={K_EMBEDDING: 1, K_URL: 1, K_ID: 0})
         return db.vector_search_tags(embedding=bean[K_EMBEDDING], min_score=accuracy, beans_in_scope=filter, exclude_from_result=must_have_tags, skip=start, limit=limit) if bean else []
+    if query:
+        return db.vector_search_tags(query=query, min_score=accuracy, beans_in_scope=filter, exclude_from_result=must_have_tags, skip=start, limit=limit)
     else:
+        if urls:
+            filter[K_URL] = {"$in": urls} if isinstance(urls, list) else urls   
         return db.get_tags(beans_in_scope=filter, exclude_from_result=must_have_tags, skip=start, limit=limit)
 
 # @cached(max_size=CACHE_SIZE, ttl=ONE_HOUR)
