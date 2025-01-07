@@ -83,13 +83,12 @@ async def render_beans_page(user: User, must_have_tags: str|list[str], kind: str
             sort_by = filter_sort_by
         return get_beans
     
-    render_page(
+    ui.label(tags_banner_text(must_have_tags)).classes("text-h6")
+    
+    render_page_content(
         user, 
-        tags_banner_text(must_have_tags), 
         lambda: beanops.get_tags(None, None, None, None, must_have_tags, None, None, None, 0, MAX_FILTER_TAGS), 
         trigger_filter,
-        is_page_followed=False,
-        page_follow_func=None,
         initial_kind=kind
     )
 
@@ -120,26 +119,48 @@ async def render_barista_page(user: User, barista: Barista):
         if filter_sort_by:
             sort_by = filter_sort_by
         return get_beans
+        
+    async def toggle_publish():
+        if espressops.db.is_published(barista.id):
+            espressops.db.unpublish(barista.id)
+            log("unpublished", user_id=user_id(user), page_id=barista.id)
+        else:
+            espressops.db.publish(barista.id)
+            log("published", user_id=user_id(user), page_id=barista.id)
             
-    async def follow_unfollow(value: bool):
-        if value:
+    async def toggle_follow():
+        if barista.id not in user.following:
             espressops.db.follow_barista(user.email, barista.id)
-            log("following", user_id=user.email if user else None, page_id=barista.id)
+            log("followed", user_id=user_id(user), page_id=barista.id)
         else:
             espressops.db.unfollow_barista(user.email, barista.id)
-            log("unfollowing", user_id=user.email if user else None, page_id=barista.id)
+            log("unfollowed", user_id=user_id(user), page_id=barista.id)
+            
+    with ui.label(barista.title).classes("text-h6"):        
+        if user:
+            has_publish_permission = barista.owner == user.email
+            has_unfollow_permission = barista.owner != user.email
+            with ui.button(icon="more_vert", color="secondary").props("flat").classes("q-ml-md"):
+                with ui.menu():  
+                    if has_publish_permission:
+                        with ui.item("Public"):
+                            ui.switch(value=barista.public, on_change=toggle_publish).props("flat checked-icon=public unchecked-icon=public_off")
+
+                    if has_unfollow_permission:
+                        with ui.item("Follow"):
+                            ui.switch(value=barista.id in user.following, on_change=toggle_follow).props("flat checked-icon=playlist_add_check unchecked-icon=playlist_remove")
+
+                    with ui.menu_item("Create a Filtered Barista", on_click=lambda: ui.notify("Coming soon")):
+                        ui.avatar(icon="filter_list", color="transparent")
     
-    render_page(
+    render_page_content(
         user, 
-        barista.title,
         lambda: beanops.get_tags(barista.urls, None, barista.embedding, barista.accuracy, barista.tags, None, barista.sources, None, 0, MAX_FILTER_TAGS), 
         trigger_filter,
-        is_page_followed=barista.id in user.following if user else False,
-        page_follow_func=follow_unfollow if user else None,
         initial_kind=kind
     )
 
-def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_filter_func: Callable, is_page_followed: bool, page_follow_func: Callable, initial_kind: str):
+def render_page_content(user, get_filter_tags_func: Callable, trigger_filter_func: Callable, initial_kind: str):
     @ui.refreshable
     def render_beans_panel(filter_tags: list[str] = None, filter_kind: str = None, filter_sort_by: str = None):        
         return render_beans_as_extendable_list(
@@ -149,16 +170,6 @@ def render_page(user, page_title: str, get_filter_tags_func: Callable, trigger_f
         ).classes("w-full")
 
     render_header(user)  
-    with ui.row(wrap=False).classes("w-full justify-between"):
-        ui.label(page_title).classes("text-h6")                 
-        if user and page_follow_func:
-            SwitchButton(
-                value=is_page_followed,
-                unswitched_text="Follow", 
-                switched_text="Unfollow", 
-                unswitched_icon="playlist_add", 
-                switched_icon="playlist_remove"
-        ).props("unelevated").on_click(lambda e: page_follow_func(e.sender.value))
             
     render_filter_tags(
         load_tags=get_filter_tags_func, 

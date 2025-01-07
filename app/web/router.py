@@ -107,21 +107,26 @@ def initialize_server():
     
     log("server_initialized")
 
-def extract_barista(barista_id: str) -> Barista:
+def validate_barista(barista_id: str) -> Barista:
     barista_id = barista_id.lower()
     barista = espressops.db.get_barista(barista_id)
     if not barista:
-        raise HTTPException(status_code=404, detail=f"{barista_id} does not exist")
+        raise HTTPException(status_code=404, detail=f"{barista_id} not found")
+    
+    if not barista.public:
+        user = extract_user()
+        if not user or barista.owner != user.email:
+            raise HTTPException(status_code=401, detail="Unauthorized")
     return barista
 
 def validate_doc(doc_id: str):
     if not bool(os.path.exists(f"docs/{doc_id}")):
-        raise HTTPException(status_code=404, detail=f"{doc_id} does not exist")
+        raise HTTPException(status_code=404, detail=f"{doc_id} not found")
     return f"./docs/{doc_id}"
 
 def validate_image(image_id: str):
     if not bool(os.path.exists(f"images/{image_id}")):
-        raise HTTPException(status_code=404, detail=f"{image_id} does not exist")
+        raise HTTPException(status_code=404, detail=f"{image_id} not found")
     return f"./images/{image_id}"
 
 def extract_user():
@@ -263,7 +268,7 @@ async def snapshot(user: User = Depends(extract_user)):
 @ui.page("/baristas/{barista_id}", title="Espresso")
 async def barista(
     user: User = Depends(extract_user),
-    barista: Barista = Depends(extract_barista, use_cache=True)
+    barista: Barista = Depends(validate_barista, use_cache=True)
 ): 
     log('baristas', user_id=user_id(user), page_id=barista.id) 
     await vanilla.render_barista_page(user, barista)

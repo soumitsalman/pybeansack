@@ -15,6 +15,7 @@ class User(BaseModel):
 class Barista(BaseModel):
     id: str = Field(default=None, alias="_id")
     owner: Optional[str] = None
+    public: Optional[bool] = False
     title: Optional[str] = None
     description: Optional[str] = None
     urls: Optional[list[str]] = None

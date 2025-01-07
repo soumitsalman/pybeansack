@@ -119,6 +119,7 @@ class EspressoDB:
     @cached(max_size=10, ttl=ONE_HOUR) 
     def sample_baristas(self, limit: int):
         pipeline = [
+            { "$match": {"public": True} },
             { "$sample": {"size": limit} },
             { "$project": {ID: 1, TITLE: 1, DESCRIPTION: 1} }
         ]
@@ -140,8 +141,24 @@ class EspressoDB:
             {   "$limit": 10 }     
         ]        
         return [Barista(**barista) for barista in self.baristas.aggregate(pipeline)]
+    
+    def publish(self, barista_id: str):
+        return self.baristas.update_one(
+            {ID: barista_id}, 
+            { "$set": { "public": True } }
+        ).acknowledged
+        
+    def unpublish(self, barista_id: str):
+        return self.baristas.update_one(
+            {ID: barista_id}, 
+            { "$set": { "public": False } }
+        ).acknowledged
+        
+    def is_published(self, barista_id: str):
+        val = self.baristas.find_one({ID: barista_id}, {"public": 1, OWNER: 1})
+        return val.get("public", val[OWNER] == SYSTEM) if val else False        
 
-    def publish(self, user: User, url: str):
+    def bookmark(self, user: User, url: str):
         return self.baristas.update_one(
             filter = {ID: user.email}, 
             update = { 
@@ -154,6 +171,15 @@ class EspressoDB:
             },
             upsert = True
         ).acknowledged
+    
+    def unbookmark(self, user: User, url: str):
+        return self.baristas.update_one(
+            filter = {ID: user.email}, 
+            update = { "$pull": { "urls": url } }
+        ).acknowledged
+    
+    def is_bookmarked(self, user: User, url: str):
+        return self.baristas.find_one({ID: user.email, "urls": url})
 
 db: EspressoDB = None
 def initialize(db_connection_string: str, sb_connection_string: str, embedder: Embeddings):

@@ -12,6 +12,8 @@ from urllib.parse import urlencode
 from nicegui import ui, background_tasks, run
 from icecream import ic
 
+from app.web.custom_ui import SwitchButton
+
 MAX_ITEMS_PER_PAGE = 5
 MAX_PAGES = 10
 MAX_TAGS_PER_BEAN = 5
@@ -108,26 +110,31 @@ def render_login():
                     ui.avatar(option["icon"], color="transparent", square=True)
     return view
 
+
 def render_user(user: User):
     with ui.button(icon="person") as view:
         # with ui.avatar(color="transparent", rounded=True, size="md") as view:
         #     ui.image(user.image_url) if user.image_url else ui.icon("person")
         with ui.menu():
-            with ui.item(user.name):
-                ui.avatar(icon="img:"+user.image_url if user.image_url else "person", color="transparent", rounded=True)
-            
+            with ui.item():
+                ui.icon("img:"+user.image_url if user.image_url else "person", size="md").classes("q-mr-md").props("avatar")
+                ui.label(user.name)
+            ui.separator()
+                        
             if espressops.db.get_barista(user.email):
                 with ui.menu_item(on_click=create_navigation_func("/baristas/"+user.email)):
-                    with ui.label("Bookmarks Barista"):
+                    ui.icon("bookmarks", size="md").classes("q-mr-md")
+                    with ui.label("Bookmarks"):
                         ui.label("/baristas/"+user.email).classes("text-caption")
-                    ui.avatar("bookmarks", color="transparent", square=True)
-                    
-            with ui.menu_item("Settings",on_click=lambda: ui.notify("Coming soon")):
-                ui.avatar("settings", color="transparent", square=True)
+                                    
+            with ui.menu_item(on_click=lambda: ui.notify("Coming soon")):
+                ui.icon("settings", size="md").classes("q-mr-md")
+                ui.label("Settings")
 
             ui.separator()
-            with ui.menu_item("Log Out", on_click=create_navigation_func("/user/me/logout")).classes("text-negative justify-start"):
-                ui.avatar("logout", color="transparent", square=True)
+            with ui.menu_item(on_click=create_navigation_func("/user/me/logout")).classes("text-negative"):
+                ui.icon("logout", size="md").classes("q-mr-md")
+                ui.label("Log Out")
     return view
 
 def render_barista_names(user: User, baristas: list[Barista]):
@@ -272,17 +279,25 @@ def render_bean_source(user: User, bean: Bean):
 
 def render_bean_actions(user: User, bean: Bean): 
     share_text = f"{bean.summary}\n\n{bean.url}"  
+    
+    def toggle_bookmark():
+        if espressops.db.is_bookmarked(user, bean.url):
+            log("unbookmarked", user_id=user_id(user), url=bean.url)
+            espressops.db.unbookmark(user, bean.url)            
+        else:
+            log("bookmarked", user_id=user_id(user), url=bean.url)
+            espressops.db.bookmark(user, bean.url)
+    
     def share_func(target: str):
         return lambda: [
             log("shared", user_id=user_id(user), url=bean.url, target=target),
-            ui.notify(PUBLISHED if espressops.db.publish(user, bean.url) else UNKNOWN_ERROR) \
-                if target == "espresso" else \
-                    ui.navigate.to(create_navigation_target(target, url=bean.url, text=share_text), new_tab=True)
+            ui.navigate.to(create_navigation_target(target, url=bean.url, text=share_text), new_tab=True)
         ]
     share_button = lambda target, icon: ui.button(on_click=share_func(target), icon=icon, color="transparent").props("flat")
         
     with ui.button_group().props("flat size=sm").classes("p-0 m-0"):
-        ui.button(icon="more", color="secondary", on_click=create_navigation_func("/search", q=bean.url)).props("flat size=sm").tooltip("More like this")
+        ui.button(icon="search", color="secondary", on_click=create_navigation_func("/search", q=bean.url)).props("flat size=sm").tooltip("Find more like this")
+        
         with ui.button(icon="share", color="secondary").props("flat size=sm") as view:
             with ui.menu().props("auto-close"):
                 with ui.row(wrap=False, align_items="stretch").classes("gap-1 m-0 p-0"):
@@ -292,7 +307,13 @@ def render_bean_actions(user: User, bean: Bean):
                     share_button("https://wa.me/", WHATSAPP_ICON).tooltip("Share on WhatsApp")
                     # share_button("https://slack.com/share/url", SLACK_ICON).tooltip("Share on Slack") 
         if user:
-            ui.button(icon="bookmark", color="secondary", on_click=share_func("espresso")).props("flat size=sm").tooltip("Publish on your Espresso profile")
+            SwitchButton(
+                espressops.db.is_bookmarked(user, bean.url), 
+                unswitched_text=None, switched_text=None, 
+                unswitched_icon="bookmark_add", switched_icon="bookmark", 
+                on_click=toggle_bookmark,
+                color="secondary"
+            ).props("flat size=sm")
     return view  
 
 def render_filter_tags(load_tags: Callable, on_selection_changed: Callable):
