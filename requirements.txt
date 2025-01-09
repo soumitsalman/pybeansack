@@ -1,0 +1,8 @@
+llama-cpp-python
+pymongo
+tiktoken
+retry
+pydantic
+python-dotenv
+icecream
+memoization
