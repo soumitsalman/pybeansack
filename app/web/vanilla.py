@@ -140,7 +140,7 @@ async def render_barista_page(user: User, barista: Barista):
         if user:
             has_publish_permission = barista.owner == user.email
             has_unfollow_permission = barista.owner != user.email
-            with ui.button(icon="more_vert", color="secondary").props("flat").classes("q-ml-md"):
+            with ui.button(icon="more_vert").props("flat").classes("q-ml-md"):
                 with ui.menu():  
                     if has_publish_permission:
                         with ui.item("Public"):
@@ -148,9 +148,9 @@ async def render_barista_page(user: User, barista: Barista):
 
                     if has_unfollow_permission:
                         with ui.item("Follow"):
-                            ui.switch(value=barista.id in user.following, on_change=toggle_follow).props("flat checked-icon=playlist_add_check unchecked-icon=playlist_remove")
+                            ui.switch(value=barista.id in user.following, on_change=toggle_follow).props("flat checked-icon=playlist_add_check")
 
-                    with ui.menu_item("Create a Filtered Barista", on_click=lambda: ui.notify("Coming soon")):
+                    with ui.menu_item("Pour a Filtered Cup", on_click=lambda: ui.notify("Coming soon")):
                         ui.avatar(icon="filter_list", color="transparent")
     
     render_page_content(

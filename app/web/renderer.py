@@ -74,7 +74,7 @@ def create_search_target(text):
 def render_header(user: User):
     ui.add_css(CSS_FILE)
     ui.colors(primary=PRIMARY_COLOR, secondary=SECONDARY_COLOR)    
-    
+
     with ui.left_drawer(bordered=False).props("width=250 breakpoint=600 show-if-above").classes("p-0") as barista_panel:                 
         with ui.scroll_area().classes("w-full h-full p-0 m-0 fit"):
             render_navigation_panel(user)
@@ -87,8 +87,8 @@ def render_header(user: User):
             
         # TODO: make this pull up side panel
         # bookmarks library_books
-        ui.button(icon="local_cafe", on_click=lambda: barista_panel.toggle()).props("unelevated").classes("lt-sm")
-        ui.button(icon="search", on_click=create_navigation_func("/search")).props("unelevated").classes("lt-sm")
+        ui.button(icon="local_cafe_outlined", on_click=lambda: barista_panel.toggle()).props("unelevated").classes("lt-sm")
+        ui.button(icon="search_outlined", on_click=create_navigation_func("/search")).props("unelevated").classes("lt-sm")
 
         trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
         with ui.input(placeholder=SEARCH_PLACEHOLDER) \
@@ -109,7 +109,6 @@ def render_login():
                 with ui.menu_item(option["title"], on_click=lambda url=option['url']: ui.navigate.to(url)):
                     ui.avatar(option["icon"], color="transparent", square=True)
     return view
-
 
 def render_user(user: User):
     with ui.button(icon="person") as view:
@@ -310,7 +309,7 @@ def render_bean_actions(user: User, bean: Bean):
             SwitchButton(
                 espressops.db.is_bookmarked(user, bean.url), 
                 unswitched_text=None, switched_text=None, 
-                unswitched_icon="bookmark_add", switched_icon="bookmark", 
+                unswitched_icon="bookmark_outlined", switched_icon="bookmark", 
                 on_click=toggle_bookmark,
                 color="secondary"
             ).props("flat size=sm")

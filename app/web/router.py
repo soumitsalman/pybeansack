@@ -299,6 +299,7 @@ GOOGLE_ANALYTICS_SCRIPT = '''
   gtag('js', new Date());
   gtag('config', 'G-NBSTNYWPG1');
 </script>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 '''
 
 def run():
