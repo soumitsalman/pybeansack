@@ -12,7 +12,7 @@ An Asian-American computer engineer, Soumit is a pioneer in designing hyper-opti
 Soumit has been a key member in the inception of multiple bleeding edge technologies such as Azure, Surface Book, O365 Government Cloud and Autonomous Trucks. He has established a reputation for his expertise in creating robust, secure computing environments. With a specialization in cybersecurity, high-performance computing platforms, and applied AI, Soumit is a relentless innovator passionate about pushing the boundaries of what technology can achieve.
 
 **Daniel Oliver Vidaud**  
-[LinkedIn](https://www.linkedin.com/in/dvidaud/) | [Blog](https://personalizedtransformations.com/blog/))
+[LinkedIn](https://www.linkedin.com/in/dvidaud/) | [Blog](https://personalizedtransformations.com/blog/)
 
 Daniel is a Cuban-American aerospace engineer, pilot, and polymath who has worked to improve corporate operations, integrated governance, organizational ergonomics, and strategic change implementation. He is known for identifying small, counter-intuitive changes within complex organizations that result in disproportionally large and sustainable returns that remain stable at scale.
 
