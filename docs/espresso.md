@@ -18,7 +18,7 @@ So, clickbait creators — go eat a… well, not an Espresso.
 
 **Where We’re Headed:**
 
-Today, Espresso doesn’t track per-user engagement or fine-tune itself based on your personal preferences — but that’s coming soon. We’re hard at work to make Espresso a smarter, more personalized tool so that every session feels like a quick, invigorating shot of espresso tailored to your tastes.
+Today, Espresso ~~doesn’t track per-user engagement~~ (yes, it doooooees!) and doesn't fine-tune itself based on your personal preferences — but that’s coming soon. We’re hard at work to make Espresso a smarter, more personalized tool so that every session feels like a quick, invigorating shot of espresso tailored to your tastes.
 
 Join us on this journey as we brew the perfect cup of content just for you.
 
