@@ -24,4 +24,4 @@ Join us on this journey as we brew the perfect cup of content just for you.
 
 **Espresso** — Stay ahead, effortlessly.
 
-[Terms of Use](/docs/terms-of-use) | [Privacy Policy](/docs/privacy-policy) | [Project Cafecito](/docs/project-cafecito) | [About Us](/docs/about-us) | [Architecture & Design](/docs/architecture-design) | [Blogs on Lessons Learnt](https://medium.com/@soumitsr)
+[Terms of Use](/docs/terms-of-use.md) | [Privacy Policy](/docs/privacy-policy.md) | [Project Cafecito](/docs/project-cafecito.md) | [About Us](/docs/about-us.md) | [Architecture & Design](/docs/architecture-design.md) | [Blogs on Lessons Learnt](https://medium.com/@soumitsr)
