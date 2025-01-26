@@ -243,7 +243,7 @@ def render_bean_header(user: User, bean: Bean):
     return view
 
 def render_bean_stats(user: User, bean: Bean): 
-    with ui.row(align_items="stretch").classes("w-full") as view:       
+    with ui.row(align_items="center").classes("w-full") as view:       
         ui.label(naturalday(bean.created or bean.updated))
         if bean.comments:
             ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")
@@ -251,6 +251,7 @@ def render_bean_stats(user: User, bean: Bean):
             ui.label(f"👍 {bean.likes}").tooltip(f"{bean.likes} likes across various social media sources")
         if bean.shares and bean.shares > 1:
             ui.label(f"🔗 {bean.shares}").tooltip(f"{bean.shares} shares across various social media sources") # another option 🗞️
+        render_bean_source(user, bean)
     return view
 
 def render_bean_body(user: User, bean: Bean):
@@ -258,9 +259,9 @@ def render_bean_body(user: User, bean: Bean):
         if bean.tags:
             render_bean_tags(user, bean)
         if bean.summary:
-            ui.markdown(bean.summary).classes("bean-body")
-        with ui.row(wrap=False, align_items="stretch").classes("w-full justify-between p-0 m-0"):
-            render_bean_source(user, bean).classes("text-caption bean-source")
+            ui.markdown(bean.summary).classes("bean-body").tooltip("AI generated summary")
+        with ui.row(wrap=False, align_items="stretch").classes("w-full p-0 m-0 justify-end"):
+            # render_bean_source(user, bean).classes("text-caption bean-source")
             render_bean_actions(user, bean)
     return view
 
@@ -271,8 +272,8 @@ def render_bean_tags(user: User, bean: Bean):
     return view
 
 def render_bean_source(user: User, bean: Bean):
-    with ui.row(wrap=False, align_items="center").classes("gap-0") as view:        
-        ui.avatar("img:"+beanops.favicon(bean), size="xs", color="transparent")
+    with ui.row(wrap=False, align_items="center").classes("gap-2") as view:        
+        ui.icon("img:"+beanops.favicon(bean))
         ui.link(bean.source, bean.url, new_tab=True).classes("ellipsis-30").on("click", lambda : log("opened", user_id=user_id(user), url=bean.url))
     return view
 

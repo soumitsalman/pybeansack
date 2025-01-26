@@ -18,6 +18,6 @@ def log(function, **kwargs):
     logging.getLogger(APP_NAME).info(function, extra=kwargs)
 
 is_valid_url = lambda url: urlparse(url).scheme in ["http", "https"]
-favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+tldextract.extract(bean.url).registered_domain
+favicon = lambda bean: "https://www.google.com/s2/favicons?domain="+urlparse(bean.url).netloc
 naturalday = lambda date_val: humanize.naturalday(date_val, format="%a, %b %d")
 user_id = lambda user: user.email if user else None

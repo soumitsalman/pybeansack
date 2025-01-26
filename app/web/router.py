@@ -2,10 +2,11 @@ import logging
 from azure.monitor.opentelemetry import configure_azure_monitor
 from app.shared.env import *
 
-configure_azure_monitor(
-    connection_string=APPINSIGHTS_CONNECTION_STRING, 
-    logger_name=APP_NAME, 
-    instrumentation_options={"fastapi": {"enabled": True}})  
+if APPINSIGHTS_CONNECTION_STRING:   
+    configure_azure_monitor(
+        connection_string=APPINSIGHTS_CONNECTION_STRING, 
+        logger_name=APP_NAME, 
+        instrumentation_options={"fastapi": {"enabled": True}})  
 
 from app.pybeansack.embedding import *
 from app.shared import beanops, espressops
