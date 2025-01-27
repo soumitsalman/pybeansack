@@ -181,7 +181,7 @@ class Beansack:
     def count_unique_beans(self, filter, limit = 0):
         pipeline = self._unique_beans_pipeline(filter, sort_by=None, skip=0, limit=limit, projection=None, for_count=True)
         result = self.beanstore.aggregate(pipeline)
-        return next(iter(result))['total_count'] if result else 0
+        return next(iter(result), {'total_count': 0})['total_count'] if result else 0
     
     def get_tags(self, beans_in_scope, exclude_from_result, skip = 0, limit = 0):
         filter = {K_TAGS: {"$exists": True}}

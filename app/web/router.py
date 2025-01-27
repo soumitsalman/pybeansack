@@ -60,7 +60,7 @@ def initialize_server():
         if LLM_BASE_URL else \
         BeansackEmbeddings(EMBEDDER_MODEL, EMBEDDER_N_CTX)
     beanops.initiatize(DB_CONNECTION_STRING, embedder)
-    espressops.initialize(DB_CONNECTION_STRING, SB_CONNECTION_STRING, embedder)
+    espressops.initialize(DB_CONNECTION_STRING, embedder)
 
     oauth.register(
         "google",

@@ -182,7 +182,7 @@ class EspressoDB:
         return self.baristas.find_one({ID: user.email, "urls": url})
 
 db: EspressoDB = None
-def initialize(db_connection_string: str, sb_connection_string: str, embedder: Embeddings):
+def initialize(db_connection_string: str, embedder: Embeddings):
     global db
     db = EspressoDB(db_connection_string, embedder)
 

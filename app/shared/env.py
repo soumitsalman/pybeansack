@@ -1,7 +1,4 @@
-from dotenv import load_dotenv
 import os
-
-load_dotenv()
 
 # stuffs from azure/infrastructure
 DB_CONNECTION_STRING = os.getenv("DB_CONNECTION_STRING")

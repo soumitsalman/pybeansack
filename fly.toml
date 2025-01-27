@@ -1,0 +1,27 @@
+app = "espresso-app-test"
+primary_region = "iad"
+
+[http_service]
+auto_start_machines = true
+auto_stop_machines = true
+force_https = true
+internal_port = 8_080
+min_machines_running = 0
+processes = [ "app" ]
+
+[[vm]]
+cpu_kind = "shared"
+cpus = 2
+memory = "2gb"
+memory_mb = 2_048
+
+[build]
+dockerfile = "Dockerfile"
+ignorefile = ".dockerignore"
+
+[env]
+LLM_BASE_URL = "https://api.deepinfra.com/v1/openai"
+EMBEDDER_MODEL = "thenlper/gte-large"
+EMBEDDER_N_CTX = 496
+APP_NAME = "Espresso"
+
