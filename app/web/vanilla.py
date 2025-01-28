@@ -192,11 +192,21 @@ SAVED_PAGE = "saved_page"
 SEARCH_PAGE_TABS = {**KIND_LABELS, **{SAVED_PAGE: "Pages"}}
 # NOTE: if query length is small think of it as a domain/genre
 prep_query = lambda query: f"Domain / Genre / Category / Topic: {query}" if len(query.split()) > 3 else query
-async def render_search(user: User, query: str, accuracy: float):
+async def render_search(user: User, query: str, accuracy: float):   
+    render_header(user)
+    trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
+    with ui.input(placeholder=SEARCH_PLACEHOLDER, value=query) \
+        .props('rounded outlined input-class=mx-3').classes('w-full self-center lt-sm') \
+        .on('keydown.enter', trigger_search) as search_input:
+        ui.button(icon="send", on_click=trigger_search).bind_visibility_from(search_input, 'value').props("flat dense")  
+
+    if not query:  return
+
     tags, kind, last_ndays = None, DEFAULT_KIND, DEFAULT_WINDOW
-    
+    embedding = await embed_query(query)
+
     def get_beans(start, limit):
-        result = beanops.vector_search_beans(query=prep_query(query), accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit)
+        result = beanops.vector_search_beans(query=None, embedding=embedding, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, start=start, limit=limit)
         log("search", user_id=user.email if user else None, query=query, accuracy=accuracy, tags=tags, kind=kind, last_ndays=last_ndays, start=start, urls=[bean.url for bean in result])
         return result
     
@@ -216,48 +226,43 @@ async def render_search(user: User, query: str, accuracy: float):
         if kind == SAVED_PAGE and query:
             result = espressops.db.search_baristas(query)
             log("search", user_id=user.email if user else None, query=query, tags=tags, kind=kind)
-            return render_barista_names(user, result) \
-                if result else \
-                    render_error_text(NOTHING_FOUND)
+            if result: render_barista_names(user, result)
+            else: render_error_text(NOTHING_FOUND)
         
         return render_paginated_beans(
             user, 
             get_beans, 
-            lambda: beanops.count_beans(query=query, embedding=None, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT)).classes("w-full")               
+            lambda: beanops.count_beans(query=None, embedding=embedding, accuracy=accuracy, tags=tags, kinds=kind, sources=None, last_ndays=last_ndays, limit=MAX_LIMIT)).classes("w-full")               
 
-    render_header(user)
-    trigger_search = lambda: ui.navigate.to(create_search_target(search_input.value))
-    with ui.input(placeholder=SEARCH_PLACEHOLDER, value=query) \
-        .props('rounded outlined input-class=mx-3').classes('w-full self-center lt-sm') \
-        .on('keydown.enter', trigger_search) as search_input:
-        ui.button(icon="send", on_click=trigger_search).bind_visibility_from(search_input, 'value').props("flat dense")  
+    with ui.grid(columns=2).classes("w-full"):                         
+        with ui.label("Accuracy").classes("w-full"):
+            accuracy_filter = ui.slider(
+                min=0.1, max=1.0, step=0.05, 
+                value=(accuracy or DEFAULT_ACCURACY), 
+                on_change=debounce(lambda: render_result_panel.refresh(filter_accuracy=accuracy_filter.value), 1.5)).props("label-always")
 
-    if query:             
-        with ui.grid(columns=2).classes("w-full"):                         
-            with ui.label("Accuracy").classes("w-full"):
-                accuracy_filter = ui.slider(
-                    min=0.1, max=1.0, step=0.05, 
-                    value=(accuracy or DEFAULT_ACCURACY), 
-                    on_change=debounce(lambda: render_result_panel.refresh(filter_accuracy=accuracy_filter.value), 1.5)).props("label-always")
+        with ui.label().classes("w-full") as last_ndays_label:
+            last_ndays_filter = ui.slider(
+                min=-30, max=-1, step=1, value=-last_ndays,
+                on_change=debounce(lambda: render_result_panel.refresh(filter_last_ndays=-last_ndays_filter.value), 1.5))
+            last_ndays_label.bind_text_from(last_ndays_filter, 'value', lambda x: f"Since {naturalday(ndays_ago(-x))}")
 
-            with ui.label().classes("w-full") as last_ndays_label:
-                last_ndays_filter = ui.slider(
-                    min=-30, max=-1, step=1, value=-last_ndays,
-                    on_change=debounce(lambda: render_result_panel.refresh(filter_last_ndays=-last_ndays_filter.value), 1.5))
-                last_ndays_label.bind_text_from(last_ndays_filter, 'value', lambda x: f"Since {naturalday(ndays_ago(-x))}")
-
-        kind_filter = ui.toggle(
-            options=SEARCH_PAGE_TABS, 
-            value=DEFAULT_KIND, 
-            on_change=lambda: render_result_panel.refresh(filter_kind=kind_filter.value or REMOVE_FILTER)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-full")               
-        
-        render_filter_tags(
-            load_tags=lambda: beanops.get_tags(None, prep_query(query), None, accuracy, None, None, None, None, 0, MAX_FILTER_TAGS), 
-            on_selection_changed=lambda selected_tags: render_result_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER))).classes("w-full")
-        
-        render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None)
+    kind_filter = ui.toggle(
+        options=SEARCH_PAGE_TABS, 
+        value=DEFAULT_KIND, 
+        on_change=lambda: render_result_panel.refresh(filter_kind=kind_filter.value or REMOVE_FILTER)).props("unelevated rounded no-caps color=dark toggle-color=primary").classes("w-full")               
+    
+    render_filter_tags(
+        load_tags=lambda: beanops.get_tags(None, None, embedding, accuracy, None, None, None, None, 0, MAX_FILTER_TAGS), 
+        on_selection_changed=lambda selected_tags: render_result_panel.refresh(filter_tags=(selected_tags or REMOVE_FILTER))).classes("w-full")
+    
+    render_result_panel(filter_accuracy=None, filter_tags=None, filter_kind=None, filter_last_ndays=None)
     # TODO: fill it up with popular searches
     render_footer()
+
+async def embed_query(query: str):
+    if is_valid_url(query): return await run.io_bound(beanops.get_bean_embedding, query)
+    else: return await run.cpu_bound(beanops.embed, query)
 
 async def render_registration(userinfo: dict):
     render_header(None)

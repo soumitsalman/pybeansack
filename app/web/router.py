@@ -7,6 +7,8 @@ if APPINSIGHTS_CONNECTION_STRING:
         connection_string=APPINSIGHTS_CONNECTION_STRING, 
         logger_name=APP_NAME, 
         instrumentation_options={"fastapi": {"enabled": True}})  
+logger: logging.Logger = logging.getLogger(APP_NAME)
+logger.setLevel(logging.INFO)
 
 from app.pybeansack.embedding import *
 from app.shared import beanops, espressops
@@ -31,7 +33,6 @@ jwt_token_exp = lambda: datetime.now() + JWT_TOKEN_LIFETIME
 jwt_token_needs_refresh = lambda data: (datetime.now() - JWT_TOKEN_REFRESH_WINDOW).timestamp() < data['exp']
 user_id = lambda user: user.email if user else app.storage.browser.get("id")
 
-logger: logging.Logger = logging.getLogger(APP_NAME)
 oauth = OAuth()
 
 def create_jwt_token(email: str):
@@ -52,13 +53,10 @@ def decode_jwt_token(token: str):
 
 @app.on_startup
 def initialize_server():
-    global oauth, logger
-
-    logger.setLevel(logging.INFO)
-    
-    embedder = RemoteEmbeddings(LLM_BASE_URL, LLM_API_KEY, EMBEDDER_MODEL, EMBEDDER_N_CTX) \
-        if LLM_BASE_URL else \
-        BeansackEmbeddings(EMBEDDER_MODEL, EMBEDDER_N_CTX)
+    global oauth, logger    
+    # embedder = RemoteEmbeddings(LLM_BASE_URL, LLM_API_KEY, EMBEDDER_MODEL, EMBEDDER_N_CTX) \
+    #     if ic(LLM_BASE_URL) else \
+    embedder = BeansackEmbeddings(EMBEDDER_MODEL, EMBEDDER_N_CTX)
     beanops.initiatize(DB_CONNECTION_STRING, embedder)
     espressops.initialize(DB_CONNECTION_STRING, embedder)
 
@@ -252,7 +250,7 @@ async def home(user: espressops.User = Depends(extract_user)):
     log('home', user_id=user_id(user))
     await vanilla.render_home(user)
 
-@ui.page("/beans", title="Espresso Beans")
+@ui.page("/beans", title="Espresso News, Posts and Blogs")
 async def beans(
     user: espressops.User = Depends(extract_user),
     tag: list[str] | None = Query(max_length=beanops.MAX_LIMIT, default=None),
@@ -286,7 +284,7 @@ async def search(
     log('search', user_id=user_id(user), q=q, acc=acc, ndays=ndays)
     await vanilla.render_search(user, q, acc)
 
-@ui.page("/user/register", title="Espresso: User Registration")
+@ui.page("/user/register", title="Espresso User Registration")
 async def register_user(userinfo: dict = Depends(extract_registration_info)):
     log('register_user', user_id=userinfo['email'])
     await vanilla.render_registration(userinfo)

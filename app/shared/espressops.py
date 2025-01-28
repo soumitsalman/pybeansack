@@ -50,8 +50,8 @@ class EspressoDB:
 
     def __init__(self, db_conn_str: str, embedder: Embeddings):
         client = MongoClient(db_conn_str)
-        self.users = client["espresso"]["users"]
-        self.baristas = client["espresso"]["baristas"]
+        self.users = client["beansack"]["users"]
+        self.baristas = client["beansack"]["baristas"]
         self.embedder = embedder
 
     # @cached(max_size=10, ttl=ONE_DAY) 

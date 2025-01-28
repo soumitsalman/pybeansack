@@ -28,14 +28,11 @@ CLUSTER_GROUP = {
     K_URL: {"$first": "$url"},
     K_TITLE: {"$first": "$title"},
     K_SUMMARY: {"$first": "$summary"},
-    K_HIGHLIGHTS: {"$first": "$highlights"},
     K_TAGS: {"$first": "$tags"},
     K_CATEGORIES: {"$first": "$categories"},
     K_SOURCE: {"$first": "$source"},
-    K_CHANNEL: {"$first": "$channel"},
     K_UPDATED: {"$first": "$updated"},
     K_CREATED: {"$first": "$created"},
-    K_COLLECTED: {"$first": "$collected"},
     K_LIKES: {"$first": "$likes"},
     K_COMMENTS: {"$first": "$comments"},
     K_SHARES: {"$first": "$shares"},
@@ -132,20 +129,56 @@ class Beansack:
         return _deserialize_beans(cursor)
     
     def sample_related_beans(self, url: str, filter: dict = None, limit: int = 0) -> list[Bean]:
-        if bean := self.beanstore.find_one({K_URL: url}, projection={K_CLUSTER_ID: 1}):
-            match_filter = {
-                K_URL: {"$ne": url},
-                K_CLUSTER_ID: bean[K_CLUSTER_ID]
-            }
-            if filter:
-                match_filter.update(filter)
-            pipeline = [
-                { "$match": match_filter },
-                { "$sample": {"size": limit} },
-                { "$sort": NEWEST_AND_TRENDING }
-            ]
-            return _deserialize_beans(self.beanstore.aggregate(pipeline))
-        return []
+        # if bean := self.beanstore.find_one({K_URL: url}, projection={K_CLUSTER_ID: 1}):
+        match_filter = {K_ID: url}
+        if filter:
+            match_filter.update(filter)
+        pipeline = [
+            { 
+                "$match": match_filter 
+            },
+            {
+                "$lookup": {
+                    "from": "beans",
+                    "localField": "cluster_id",
+                    "foreignField": "cluster_id",
+                    "as": "related_beans"
+                }
+            },
+            {
+                "$unwind": "$related_beans"
+            },
+            { 
+                "$sample": {"size": limit+1} 
+            },
+            {
+                "$match": {
+                    "related_beans._id": {"$ne": url}
+                }
+            },
+            {
+                "$project": {
+                    "_id": "$related_beans._id",
+                    "url": "$related_beans.url",
+                    "source": "$related_beans.source",
+                    "title": "$related_beans.title",
+                    "kind": "$related_beans.kind",
+                    "image_url": "$related_beans.image_url",
+                    "author": "$related_beans.author",
+                    "created": "$related_beans.created",
+                    "collected": "$related_beans.collected",
+                    "updated": "$related_beans.updated",
+                    "tags": "$related_beans.tags",
+                    "summary": "$related_beans.summary",
+                    "cluster_id": "$related_beans.cluster_id",
+                    "likes": "$related_beans.likes",
+                    "comments": "$related_beans.comments",
+                    "shares": "$related_beans.shares"
+                }
+            },
+            { "$sort": NEWEST_AND_TRENDING }
+        ]
+        return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
     def vector_search_beans(self, 
             query: str = None,
@@ -187,37 +220,6 @@ class Beansack:
         filter = {K_TAGS: {"$exists": True}}
         if beans_in_scope:
             filter.update(beans_in_scope)
-        # Option 1:
-        # for the beans in scope
-        # take one bean from each cluster for diversification.
-        # then for each tag, use an aggregated valuee of latest and trending
-        # sort by that sort and then return the list
-        # pipeline = [
-        #     { "$match": match_filter },
-        #     { "$sort": LATEST_AND_TRENDING },
-        #     {
-        #         # for each cluster tag the tags of the bean with the latest and highest trend 
-        #         "$group": {
-        #             "_id": "$cluster_id",    
-        #             "url": {"$first": "$url"},                
-        #             "updated": { "$first": "$updated" },
-        #             "trend_score": { "$first": "$trend_score" },
-        #             "tags": {"$first": "$tags"}
-        #         }
-        #     },
-        #     { "$unwind": "$tags" },
-        #     {
-        #         "$group": {
-        #             "_id": "$tags",
-        #             "tags": {"$first": "$tags"},
-        #             "updated": { "$max": "$updated" },
-        #             "trend_score": { "$sum": "$trend_score" },
-        #             "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
-        #         }
-        #     },
-        #     { "$sort": LATEST_AND_TRENDING }
-        # ]
-        # Option 2:
         # flatten the tags within the filter
         # take the ones that show up the most
         # sort by the number of times the tags appear
@@ -269,25 +271,15 @@ class Beansack:
                 }
             },
             {
-                "$addFields": { "search_score": {"$meta": "searchScore"} }
+                "$addFields": { 
+                    "search_score": {"$meta": "searchScore"} 
+                }
             },
             {
-                "$match": { "search_score": {"$gte": min_score or DEFAULT_VECTOR_SEARCH_SCORE} }
+                "$match": { 
+                    "search_score": {"$gte": min_score or DEFAULT_VECTOR_SEARCH_SCORE} 
+                }
             },
-            # NOTE: removing clustering and only keeping the tags that show up the most
-            # {
-            #     "$sort": LATEST_AND_TRENDING
-            # },
-            # {
-            #     # for each cluster tag the tags of the bean with the latest and highest trend 
-            #     "$group": {
-            #         "_id": "$cluster_id",    
-            #         "url": {"$first": "$url"},                
-            #         "updated": { "$first": "$updated" },
-            #         "trend_score": { "$first": "$trend_score" },
-            #         "tags": {"$first": "$tags"}
-            #     }
-            # },
             { "$unwind": "$tags" },
             {
                 "$group": {
@@ -487,3 +479,36 @@ def updated_after(last_ndays: int):
 
 def created_after(last_ndays: int):
     return {K_CREATED: {"$gte": ndays_ago(last_ndays)}}
+
+## get tags
+        # Option 1:
+        # for the beans in scope
+        # take one bean from each cluster for diversification.
+        # then for each tag, use an aggregated valuee of latest and trending
+        # sort by that sort and then return the list
+        # pipeline = [
+        #     { "$match": match_filter },
+        #     { "$sort": LATEST_AND_TRENDING },
+        #     {
+        #         # for each cluster tag the tags of the bean with the latest and highest trend 
+        #         "$group": {
+        #             "_id": "$cluster_id",    
+        #             "url": {"$first": "$url"},                
+        #             "updated": { "$first": "$updated" },
+        #             "trend_score": { "$first": "$trend_score" },
+        #             "tags": {"$first": "$tags"}
+        #         }
+        #     },
+        #     { "$unwind": "$tags" },
+        #     {
+        #         "$group": {
+        #             "_id": "$tags",
+        #             "tags": {"$first": "$tags"},
+        #             "updated": { "$max": "$updated" },
+        #             "trend_score": { "$sum": "$trend_score" },
+        #             "url": {"$first": "$url"} # this doesn't actually matter. this is just for the sake of datamodel
+        #         }
+        #     },
+        #     { "$sort": LATEST_AND_TRENDING }
+        # ]
+        # Option 2:

@@ -243,7 +243,7 @@ def render_bean_header(user: User, bean: Bean):
     return view
 
 def render_bean_stats(user: User, bean: Bean): 
-    with ui.row(align_items="center").classes("w-full") as view:       
+    with ui.row(align_items="center").classes("w-full gap-3") as view:       
         ui.label(naturalday(bean.created or bean.updated))
         if bean.comments:
             ui.label(f"💬 {bean.comments}").tooltip(f"{bean.comments} comments across various social media sources")

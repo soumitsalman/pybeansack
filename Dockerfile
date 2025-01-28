@@ -7,16 +7,17 @@ RUN apt update && apt install -y \
     build-essential \
     wget
 
+
+WORKDIR /espresso
 COPY . . 
+
+RUN mkdir ./.models
+RUN wget -O ./.models/gte-large-Q4.gguf https://huggingface.co/ChristianAzinn/gte-large-gguf/resolve/main/gte-large.Q4_K_M.gguf
+ENV EMBEDDER_MODEL=/espresso/.models/gte-large-Q4.gguf
+ENV EMBEDDER_N_CTX=512
+
 RUN pip install -r requirements.txt
 RUN pip install -r app/pybeansack/requirements.txt
-
-ENV LLM_BASE_URL=https://api.deepinfra.com/v1/openai
-ENV EMBEDDER_MODEL=thenlper/gte-large
-ENV EMBEDDER_N_CTX=496
-
-ENV APP_NAME=Espresso
-ENV OTEL_SERVICE_NAME=ESPRESSO-WEB
 
 EXPOSE 8080
 CMD ["python3", "run.py"]
