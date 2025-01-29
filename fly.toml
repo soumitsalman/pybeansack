@@ -1,19 +1,19 @@
 app = "espresso-app"
 primary_region = "iad"
+swap_size_mb = 512
 
 [http_service]
 auto_start_machines = true
 auto_stop_machines = true
 force_https = true
 internal_port = 8_080
-min_machines_running = 0
+min_machines_running = 1
 processes = [ "app" ]
 
 [[vm]]
 cpu_kind = "shared"
 cpus = 2
-memory = "1536mb"
-
+memory_mb = 1536
 
 [build]
 dockerfile = "Dockerfile"
@@ -22,4 +22,5 @@ ignorefile = ".dockerignore"
 [env]
 APP_NAME = "Espresso"
 OTEL_SERVICE_NAME = "ESPRESSO-WEB"
+BASE_URL = "https://espresso.cafecito.tech"
 

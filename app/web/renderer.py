@@ -22,7 +22,7 @@ MAX_FILTER_TAGS = 7
 
 PRIMARY_COLOR = "#4e392a"
 SECONDARY_COLOR = "#b79579"
-IMAGE_DIMENSIONS = "w-32 h-28"
+IMAGE_DIMENSIONS = "w-32"
 
 CSS_FILE = "./app/web/styles.css"
 
@@ -236,7 +236,7 @@ def render_whole_bean(user: User, bean: Bean):
 def render_bean_header(user: User, bean: Bean):
     with ui.row(wrap=False, align_items="stretch").classes("w-full bean-header") as view:            
         if bean.image_url: 
-            ui.image(bean.image_url).props("width=8em height=8em")
+            ui.image(bean.image_url).classes(IMAGE_DIMENSIONS)
         with ui.element().classes("w-full"):
             ui.label(bean.title).classes("bean-title")                
             render_bean_stats(user, bean).classes("text-caption") 
