@@ -197,7 +197,8 @@ def render_paginated_beans(user: User, load_beans: Callable, count_items: Callab
     return panel
 
 def render_bean_with_related(user: User, bean: Bean):
-    with_related_beans = [bean] + beanops.get_related(url=bean.url, tags=None, kinds=None, sources=None, last_ndays=None, start=0, limit=MAX_RELATED_ITEMS)
+    # NOTE: temporarily disabling the loading of related beans
+    with_related_beans = [bean] # + beanops.get_related(url=bean.url, tags=None, kinds=None, sources=None, last_ndays=None, start=0, limit=MAX_RELATED_ITEMS)
     return render_swipable_beans(user, with_related_beans)
 
 def render_swipable_beans(user: User, beans: list[Bean]):
@@ -240,6 +241,7 @@ def render_bean_header(user: User, bean: Bean):
         with ui.element().classes("w-full"):
             ui.label(bean.title).classes("bean-title")                
             render_bean_stats(user, bean).classes("text-caption") 
+            render_bean_source(user, bean).classes("text-caption") 
     return view
 
 def render_bean_stats(user: User, bean: Bean): 
@@ -251,7 +253,6 @@ def render_bean_stats(user: User, bean: Bean):
             ui.label(f"👍 {bean.likes}").tooltip(f"{bean.likes} likes across various social media sources")
         if bean.shares and bean.shares > 1:
             ui.label(f"🔗 {bean.shares}").tooltip(f"{bean.shares} shares across various social media sources") # another option 🗞️
-        render_bean_source(user, bean)
     return view
 
 def render_bean_body(user: User, bean: Bean):
