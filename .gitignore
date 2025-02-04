@@ -1,13 +1,9 @@
-*.env
-*.json
-*.log
-*__pycache__
 .venv
-.vscode
-.deployment
-.data
+.env
+models
+__pycache__
+test
+*.log
+flagged
 .nicegui
-.models
-.slack
-
 

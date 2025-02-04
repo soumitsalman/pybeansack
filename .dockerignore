@@ -1,9 +1,0 @@
-*.env
-*.json
-*.log
-/.venv
-/.deployment
-*__pycache__
-/data
-.nicegui
-.models
