@@ -2,7 +2,7 @@ import re
 from memoization import cached
 from icecream import ic
 from app.pybeansack.mongosack import *
-from app.pybeansack.datamodels import *
+from app.pybeansack.models import *
 from app.shared.utils import *
 
 DEFAULT_ACCURACY = 0.8
@@ -15,13 +15,38 @@ MAX_LIMIT = 100
 DEFAULT_KIND = NEWS
 PROJECTION = {K_EMBEDDING: 0, K_TEXT:0, K_ID: 0}
 
+DEFAULT_BARISTAS = [
+    "artificial-intelligence",
+    "automotive",
+    "aviation---aerospace",
+    "business---finance",
+    "career---professional-skills",
+    "cryptocurrency---blockchain",
+    "cybersecurity",    
+    # "environment---clean-energy",
+    # "food---health",
+    "gadgets---iot",
+    "government---politics",
+    "hackernews",
+    "hpc---datacenters",
+    # "leadership---people-management",
+    # "logistics---transportation",
+    "reddit",
+    "robotics---manufacturing",
+    "science---mathematics",
+    "software-engineering",
+    "solar-energy",
+    "startups---vcs",
+    # "video-games---virtual-reality"
+]
+
 db: Beansack = None
 embedder: Embeddings = None
 
-def initiatize(db_conn, embedding_generator: Embeddings):
+def initiatize(db_conn, db_name: str, embedding_generator: Embeddings):
     global db, embedder
     embedder = embedding_generator
-    db=Beansack(db_conn, embedder)
+    db = Beansack(db_conn, db_name)
 
 @cached(max_size=1, ttl=ONE_WEEK)
 def get_all_kinds():
