@@ -4,7 +4,7 @@ from .models import *
 from azure.storage.blob import BlobClient
 from icecream import ic
 
-SQL_INSTALL_VSS = """
+SQL_DB_INIT = """
 INSTALL vss;
 LOAD vss;
 """
@@ -14,16 +14,14 @@ CREATE TABLE IF NOT EXISTS beans (
     url VARCHAR PRIMARY KEY,
     kind VARCHAR,
     source VARCHAR,
-    author VARCHAR,
 
     created TIMESTAMP,    
     collected TIMESTAMP,
     updated TIMESTAMP,
       
     title VARCHAR,    
-    summary TEXT,
-    tags VARCHAR[],
     embedding FLOAT[384],
+    digest TEXT
 );
 """
 SQL_CREATE_BEANS_VECTOR_INDEX = """
@@ -33,10 +31,11 @@ USING HNSW (embedding)
 WITH (metric = 'cosine');
 """
 SQL_INSERT_BEANS = """
-INSERT INTO beans (url, kind, source, author, created, collected, updated, title, summary, tags, embedding) 
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT DO NOTHING
+INSERT INTO beans (url, kind, source, created, collected, updated, title, embedding, digest) 
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT DO NOTHING;
 """
+SQL_CHECKPOINT = "CHECKPOINT;"
 
 SQL_CREATE_CHATTERS = """
 CREATE TABLE IF NOT EXISTS chatters (
@@ -91,13 +90,12 @@ SELECT
     url, 
     kind,
     source,
-    author,
 
     created, 
-    
+    collected,
+    updated,
+
     title, 
-    summary, 
-    tags, 
     array_cosine_distance(
         embedding, 
         {embedding}::FLOAT[384]
@@ -167,6 +165,7 @@ ORDER BY search_score DESC
 
 class Beansack:
     db_filepath: str
+    db_name: str
     db: duckdb.DuckDBPyConnection
 
     def __init__(self, 
@@ -174,10 +173,11 @@ class Beansack:
         db_name: str = os.getenv("DB_NAME", "beansack")
     ):
         if not os.path.exists(db_path): os.makedirs(db_path)
-        
-        self.db_filepath = os.path.join(db_path, db_name+".db")
+
+        self.db_name = db_name+".db"
+        self.db_filepath = os.path.join(db_path, self.db_name)
         self.db = duckdb.connect(self.db_filepath, read_only=False) \
-            .execute(SQL_INSTALL_VSS) \
+            .execute(SQL_DB_INIT) \
             .execute(SQL_CREATE_BEANS) \
             .execute(SQL_CREATE_CHATTERS) \
             .execute(SQL_CREATE_BARISTAS) \
@@ -190,16 +190,14 @@ class Beansack:
                 bean.url,
                 bean.kind,
                 bean.source,
-                bean.author,
 
                 bean.created,                
                 bean.collected,
                 bean.updated,
 
                 bean.title,
-                bean.summary,
-                bean.tags,
-                bean.embedding
+                bean.embedding,
+                bean.digest()
             ) for bean in beans
         ]
         local_conn.executemany(SQL_INSERT_BEANS, beans_data).commit()
@@ -210,6 +208,27 @@ class Beansack:
         local_conn = self.db.cursor()
         query = local_conn.sql("SELECT url FROM beans").filter(SQL_WHERE_URLS([bean.url for bean in beans]))
         return {item[0] for item in query.fetchall()}
+
+    def get_beans(self, filter=None, offset=0, limit=0) -> list[Bean]:
+        query = "SELECT * FROM beans"
+        if filter: query += f" WHERE {filter}"
+        if limit: query += f" LIMIT {limit}"
+        if offset: query += f" OFFSET {offset}"
+
+        local_conn = self.db.cursor()
+        return [Bean(
+            url=bean[0],
+            kind=bean[1],
+            source=bean[2],
+
+            created=bean[3],
+            collected=bean[4],
+            updated=bean[5],
+
+            title=bean[6],
+            embedding=bean[7],
+            slots=True
+        ) for bean in local_conn.sql(query).fetchall()]
 
     def search_beans(self, embedding: list[float], max_distance: float = 0.0, limit: int = 0) -> list[Bean]:
         local_conn = self.db.cursor()
@@ -223,14 +242,13 @@ class Beansack:
             url=bean[0],
             kind=bean[1],
             source=bean[2],
-            author=bean[3], 
 
-            created=bean[4],
+            created=bean[3],
+            collected=bean[4],
+            updated=bean[5],
 
-            title=bean[5],
-            summary=bean[6],
-            tags=bean[7],   
-            search_score=bean[8],
+            title=bean[6],
+            search_score=bean[7],
             slots=True
         ) for bean in query.fetchall()]
     
@@ -260,6 +278,26 @@ class Beansack:
         ]
         local_conn = self.db.cursor()
         local_conn.executemany(SQL_INSERT_CHATTERS, chatters_data).commit()
+
+    def get_chatters(self, filter = None, offset = 0, limit = 0):
+        query = "SELECT * FROM chatters"
+        if filter: query += f" WHERE {filter}"
+        if limit: query += f" LIMIT {limit}"
+        if offset: query += f" OFFSET {offset}"
+
+        local_conn = self.db.cursor()
+        return [Chatter(
+            url=chatter[0],
+            chatter_url=chatter[1],
+            collected=chatter[2],
+            source=chatter[3],
+            channel=chatter[4],
+            likes=chatter[5],
+            comments=chatter[6],
+            shares=chatter[7],
+            subscribers=chatter[8],
+            slots=True
+        ) for chatter in local_conn.sql(query).fetchall()]
 
     def get_latest_chatters(self, last_ndays: int, urls: list[str] = None) -> list[ChatterAnalysis]:
         local_conn = self.db.cursor()
@@ -333,10 +371,8 @@ class Beansack:
         self.db.close()
 
     def backup_azblob(self, conn_str: str):
-        try:
-            client = BlobClient.from_connection_string(conn_str, "backup", "beansack.db")
-            with open(self.db_filepath, "rb") as data:
-                client.upload_blob(data, overwrite=True)            
-        except Exception as e:
-            print("Failed backup to Azure Blob Storage", e)
+        client = BlobClient.from_connection_string(conn_str, "backup", self.db_name)
+        with open(self.db_filepath, "rb") as data:
+            client.upload_blob(data, overwrite=True)            
+
   
