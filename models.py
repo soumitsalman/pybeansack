@@ -63,6 +63,11 @@ class Bean(BaseModel):
     collected: Optional[datetime] = None
     updated: Optional[datetime] = None
 
+    site_name: Optional[str] = None
+    site_base_url: Optional[str] = None
+    site_rss_feed: Optional[str] = None
+    site_favicon: Optional[str] = None
+
     # generated fields
     gist: Optional[str] = None
     categories: Optional[list[str]] = None
