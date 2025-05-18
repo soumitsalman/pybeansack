@@ -50,6 +50,8 @@ K_FOLLOWING = "following"
 K_DESCRIPTION = "description"
 K_SITE_NAME = "site_name"
 K_SITE_BASE_URL = "site_base_url"
+K_SITE_RSS_FEED = "site_rss_feed"
+K_SITE_FAVICON = "site_favicon"
 
 SYSTEM = "__SYSTEM__"
 
