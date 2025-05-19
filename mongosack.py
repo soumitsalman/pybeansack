@@ -4,11 +4,11 @@
 import os
 from datetime import datetime, timedelta
 import logging
-from bson import SON
 from icecream import ic
 from .models import *
 from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.collection import Collection
+from bson import SON
 
 log = logging.getLogger(__name__)
 
@@ -638,7 +638,7 @@ class Beansack:
                     K_URL:           {"$first": "$url"},
                     K_UPDATED:       {"$first": "$updated"},                
                     K_SOURCE:        {"$first": "$source"},
-                    K_CHANNEL:       {"$first": "$channel"},
+                    K_CHATTER_GROUP: {"$first": "$group"},
                     K_CONTAINER_URL: {"$first": "$container_url"},
                     K_LIKES:         {"$first": "$likes"},
                     K_COMMENTS:      {"$first": "$comments"}                
@@ -699,13 +699,13 @@ class Beansack:
         )
         return self.users.find_one({"email": email})["following"]
 
-    def get_barista(self, id: str) -> Barista:
+    def get_barista(self, id: str) -> Channel:
         barista = self.baristas.find_one({K_ID: id})
-        if barista: return Barista(**barista)
+        if barista: return Channel(**barista)
 
     def get_baristas(self, ids: list[str], projection: dict = {K_EMBEDDING: 0}):
         filter = {K_ID: {"$in": ids}} if ids else {}
-        return [Barista(**barista) for barista in self.baristas.find(filter, sort={K_TITLE: 1}, projection=projection)]
+        return [Channel(**barista) for barista in self.baristas.find(filter, sort={K_TITLE: 1}, projection=projection)]
     
     def sample_baristas(self, limit: int, project: dict):
         pipeline = [
@@ -713,7 +713,7 @@ class Beansack:
             { "$sample": {"size": limit} },
             { "$project": project }
         ]
-        return [Barista(**barista) for barista in self.baristas.aggregate(pipeline)]
+        return [Channel(**barista) for barista in self.baristas.aggregate(pipeline)]
      
     def get_following_baristas(self, user: User):
         following = self.users.find_one({K_ID: user.email}, {K_FOLLOWING: 1})
@@ -728,7 +728,7 @@ class Beansack:
             {   "$sort": {"search_score": -1} },
             {   "$limit": 10 }     
         ]        
-        return [Barista(**barista) for barista in self.baristas.aggregate(pipeline)]
+        return [Channel(**barista) for barista in self.baristas.aggregate(pipeline)]
     
     def publish(self, barista_id: str):
         return self.baristas.update_one(

@@ -21,7 +21,7 @@ K_TAGS = "tags"
 K_TITLE = "title"
 K_CONTENT = "content"
 K_SOURCE = "source"
-K_CHANNEL = "channel"
+K_CHATTER_GROUP = "group"
 K_EMBEDDING = "embedding"
 K_GIST = "gist"
 K_SUMMARY = "summary"
@@ -127,7 +127,7 @@ class Chatter(BaseModel):
     # when the bean itself is a post (instead of a news/article url) container url is the same as 'url' 
     chatter_url: Optional[str] = None
     source: Optional[str] = None
-    channel: Optional[str] = None    
+    group: Optional[str] = None    
     collected: Optional[datetime] = None
    
     likes: Optional[int] = Field(default=0)    
@@ -171,7 +171,7 @@ class User(BaseModel):
         populate_by_name = True
         arbitrary_types_allowed=False
 
-class Barista(BaseModel):
+class Channel(BaseModel):
     id: str = Field(alias="_id")
     title: Optional[str] = None
     description: Optional[str] = None

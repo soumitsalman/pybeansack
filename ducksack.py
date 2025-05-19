@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS chatters (
     chatter_url VARCHAR,
     collected TIMESTAMP,
     source VARCHAR,
-    channel VARCHAR,
+    group VARCHAR,
     likes INTEGER DEFAULT 0,
     comments INTEGER DEFAULT 0,
     shares INTEGER DEFAULT 0,
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS chatters (
 )
 """
 SQL_INSERT_CHATTERS = """
-INSERT INTO chatters (url, chatter_url, source, channel, collected, likes, comments, shares, subscribers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chatters (url, chatter_url, source, group, collected, likes, comments, shares, subscribers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (url, chatter_url, likes, comments, shares) DO NOTHING
 """
 
@@ -120,7 +120,7 @@ SELECT url,
     SUM(comments) as comments, 
     MAX(collected) as collected,
     COUNT(chatter_url) as shares,
-    ARRAY_AGG(DISTINCT source) FILTER (WHERE source IS NOT NULL) || ARRAY_AGG(DISTINCT channel) FILTER (WHERE channel IS NOT NULL) as shared_in
+    ARRAY_AGG(DISTINCT source) FILTER (WHERE source IS NOT NULL) || ARRAY_AGG(DISTINCT group) FILTER (WHERE group IS NOT NULL) as shared_in
 
 FROM(
     SELECT url, 
@@ -129,7 +129,7 @@ FROM(
         MAX(likes) as likes, 
         MAX(comments) as comments, 
         FIRST(source) as source, 
-        FIRST(channel) as channel
+        FIRST(group) as group
     FROM chatters 
     GROUP BY url, chatter_url
 ) 
@@ -141,7 +141,7 @@ SELECT url,
     SUM(comments) as comments, 
     MAX(collected) as collected,
     COUNT(chatter_url) as shares,
-    ARRAY_AGG(DISTINCT source) FILTER (WHERE source IS NOT NULL) || ARRAY_AGG(DISTINCT channel) FILTER (WHERE channel IS NOT NULL) as shared_in
+    ARRAY_AGG(DISTINCT source) FILTER (WHERE source IS NOT NULL) || ARRAY_AGG(DISTINCT group) FILTER (WHERE group IS NOT NULL) as shared_in
 FROM(
     SELECT url, 
         chatter_url, 
@@ -149,7 +149,7 @@ FROM(
         MAX(likes) as likes, 
         MAX(comments) as comments, 
         FIRST(source) as source, 
-        FIRST(channel) as channel
+        FIRST(group) as group
     FROM chatters 
     WHERE collected < CURRENT_TIMESTAMP - INTERVAL '{last_ndays} days'
     GROUP BY url, chatter_url
@@ -268,7 +268,7 @@ class Beansack:
                 chatter.url,
                 chatter.chatter_url,                
                 chatter.source,
-                chatter.channel,
+                chatter.group,
                 chatter.collected,
                 chatter.likes,
                 chatter.comments,
@@ -291,7 +291,7 @@ class Beansack:
             chatter_url=chatter[1],
             collected=chatter[2],
             source=chatter[3],
-            channel=chatter[4],
+            group=chatter[4],
             likes=chatter[5],
             comments=chatter[6],
             shares=chatter[7],
