@@ -63,6 +63,7 @@ class Bean(BaseModel):
     title: Optional[str] = None
     kind: Optional[str] = None
     content: Optional[str] = None
+    is_scraped: Optional[bool] = None
     image_url: Optional[str] = None
     author: Optional[str] = None    
     created: Optional[datetime] = None 
