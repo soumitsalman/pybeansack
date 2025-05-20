@@ -35,7 +35,7 @@ K_IMAGEURL = "image_url"
 K_CREATED = "created"
 K_AUTHOR = "author"
 K_SEARCH_SCORE = "search_score"
-K_SIMILARS = "similars"
+K_RELATED = "related"
 K_LATEST_LIKES = "latest_likes"
 K_LATEST_COMMENTS = "latest_comments"
 K_LATEST_SHARES = "latest_shares"
@@ -94,7 +94,7 @@ class Bean(BaseModel):
     likes: Optional[int] = Field(default=0)
     comments: Optional[int] = Field(default=0)
     shares: Optional[int] = Field(default=0)
-    similars: Optional[int] = Field(default=0) # a bean is always similar to itself
+    related: Optional[int] = Field(default=0)
     trend_score: Optional[int] = Field(default=0) # a bean is always similar to itself
     shared_in: Optional[list[str]] = None
 
