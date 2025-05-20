@@ -81,11 +81,12 @@ class Bean(BaseModel):
     entities: Optional[list[str]] = None
     regions: Optional[list[str]] = None
     sentiments: Optional[list[str]] = None
-    topic: Optional[str] = None
-    summary: Optional[str] = None
-    highlights: Optional[list[str]] = None
-    insight: Optional[str] = None
     tags: Optional[list[str]|str] = None
+    summary: Optional[str] = None
+    # topic: Optional[str] = None
+    # highlights: Optional[list[str]] = None
+    # insight: Optional[str] = None
+    
     embedding: Optional[list[float]] = None
     cluster_id: Optional[str] = None
     
@@ -93,7 +94,7 @@ class Bean(BaseModel):
     likes: Optional[int] = Field(default=0)
     comments: Optional[int] = Field(default=0)
     shares: Optional[int] = Field(default=0)
-    similars: Optional[int] = Field(default=1) # a bean is always similar to itself
+    similars: Optional[int] = Field(default=0) # a bean is always similar to itself
     trend_score: Optional[int] = Field(default=0) # a bean is always similar to itself
     shared_in: Optional[list[str]] = None
 
@@ -171,7 +172,7 @@ class User(BaseModel):
         populate_by_name = True
         arbitrary_types_allowed=False
 
-class Channel(BaseModel):
+class Page(BaseModel):
     id: str = Field(alias="_id")
     title: Optional[str] = None
     description: Optional[str] = None
