@@ -1,4 +1,3 @@
-pymongo
 pydantic
+pymongo
 duckdb
-azure-storage-blob

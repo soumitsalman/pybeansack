@@ -1,8 +1,8 @@
 import os
 import duckdb
 from .models import *
-from azure.storage.blob import BlobClient
-from icecream import ic
+# from azure.storage.blob import BlobClient
+# from icecream import ic
 
 SQL_DB_INIT = """
 INSTALL vss;
@@ -370,9 +370,9 @@ class Beansack:
     def close(self):
         self.db.close()
 
-    def backup_azblob(self, conn_str: str):
-        client = BlobClient.from_connection_string(conn_str, "backup", self.db_name)
-        with open(self.db_filepath, "rb") as data:
-            client.upload_blob(data, overwrite=True)            
+    # def backup_azblob(self, conn_str: str):
+    #     client = BlobClient.from_connection_string(conn_str, "backup", self.db_name)
+    #     with open(self.db_filepath, "rb") as data:
+    #         client.upload_blob(data, overwrite=True)            
 
   
