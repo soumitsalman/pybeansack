@@ -120,6 +120,9 @@ class Bean(BaseModel):
     class Config:
         populate_by_name = True
         arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
 
 class Chatter(BaseModel):
     # this is the url of bean it represents
