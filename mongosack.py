@@ -21,11 +21,12 @@ BEANS = "beans"
 CHATTERS = "chatters"
 SOURCES = "sources"
 
-TRENDING = {K_TRENDSCORE: -1}
-LATEST = {K_UPDATED: -1}
+
+# LAST_UPDATED = {K_UPDATED: -1}
 NEWEST = {K_CREATED: -1}
-NEWEST_AND_TRENDING = SON([(K_CREATED, -1), (K_TRENDSCORE, -1)])
-LATEST_AND_TRENDING = SON([(K_UPDATED, -1), (K_TRENDSCORE, -1)])
+LATEST = SON([(K_CREATED, -1), (K_TRENDSCORE, -1)])
+TRENDING = SON([(K_UPDATED, -1), (K_TRENDSCORE, -1)])
+_BY_TRENDSCORE = {K_TRENDSCORE: -1}
 _BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
 now = datetime.now
@@ -109,7 +110,7 @@ class Beansack:
     chatterstore: Collection
     sourcestore: Collection
     users: Collection
-    baristas: Collection
+    pages: Collection
 
     def __init__(self, 
         conn_str: str = os.getenv("REMOTE_DB_CONNECTION_STRING", "mongodb://localhost:27017"), 
@@ -128,7 +129,7 @@ class Beansack:
         self.chatterstore: Collection = client[db_name][CHATTERS]        
         self.sourcestore: Collection = client[db_name][SOURCES]  
         self.users = client[db_name]["users"]
-        self.baristas = client[db_name]["baristas"]
+        self.pages = client[db_name]["baristas"]
 
     ###################
     ## BEANS STORING ##
@@ -301,26 +302,25 @@ class Beansack:
             if filter: filter.update({K_TAGS: bean[K_TAGS]})
             else: filter = {K_TAGS: bean[K_TAGS]}
         return self.count_vector_search_beans(bean[K_EMBEDDING], group_by, filter, distinct_field, limit)
-
     
-    def query_tags(self, beans_filter: dict, remove_tags: list[str], skip: int = 0, limit: int = 0):
+    def query_tags(self, bean_filter: dict = None, tag_field: str = K_TAGS, remove_tags: list[str] = None, skip: int = 0, limit: int = 0):
         filter = {K_TAGS: {"$exists": True}}
-        if beans_filter: filter.update(beans_filter)
+        if bean_filter: filter.update(bean_filter)
         # flatten the tags within the filter
         # take the ones that show up the most
         # sort by the number of times the tags appear
         pipeline = [
             { "$match": filter },
-            { "$unwind": "$tags" },
+            { "$unwind": f"${tag_field}" },
             {
                 "$group": {
-                    "_id": "$tags",
+                    "_id": f"${tag_field}",
                     K_TRENDSCORE: { "$sum": 1 }
                 }
             }         
         ]
         if remove_tags: pipeline.append({"$match": {"_id": {"$nin": remove_tags}}})
-        pipeline.append({"$sort": TRENDING})
+        pipeline.append({"$sort": _BY_TRENDSCORE})
         if skip: pipeline.append({"$skip": skip})    
         if limit: pipeline.append({"$limit": limit})   
         return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]
@@ -330,6 +330,7 @@ class Beansack:
         bean_embedding: list[float], 
         bean_similarity_score: float = 0, 
         bean_filter: dict = None, 
+        tag_field: str = K_TAGS,
         remove_tags: list[str] = None,
         skip: int = 0,
         limit: int = 0
@@ -364,17 +365,17 @@ class Beansack:
         )
         pipeline.extend(
             [
-                { "$unwind": "$tags" },
+                { "$unwind": f"${tag_field}" },
                 {
                     "$group": {
-                        K_ID: "$tags",
+                        K_ID: f"${tag_field}",
                         K_TRENDSCORE: { "$sum": 1 },
                     }
                 }            
             ]
         )
         if remove_tags: pipeline.append({"$match": {K_ID: {"$nin": remove_tags}}})
-        pipeline.append({"$sort": TRENDING})
+        pipeline.append({"$sort": _BY_TRENDSCORE})
         if skip: pipeline.append({"$skip": skip})
         if limit: pipeline.append({"$limit": limit})
         return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]
@@ -484,7 +485,7 @@ class Beansack:
     def delete_user(self, email: str):
         self.users.delete_one({"_id": email})
 
-    def follow_barista(self, email: str, barista_id: str):
+    def follow_page(self, email: str, barista_id: str):
         self.users.update_one(
             {"email": email}, 
             {
@@ -493,7 +494,7 @@ class Beansack:
         )
         return self.users.find_one({"email": email})["following"]
 
-    def unfollow_barista(self, email: str, barista_id: str):
+    def unfollow_page(self, email: str, barista_id: str):
         self.users.update_one(
             {"email": email}, 
             {
@@ -502,28 +503,51 @@ class Beansack:
         )
         return self.users.find_one({"email": email})["following"]
 
-    def get_barista(self, id: str) -> Page:
-        barista = self.baristas.find_one({K_ID: id})
-        if barista: return Page(**barista)
+    def get_page(self, id: str, project=None) -> Page:
+        if not id: return
+        page = self.pages.find_one({K_ID: id}, projection=project)
+        if page: return Page(**page)
 
-    def get_baristas(self, ids: list[str], projection: dict = {K_EMBEDDING: 0}):
+    def get_pages(self, ids: list[str], project: dict = None):
+        if not ids: return
         filter = {K_ID: {"$in": ids}} if ids else {}
-        return [Page(**barista) for barista in self.baristas.find(filter, sort={K_TITLE: 1}, projection=projection)]
+        return [Page(**barista) for barista in self.pages.find(filter, sort={K_TITLE: 1}, projection=project)]
     
-    def sample_baristas(self, limit: int, project: dict):
+    def sample_pages(self, limit: int, project: dict = None):
         pipeline = [
             { "$match": {"public": True} },
-            { "$sample": {"size": limit} },
-            { "$project": project }
+            { "$sample": {"size": limit} }
         ]
-        return [Page(**barista) for barista in self.baristas.aggregate(pipeline)]
+        if project: pipeline.append({ "$project": project })
+        return [Page(**barista) for barista in self.pages.aggregate(pipeline)]
      
-    def get_following_baristas(self, user: User):
-        following = self.users.find_one({K_ID: user.email}, {K_FOLLOWING: 1})
-        if following:
-            return self.get_baristas(following["following"])
+    def get_following_pages(self, user: User, project=None):
+        pipeline = [
+            {
+                "$match": {K_ID: user.email}
+            },
+            {
+                "$lookup": {
+                    "from": "baristas",
+                    "localField": "following",
+                    "foreignField": "_id",
+                    "as": "following"
+                }
+            },
+            {
+                "$unwind": "$following"
+            },        
+            {
+                "$replaceRoot": { "newRoot": "$following" }
+            },
+            {
+                "$sort": {K_TITLE: 1}
+            }
+        ]
+        if project: pipeline.append({"$project": project})
+        return [Page(**barista) for barista in self.users.aggregate(pipeline)]
 
-    def search_baristas(self, query: str|list[str]):
+    def search_pages(self, query: str|list[str], project=None):
         pipeline = [
             {   "$match": {"$text": {"$search": query if isinstance(query, str) else " ".join(query)}} },            
             {   "$addFields":  { "search_score": {"$meta": "textScore"}} },
@@ -531,26 +555,27 @@ class Beansack:
             {   "$sort": {"search_score": -1} },
             {   "$limit": 10 }     
         ]        
-        return [Page(**barista) for barista in self.baristas.aggregate(pipeline)]
+        if project: pipeline.append({"$project": project})
+        return [Page(**barista) for barista in self.pages.aggregate(pipeline)]
     
-    def publish(self, barista_id: str):
-        return self.baristas.update_one(
-            {K_ID: barista_id}, 
+    def publish(self, id: str):
+        return self.pages.update_one(
+            {K_ID: id}, 
             { "$set": { "public": True } }
         ).acknowledged
         
-    def unpublish(self, barista_id: str):
-        return self.baristas.update_one(
-            {K_ID: barista_id}, 
+    def unpublish(self, id: str):
+        return self.pages.update_one(
+            {K_ID: id}, 
             { "$set": { "public": False } }
         ).acknowledged
         
-    def is_published(self, barista_id: str):
-        val = self.baristas.find_one({K_ID: barista_id}, {"public": 1, K_OWNER: 1})
+    def is_published(self, id: str):
+        val = self.pages.find_one({K_ID: id}, {"public": 1, K_OWNER: 1})
         return val.get("public", val[K_OWNER] == SYSTEM) if val else False        
 
     def bookmark(self, user: User, url: str):
-        return self.baristas.update_one(
+        return self.pages.update_one(
             filter = {K_ID: user.email}, 
             update = { 
                 "$addToSet": { "urls": url },
@@ -564,13 +589,13 @@ class Beansack:
         ).acknowledged
     
     def unbookmark(self, user: User, url: str):
-        return self.baristas.update_one(
+        return self.pages.update_one(
             filter = {K_ID: user.email}, 
             update = { "$pull": { "urls": url } }
         ).acknowledged
     
     def is_bookmarked(self, user: User, url: str):
-        return self.baristas.find_one({K_ID: user.email, "urls": url})
+        return self.pages.find_one({K_ID: user.email, "urls": url})
     
 
 ## local utilities for pymongo
