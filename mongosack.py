@@ -4,6 +4,7 @@
 import os
 from datetime import datetime, timedelta
 import logging
+import re
 from icecream import ic
 from .models import *
 from pymongo import MongoClient, UpdateMany, UpdateOne
@@ -21,7 +22,6 @@ BEANS = "beans"
 CHATTERS = "chatters"
 SOURCES = "sources"
 
-
 # LAST_UPDATED = {K_UPDATED: -1}
 NEWEST = {K_CREATED: -1}
 LATEST = SON([(K_CREATED, -1), (K_TRENDSCORE, -1)])
@@ -29,9 +29,19 @@ TRENDING = SON([(K_UPDATED, -1), (K_TRENDSCORE, -1)])
 _BY_TRENDSCORE = {K_TRENDSCORE: -1}
 _BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
+VALUE_EXISTS = { 
+    "$exists": True,
+    "$ne": None
+}
+
 now = datetime.now
 ndays_ago = lambda ndays: now() - timedelta(days=ndays)
-create_group_by = lambda field: [
+
+field_value = lambda items: {"$in": items} if isinstance(items, list) else items
+lower_case = lambda items: {"$in": [item.lower() for item in items]} if isinstance(items, list) else items.lower()
+case_insensitive = lambda items: {"$in": [re.compile(item, re.IGNORECASE) for item in items]} if isinstance(items, list) else re.compile(items, re.IGNORECASE)
+
+_create_group_by = lambda field: [
     {
         "$group": {
             "_id": { field: f"${field}" },
@@ -48,7 +58,7 @@ def _beans_query_pipeline(filter: dict, group_by: str, sort_by, skip: int, limit
     if filter: pipeline.append({"$match": filter})
     if sort_by: pipeline.append({"$sort": sort_by})        
     if group_by: 
-        pipeline.extend(create_group_by(group_by))
+        pipeline.extend(_create_group_by(group_by))
         if sort_by: pipeline.append({"$sort": sort_by})
     if skip: pipeline.append({"$skip": skip})
     if limit: pipeline.append({"$limit": limit})
@@ -80,7 +90,7 @@ def _beans_vector_search_pipeline(embedding: list[float], similarity_score: floa
     )
     if sort_by: pipeline.append({"$sort": sort_by})        
     if distinct_field: 
-        pipeline.extend(create_group_by(distinct_field))
+        pipeline.extend(_create_group_by(distinct_field))
         if sort_by: pipeline.append({"$sort": sort_by})
     if skip: pipeline.append({"$skip": skip})
     if limit: pipeline.append({"$limit": limit})
@@ -97,7 +107,7 @@ def _beans_text_search_pipeline(text: str, filter: dict, group_by: str, sort_by,
         { "$sort": sort_by or _BY_SEARCH_SCORE }
     ]   
     if group_by: 
-        pipeline.extend(create_group_by(group_by))
+        pipeline.extend(_create_group_by(group_by))
         if sort_by: pipeline.append({"$sort": sort_by})
     if skip: pipeline.append({"$skip": skip})
     if limit: pipeline.append({"$limit": limit})
@@ -319,12 +329,11 @@ class Beansack:
                 }
             }         
         ]
-        if remove_tags: pipeline.append({"$match": {"_id": {"$nin": remove_tags}}})
+        if remove_tags: pipeline.append({"$match": {"_id": {"$nin": remove_tags} if isinstance(remove_tags, list) else {"$ne": remove_tags}}})
         pipeline.append({"$sort": _BY_TRENDSCORE})
         if skip: pipeline.append({"$skip": skip})    
         if limit: pipeline.append({"$limit": limit})   
         return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]
-        # return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
     def vector_search_tags(self, 
         bean_embedding: list[float], 
@@ -374,7 +383,7 @@ class Beansack:
                 }            
             ]
         )
-        if remove_tags: pipeline.append({"$match": {K_ID: {"$nin": remove_tags}}})
+        if remove_tags: pipeline.append({"$match": {"_id": {"$nin": remove_tags} if isinstance(remove_tags, list) else {"$ne": remove_tags}}})
         pipeline.append({"$sort": _BY_TRENDSCORE})
         if skip: pipeline.append({"$skip": skip})
         if limit: pipeline.append({"$limit": limit})
