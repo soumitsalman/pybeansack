@@ -2,14 +2,15 @@
 ## BEANSACK DB OPERATIONS ##
 ############################
 import os
-from datetime import datetime, timedelta
 import logging
 import re
 from icecream import ic
-from .models import *
-from pymongo import MongoClient, UpdateMany, UpdateOne
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+from pymongo.database import Database
 from pymongo.collection import Collection
 from bson import SON
+from .models import *
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ DEFAULT_VECTOR_SEARCH_LIMIT = 1000
 BEANS = "beans"
 CHATTERS = "chatters"
 SOURCES = "sources"
+PAGES = "pages"
+USERS = "users"
 
 # LAST_UPDATED = {K_UPDATED: -1}
 NEWEST = {K_CREATED: -1}
@@ -116,6 +119,7 @@ def _beans_text_search_pipeline(text: str, filter: dict, group_by: str, sort_by,
     return pipeline
 
 class Beansack:
+    db: Database
     beanstore: Collection
     chatterstore: Collection
     sourcestore: Collection
@@ -126,7 +130,7 @@ class Beansack:
         conn_str: str = os.getenv("REMOTE_DB_CONNECTION_STRING", "mongodb://localhost:27017"), 
         db_name: str = os.getenv("DB_NAME", "beansack")
     ):  
-        client = MongoClient(
+        self.db = MongoClient(
             conn_str, 
             timeoutMS=TIMEOUT,
             serverSelectionTimeoutMS=TIMEOUT,
@@ -134,12 +138,12 @@ class Beansack:
             connectTimeoutMS=TIMEOUT,
             retryWrites=True,
             minPoolSize=10,
-            maxPoolSize=100)        
-        self.beanstore: Collection = client[db_name][BEANS]
-        self.chatterstore: Collection = client[db_name][CHATTERS]        
-        self.sourcestore: Collection = client[db_name][SOURCES]  
-        self.users = client[db_name]["users"]
-        self.pages = client[db_name]["baristas"]
+            maxPoolSize=100)[db_name]        
+        self.beanstore: Collection = self.db[BEANS]
+        self.chatterstore: Collection = self.db[CHATTERS]        
+        self.sourcestore: Collection = self.db[SOURCES]  
+        self.users = self.db[USERS]
+        self.pages = self.db[PAGES]
 
     ###################
     ## BEANS STORING ##
