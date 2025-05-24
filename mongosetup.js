@@ -25,10 +25,10 @@ db.runCommand(
 
 db.runCommand(
   {
-    "createIndexes": "baristas",
+    "createIndexes": "pages",
     "indexes": [
       {
-        "name": "baristas_vector_search",
+        "name": "pages_vector_search",
         "key": 
         {
           "embedding": "cosmosSearch"
@@ -46,7 +46,7 @@ db.runCommand(
 );
 
 // text indexes for beans and baristas
-db.baristas.createIndex(
+db.pages.createIndex(
   {
       tags: "text",
       title: "text",
@@ -54,7 +54,7 @@ db.baristas.createIndex(
       sources: "text",
   },
   {
-      name: "baristas_text_search"
+      name: "page_text_search"
   }
 );
 
@@ -161,3 +161,14 @@ db.beans.createIndex(
       name: "beans_cluster_id"
   }
 );
+
+db.beans.createIndex(
+  {
+      gist: 1,
+      embedding: 1
+  },
+  {
+      name: "espresso_retrieval_basic"
+  }
+);
+

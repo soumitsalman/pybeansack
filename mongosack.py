@@ -32,10 +32,7 @@ TRENDING = SON([(K_UPDATED, -1), (K_TRENDSCORE, -1)])
 _BY_TRENDSCORE = {K_TRENDSCORE: -1}
 _BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
-VALUE_EXISTS = { 
-    "$exists": True,
-    "$ne": None
-}
+VALUE_EXISTS = { "$exists": True, "$ne": None}
 
 now = datetime.now
 ndays_ago = lambda ndays: now() - timedelta(days=ndays)
@@ -123,8 +120,8 @@ class Beansack:
     beanstore: Collection
     chatterstore: Collection
     sourcestore: Collection
-    users: Collection
-    pages: Collection
+    userstore: Collection
+    pagestore: Collection
 
     def __init__(self, 
         conn_str: str = os.getenv("REMOTE_DB_CONNECTION_STRING", "mongodb://localhost:27017"), 
@@ -142,8 +139,8 @@ class Beansack:
         self.beanstore: Collection = self.db[BEANS]
         self.chatterstore: Collection = self.db[CHATTERS]        
         self.sourcestore: Collection = self.db[SOURCES]  
-        self.users = self.db[USERS]
-        self.pages = self.db[PAGES]
+        self.userstore = self.db[USERS]
+        self.pagestore = self.db[PAGES]
 
     ###################
     ## BEANS STORING ##
@@ -467,7 +464,7 @@ class Beansack:
     ## USER AND BARISTA OPS ##
     ##########################
     def get_user(self, email: str, linked_account: str = None) -> User|None:
-        user = self.users.find_one({"email": email})
+        user = self.userstore.find_one({"email": email})
         if user:
             if linked_account and linked_account not in user["linked_accounts"]:
                 self.link_account(email, linked_account)
@@ -484,11 +481,11 @@ class Beansack:
             linked_accounts=[userinfo["iss"]],
             following=following_baristas
         )
-        self.users.insert_one(user.model_dump(exclude_none=True, by_alias=True))
+        self.userstore.insert_one(user.model_dump(exclude_none=True, by_alias=True))
         return user
 
     def link_account(self, email: str, account: str):
-        self.users.update_one(
+        self.userstore.update_one(
             {"email": email}, 
             {
                 "$addToSet": {"linked_accounts": account}
@@ -496,35 +493,35 @@ class Beansack:
         )
 
     def delete_user(self, email: str):
-        self.users.delete_one({"_id": email})
+        self.userstore.delete_one({"_id": email})
 
     def follow_page(self, email: str, barista_id: str):
-        self.users.update_one(
+        self.userstore.update_one(
             {"email": email}, 
             {
                 "$addToSet": {"following": barista_id}
             }
         )
-        return self.users.find_one({"email": email})["following"]
+        return self.userstore.find_one({"email": email})["following"]
 
     def unfollow_page(self, email: str, barista_id: str):
-        self.users.update_one(
+        self.userstore.update_one(
             {"email": email}, 
             {
                 "$pull": {"following": barista_id}
             }
         )
-        return self.users.find_one({"email": email})["following"]
+        return self.userstore.find_one({"email": email})["following"]
 
     def get_page(self, id: str, project=None) -> Page:
         if not id: return
-        page = self.pages.find_one({K_ID: id}, projection=project)
+        page = self.pagestore.find_one({K_ID: id}, projection=project)
         if page: return Page(**page)
 
     def get_pages(self, ids: list[str], project: dict = None):
         if not ids: return
         filter = {K_ID: {"$in": ids}} if ids else {}
-        return [Page(**barista) for barista in self.pages.find(filter, sort={K_TITLE: 1}, projection=project)]
+        return [Page(**barista) for barista in self.pagestore.find(filter, sort={K_TITLE: 1}, projection=project)]
     
     def sample_pages(self, limit: int, project: dict = None):
         pipeline = [
@@ -532,7 +529,7 @@ class Beansack:
             { "$sample": {"size": limit} }
         ]
         if project: pipeline.append({ "$project": project })
-        return [Page(**barista) for barista in self.pages.aggregate(pipeline)]
+        return [Page(**barista) for barista in self.pagestore.aggregate(pipeline)]
      
     def get_following_pages(self, user: User, project=None):
         pipeline = [
@@ -558,7 +555,7 @@ class Beansack:
             }
         ]
         if project: pipeline.append({"$project": project})
-        return [Page(**barista) for barista in self.users.aggregate(pipeline)]
+        return [Page(**barista) for barista in self.userstore.aggregate(pipeline)]
 
     def search_pages(self, query: str|list[str], project=None):
         pipeline = [
@@ -569,26 +566,26 @@ class Beansack:
             {   "$limit": 10 }     
         ]        
         if project: pipeline.append({"$project": project})
-        return [Page(**barista) for barista in self.pages.aggregate(pipeline)]
+        return [Page(**barista) for barista in self.pagestore.aggregate(pipeline)]
     
     def publish(self, id: str):
-        return self.pages.update_one(
+        return self.pagestore.update_one(
             {K_ID: id}, 
             { "$set": { "public": True } }
         ).acknowledged
         
     def unpublish(self, id: str):
-        return self.pages.update_one(
+        return self.pagestore.update_one(
             {K_ID: id}, 
             { "$set": { "public": False } }
         ).acknowledged
         
     def is_published(self, id: str):
-        val = self.pages.find_one({K_ID: id}, {"public": 1, K_OWNER: 1})
+        val = self.pagestore.find_one({K_ID: id}, {"public": 1, K_OWNER: 1})
         return val.get("public", val[K_OWNER] == SYSTEM) if val else False        
 
     def bookmark(self, user: User, url: str):
-        return self.pages.update_one(
+        return self.pagestore.update_one(
             filter = {K_ID: user.email}, 
             update = { 
                 "$addToSet": { "urls": url },
@@ -602,13 +599,13 @@ class Beansack:
         ).acknowledged
     
     def unbookmark(self, user: User, url: str):
-        return self.pages.update_one(
+        return self.pagestore.update_one(
             filter = {K_ID: user.email}, 
             update = { "$pull": { "urls": url } }
         ).acknowledged
     
     def is_bookmarked(self, user: User, url: str):
-        return self.pages.find_one({K_ID: user.email, "urls": url})
+        return self.pagestore.find_one({K_ID: user.email, "urls": url})
     
 
 ## local utilities for pymongo
