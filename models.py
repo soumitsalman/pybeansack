@@ -41,7 +41,7 @@ K_LATEST_COMMENTS = "latest_comments"
 K_LATEST_SHARES = "latest_shares"
 K_SHARED_IN = "shared_in"
 K_TRENDSCORE = "trend_score"
-K_CONTAINER_URL = "container_url"
+K_CHATTER_URL = "chatter_url"
 K_LIKES = "likes"
 K_COMMENTS = "comments"
 K_SHARES = "shares"
@@ -138,6 +138,12 @@ class Chatter(BaseModel):
     comments: Optional[int] = Field(default=0)
     shares: Optional[int] = Field(default=0)
     subscribers: Optional[int] = Field(default=0)
+
+    class Config:
+        arbitrary_types_allowed=True
+        exclude_none = True
+        exclude_unset = True
+        exclude_defaults = True
     
     def digest(self):
         return f"From: {self.source}\nBody: {self.text}"
@@ -154,7 +160,7 @@ class ChatterAnalysis(BaseModel):
     comments: Optional[int] = 0
     shares: Optional[int] = 0
     shared_in: Optional[list[str]] = None
-    last_collected: Optional[datetime] = None
+    collected: Optional[datetime] = None
     likes_change: Optional[int] = 0
     comments_change: Optional[int] = 0
     shares_change: Optional[int] = 0

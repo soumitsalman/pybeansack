@@ -310,7 +310,7 @@ class Beansack:
                 total.url as url, 
                 total.likes as likes, 
                 total.comments as comments, 
-                total.collected as last_collected,
+                total.collected as collected,
                 total.shares as shares,
                 total.shared_in as shared_in,                            
                 total.likes - COALESCE(ndays_ago.likes, 0) as likes_change, 
@@ -325,7 +325,7 @@ class Beansack:
             url=chatter[0],
             likes=chatter[1],
             comments=chatter[2],
-            last_collected=chatter[3],
+            collected=chatter[3],
             shares=chatter[4],
             shared_in=chatter[5],
             likes_change=chatter[6],
@@ -345,26 +345,6 @@ class Beansack:
     #         shares=chatter[3],
     #         slots=True
     #     ) for chatter in result.fetchall()]
-    
-    # def store_barista(self, barista):
-    #     categories_data = (
-    #         barista.get('_id'),
-    #         barista.get('text'),
-    #         barista.get('related'),
-    #         barista.get('description'),
-    #         barista.get('embedding')
-    #     )
-        
-    #     local_conn = self.db.cursor()
-    #     local_conn.execute(SQL_INSERT_BARISTA, categories_data).commit()
-
-    # def search_categories(self, embedding: list[float], min_score: float = DEFAULT_VECTOR_SEARCH_SCORE, limit: int = 0) -> list[str]:
-    #     local_conn = self.db.cursor()
-    #     result = local_conn.query(sql_search_categories(embedding, min_score))
-    #     if limit:
-    #         result = result.limit(limit)
-    #     # result.show()
-    #     return [category[0] for category in result.fetchall()]
 
     def close(self):
         self.db.close()

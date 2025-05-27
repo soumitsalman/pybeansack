@@ -6,7 +6,7 @@ import logging
 import re
 from icecream import ic
 from datetime import datetime, timedelta
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.database import Database
 from pymongo.collection import Collection
 from bson import SON
@@ -157,10 +157,25 @@ class Beansack:
                 
     def store_chatters(self, chatters: list[Chatter]):
         if not chatters: return chatters
-        res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for item in chatters])
+        res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True, exclude_defaults=True) for item in chatters])
         return len(res.inserted_ids or [])
 
-    def update_beans(self, updates: list):
+    def update_beans(self, beans: list[Bean], fields: list[str]):
+        if not beans: return 0
+        create_update = lambda field_values: {
+            "$set": {k:v for k,v in field_values.items() if v},
+            "$unset": {k:None for k,v in field_values.items() if not v}
+        }
+        updates = list(map(
+            lambda bean: UpdateOne(
+                filter = {K_ID: bean.url},
+                update = create_update(bean.model_dump(include=fields))
+            ),
+            beans
+        ))
+        return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
+
+    def custom_update_beans(self, updates: list[UpdateOne|UpdateMany]):
         if not updates: return 0
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
@@ -417,45 +432,50 @@ class Beansack:
         ]    
         return [item for item in self.beanstore.aggregate(pipeline)]
         
-    def get_chatter_stats(self, urls: str|list[str]) -> list[Chatter]:
+    def get_latest_chatters(self, urls: str|list[str] = None) -> list[ChatterAnalysis]:
         """Retrieves the latest social media status from different mediums."""
-        pipeline = self._chatter_stats_pipeline(urls)
-        return _deserialize_chatters(self.chatterstore.aggregate(pipeline))
-        
-    def get_consolidated_chatter_stats(self, urls: list[str]) -> list[Chatter]:
-        pipeline = self._chatter_stats_pipeline(urls) + [            
-            {
-                "$group": {
-                    "_id":           "$url",
-                    "url":           {"$first": "$url"},                    
-                    "likes":         {"$sum": "$likes"},
-                    "comments":      {"$sum": "$comments"}
-                }
-            }
-        ]
-        return _deserialize_chatters(self.chatterstore.aggregate(pipeline))
-    
-    def _chatter_stats_pipeline(self, urls: list[str]):
+        current_pipeline = ic(self._chatters_pipeline(urls))
+        current_chatters = {item[K_ID]: ChatterAnalysis(**item) for item in self.chatterstore.aggregate(current_pipeline)}
+        yesterdays_pipeline = self._chatters_pipeline(urls, 1)
+        yesterdays_chatters = {item[K_ID]: ChatterAnalysis(**item) for item in self.chatterstore.aggregate(yesterdays_pipeline)}
+        for url, current in current_chatters.items():
+            yesterday = yesterdays_chatters.get(url, ChatterAnalysis(url=url))
+            current.likes_change = current.likes - yesterday.likes
+            current.comments_change = current.comments - yesterday.comments
+            current.shares_change = current.shares - yesterday.shares
+        return list(current_chatters.values())
+
+    # BUG: if rss feed readers/sites have comments and for those, shares are double counted
+    def _chatters_pipeline(self, urls: list[str], days_delta: int = 0):
+        filter = {}
+        if urls: filter[K_URL] = field_value(urls)
+        if days_delta: filter[K_COLLECTED] = {"$lt": ndays_ago(days_delta)}
         return [
             {
-                "$match": { K_URL: {"$in": urls} if isinstance(urls, list) else urls }
-            },
-            {
-                "$sort": {K_UPDATED: -1}
+                "$match": filter
             },
             {
                 "$group": {
                     K_ID: {
                         "url": "$url",
-                        "container_url": "$container_url"
+                        "chatter_url": "$chatter_url"
                     },
                     K_URL:           {"$first": "$url"},
-                    K_UPDATED:       {"$first": "$updated"},                
-                    K_SOURCE:        {"$first": "$source"},
-                    K_CHATTER_GROUP: {"$first": "$group"},
-                    K_CONTAINER_URL: {"$first": "$container_url"},
-                    K_LIKES:         {"$first": "$likes"},
-                    K_COMMENTS:      {"$first": "$comments"}                
+                    K_CHATTER_URL:   {"$first": "$chatter_url"},
+                    K_COLLECTED:     {"$max": "$collected"},                    
+                    K_LIKES:         {"$max": "$likes"},
+                    K_COMMENTS:      {"$max": "$comments"}
+                }
+            },
+            {
+                "$group": {
+                    K_ID:            "$url",
+                    K_URL:           {"$first": "$url"},
+                    K_LIKES:         {"$sum": "$likes"},
+                    K_COMMENTS:      {"$sum": "$comments"},
+                    K_SHARES:        {"$sum": 1},
+                    K_SHARED_IN:     {"$addToSet": "$chatter_url"},
+                    K_COLLECTED:     {"$max": "$collected"}
                 }
             }
         ]
