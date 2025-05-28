@@ -160,7 +160,7 @@ class Beansack:
         res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True, exclude_defaults=True) for item in chatters])
         return len(res.inserted_ids or [])
 
-    def update_beans(self, beans: list[Bean], fields: list[str]):
+    def update_bean_fields(self, beans: list[Bean], fields: list[str]):
         if not beans: return 0
         create_update = lambda field_values: {
             "$set": {k:v for k,v in field_values.items() if v},
@@ -175,7 +175,7 @@ class Beansack:
         ))
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
-    def custom_update_beans(self, updates: list[UpdateOne|UpdateMany]):
+    def update_beans(self, updates: list[UpdateOne|UpdateMany]):
         if not updates: return 0
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
