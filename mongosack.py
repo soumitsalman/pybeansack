@@ -434,7 +434,7 @@ class Beansack:
         
     def get_latest_chatters(self, urls: str|list[str] = None) -> list[ChatterAnalysis]:
         """Retrieves the latest social media status from different mediums."""
-        current_pipeline = ic(self._chatters_pipeline(urls))
+        current_pipeline = self._chatters_pipeline(urls)
         current_chatters = {item[K_ID]: ChatterAnalysis(**item) for item in self.chatterstore.aggregate(current_pipeline)}
         yesterdays_pipeline = self._chatters_pipeline(urls, 1)
         yesterdays_chatters = {item[K_ID]: ChatterAnalysis(**item) for item in self.chatterstore.aggregate(yesterdays_pipeline)}
@@ -447,13 +447,7 @@ class Beansack:
 
     # BUG: if rss feed readers/sites have comments and for those, shares are double counted
     def _chatters_pipeline(self, urls: list[str], days_delta: int = 0):
-        filter = {}
-        if urls: filter[K_URL] = field_value(urls)
-        if days_delta: filter[K_COLLECTED] = {"$lt": ndays_ago(days_delta)}
-        return [
-            {
-                "$match": filter
-            },
+        pipeline = [
             {
                 "$group": {
                     K_ID: {
@@ -461,10 +455,10 @@ class Beansack:
                         "chatter_url": "$chatter_url"
                     },
                     K_URL:           {"$first": "$url"},
-                    K_CHATTER_URL:   {"$first": "$chatter_url"},
-                    K_COLLECTED:     {"$max": "$collected"},                    
                     K_LIKES:         {"$max": "$likes"},
-                    K_COMMENTS:      {"$max": "$comments"}
+                    K_COMMENTS:      {"$max": "$comments"},
+                    K_CHATTER_URL:   {"$first": "$chatter_url"},
+                    K_COLLECTED:     {"$max": "$collected"},
                 }
             },
             {
@@ -479,6 +473,11 @@ class Beansack:
                 }
             }
         ]
+        filter = {}
+        if urls: filter[K_URL] = field_value(urls)
+        if days_delta: filter[K_COLLECTED] = {"$lt": ndays_ago(days_delta)}
+        if filter: pipeline = [ {"$match": filter} ] + pipeline
+        return pipeline
     
     ##########################
     ## USER AND BARISTA OPS ##

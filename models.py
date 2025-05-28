@@ -159,13 +159,19 @@ class ChatterAnalysis(BaseModel):
     likes: Optional[int] = 0
     comments: Optional[int] = 0
     shares: Optional[int] = 0
-    shared_in: Optional[list[str]] = None
+    shared_in: Optional[list[str]] = Field(default=None)
     collected: Optional[datetime] = None
     likes_change: Optional[int] = 0
     comments_change: Optional[int] = 0
     shares_change: Optional[int] = 0
-    shared_in_change: Optional[list[str]] = None
+    shared_in_change: Optional[list[str]] = Field(default=None)
     trend_score: Optional[int] = 0
+
+    class Config:
+        arbitrary_types_allowed=True
+        exclude_none = True
+        exclude_unset = True
+        exclude_defaults = True
     
 class User(BaseModel):
     id: Optional[str] = Field(default=None, serialization_alias="_id")  
