@@ -263,6 +263,7 @@ class Beansack:
         url: str, 
         filter: dict = None, 
         sort_by = None, 
+        skip: int = 0,
         limit: int = 0, 
         project: dict = None
     ) -> list[Bean]:
@@ -280,7 +281,7 @@ class Beansack:
             K_CLUSTER_ID: bean[K_CLUSTER_ID]
         }
         if filter: related_filter.update(filter)
-        pipeline = _beans_query_pipeline(filter=related_filter, group_by=None, sort_by=sort_by, skip=0, limit=limit, project=project, count=False)
+        pipeline = _beans_query_pipeline(filter=related_filter, group_by=None, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
     
     def vector_search_similar_beans(self,
