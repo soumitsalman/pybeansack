@@ -5,7 +5,7 @@ import os
 import logging
 import re
 from icecream import ic
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.database import Database
 from pymongo.collection import Collection
@@ -34,7 +34,7 @@ _BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
 VALUE_EXISTS = { "$exists": True, "$ne": None}
 
-now = datetime.now
+now = lambda: datetime.now(timezone.utc)
 ndays_ago = lambda ndays: now() - timedelta(days=ndays)
 
 field_value = lambda items: {"$in": items} if isinstance(items, list) else items
