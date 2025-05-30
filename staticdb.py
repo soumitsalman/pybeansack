@@ -2,23 +2,20 @@ import duckdb
 from .models import *
 
 # init vss expressions
-SQL_VSS = """
-INSTALL vss;
-LOAD vss;
-"""
+SQL_INIT_VSS = "INSTALL vss; LOAD vss;"
 
 # ingest expressions
 SQL_READ_PARQUET = lambda filepath: f"""
     CREATE TABLE items AS 
-    SELECT * FROM read_parquet('{filepath}')
+    SELECT * FROM read_parquet('{filepath}');
 """
 SQL_READ_JSON = lambda filepath: f"""
     CREATE TABLE items AS 
-    SELECT * FROM read_json('{filepath}')
+    SELECT * FROM read_json('{filepath}');
 """
 SQL_READ_CSV = lambda filepath: f"""
     CREATE TABLE items AS 
-    SELECT * FROM read_csv('{filepath}', header=true)
+    SELECT * FROM read_csv('{filepath}', header=true);
 """
 
 # query expressions
@@ -44,10 +41,10 @@ class StaticDB:
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.db = duckdb.connect()
-        self.db.sql(SQL_VSS)
-        if self.filepath.endswith(".parquet"): self.db.sql(SQL_READ_PARQUET(self.filepath))
-        elif self.filepath.endswith(".json"): self.db.sql(SQL_READ_JSON(self.filepath))
-        elif self.filepath.endswith(".csv"): self.db.sql(SQL_READ_CSV(self.filepath))
+        self.db.execute(SQL_INIT_VSS)
+        if self.filepath.endswith(".parquet"): self.db.execute(SQL_READ_PARQUET(self.filepath))
+        elif self.filepath.endswith(".json"): self.db.execute(SQL_READ_JSON(self.filepath))
+        elif self.filepath.endswith(".csv"): self.db.execute(SQL_READ_CSV(self.filepath))
         else: raise ValueError(f"WTF is {filepath}")
 
     def vector_search(self, embedding: list[float], max_distance: float = 0.0, limit: int = 0) -> list[str]|None:

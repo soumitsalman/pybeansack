@@ -10,6 +10,7 @@ JOB = "job"
 NEWS = "news"
 BLOG = "blog"
 COMMENTS = "comments"
+GENERATED = "AI Generated"
 
 # names of important fields of collections
 K_ID="_id"
@@ -48,6 +49,12 @@ K_SHARES = "shares"
 K_OWNER = "owner"
 K_FOLLOWING = "following"
 K_DESCRIPTION = "description"
+
+K_IS_SCRAPED = "is_scraped"
+K_NUM_WORDS_CONTENT = "num_words_in_content"
+K_NUM_WORDS_SUMMARY = "num_words_in_summary"
+K_NUM_WORDS_TITLE = "num_words_in_title"
+
 K_SITE_NAME = "site_name"
 K_SITE_BASE_URL = "site_base_url"
 K_SITE_RSS_FEED = "site_rss_feed"
@@ -74,6 +81,10 @@ class Bean(BaseModel):
     site_base_url: Optional[str] = None
     site_rss_feed: Optional[str] = None
     site_favicon: Optional[str] = None
+
+    num_words_in_title: Optional[int] = None
+    num_words_in_summary: Optional[int] = None
+    num_words_in_content: Optional[int] = None
 
     # generated fields
     gist: Optional[str] = None
