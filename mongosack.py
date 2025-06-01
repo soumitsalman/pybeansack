@@ -41,7 +41,7 @@ field_value = lambda items: {"$in": items} if isinstance(items, list) else items
 lower_case = lambda items: {"$in": [item.lower() for item in items]} if isinstance(items, list) else items.lower()
 case_insensitive = lambda items: {"$in": [re.compile(item, re.IGNORECASE) for item in items]} if isinstance(items, list) else re.compile(items, re.IGNORECASE)
 
-_create_group_by = lambda field: [
+_create_group_by = lambda field, sort_by: [
     {
         "$group": {
             "_id": { field: f"${field}" },
@@ -51,22 +51,22 @@ _create_group_by = lambda field: [
     {
         "$replaceRoot": { "newRoot": "$doc" }
     }
-]
+] + ([{"$sort": sort_by}] if sort_by else [])
 
-def _beans_query_pipeline(filter: dict, group_by: str, sort_by, skip: int, limit: int, project: dict, count: bool):
+def _beans_query_pipeline(filter: dict, group_by: str|list[str], sort_by, skip: int, limit: int, project: dict, count: bool):
     pipeline = []
     if filter: pipeline.append({"$match": filter})
     if sort_by: pipeline.append({"$sort": sort_by})        
     if group_by: 
-        pipeline.extend(_create_group_by(group_by))
-        if sort_by: pipeline.append({"$sort": sort_by})
+        group_by = [group_by] if isinstance(group_by, str) else group_by
+        [pipeline.extend(_create_group_by(gr, sort_by)) for gr in group_by]
     if skip: pipeline.append({"$skip": skip})
     if limit: pipeline.append({"$limit": limit})
     if project: pipeline.append({"$project": project})
     if count: pipeline.append({"$count": "total_count"})
     return pipeline
 
-def _beans_vector_search_pipeline(embedding: list[float], similarity_score: float, filter: dict, distinct_field: str, sort_by, skip: int, limit: int, project: dict, count: bool):    
+def _beans_vector_search_pipeline(embedding: list[float], similarity_score: float, filter: dict, group_by: str|list[str], sort_by, skip: int, limit: int, project: dict, count: bool):    
     pipeline = [            
         {
             "$search": {
@@ -75,7 +75,7 @@ def _beans_vector_search_pipeline(embedding: list[float], similarity_score: floa
                     "path":   K_EMBEDDING,
                     "filter": filter or {},
                     # if there is no group_by then limit the search set else cast a wider net
-                    "k":      skip+limit if limit and not distinct_field else DEFAULT_VECTOR_SEARCH_LIMIT,
+                    "k":      skip+limit if limit and not group_by else DEFAULT_VECTOR_SEARCH_LIMIT,
                 }
             }
         },
@@ -89,16 +89,16 @@ def _beans_vector_search_pipeline(embedding: list[float], similarity_score: floa
         }
     )
     if sort_by: pipeline.append({"$sort": sort_by})        
-    if distinct_field: 
-        pipeline.extend(_create_group_by(distinct_field))
-        if sort_by: pipeline.append({"$sort": sort_by})
+    if group_by: 
+        group_by = [group_by] if isinstance(group_by, str) else group_by
+        [pipeline.extend(_create_group_by(gr, sort_by)) for gr in group_by]
     if skip: pipeline.append({"$skip": skip})
     if limit: pipeline.append({"$limit": limit})
     if project: pipeline.append({"$project": project})
     if count: pipeline.append({"$count": "total_count"})
     return pipeline
 
-def _beans_text_search_pipeline(text: str, filter: dict, group_by: str, sort_by, skip: int, limit: int, project: dict, count: bool):
+def _beans_text_search_pipeline(text: str, filter: dict, group_by: str|list[str], sort_by, skip: int, limit: int, project: dict, count: bool):
     match = {"$text": {"$search": text}}
     if filter: match.update(filter)
     pipeline = [
@@ -107,8 +107,8 @@ def _beans_text_search_pipeline(text: str, filter: dict, group_by: str, sort_by,
         { "$sort": sort_by or _BY_SEARCH_SCORE }
     ]   
     if group_by: 
-        pipeline.extend(_create_group_by(group_by))
-        if sort_by: pipeline.append({"$sort": sort_by})
+        group_by = [group_by] if isinstance(group_by, str) else group_by
+        [pipeline.extend(_create_group_by(gr, sort_by)) for gr in group_by] 
     if skip: pipeline.append({"$skip": skip})
     if limit: pipeline.append({"$limit": limit})
     if project: pipeline.append({"$project": project})
@@ -191,11 +191,11 @@ class Beansack:
         item = self.beanstore.find_one(filter={K_ID: url}, projection=project)
         if item: return Bean(**item)
 
-    def query_beans(self, filter: dict = None, group_by: str = None, sort_by = None, skip: int = 0, limit: int = 0, project: dict = None):
+    def query_beans(self, filter: dict = None, group_by: str|list[str] = None, sort_by = None, skip: int = 0, limit: int = 0, project: dict = None):
         pipeline = _beans_query_pipeline(filter, group_by=group_by, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
     
-    def count_beans(self, filter: dict, group_by: str = None, limit: int = 0):
+    def count_beans(self, filter: dict, group_by: str|list[str] = None, limit: int = 0):
         pipeline = _beans_query_pipeline(filter, group_by, sort_by=None, skip=0, limit=limit, project=None, count=True)
         result = self.beanstore.aggregate(pipeline)
         return next(iter(result), {'total_count': 0})['total_count'] if result else 0
@@ -204,7 +204,7 @@ class Beansack:
         embedding: list[float], 
         similarity_score: float = 0, 
         filter: dict = None, 
-        group_by: str = None,
+        group_by: str|list[str] = None,
         sort_by = None,
         skip: int = 0,
         limit: int = 0, 
@@ -217,7 +217,7 @@ class Beansack:
         embedding: list[float], 
         similarity_score: float = None, 
         filter: dict = None, 
-        group_by: str = None,
+        group_by: str|list[str] = None,
         limit: int = 0
     ) -> int:
         pipeline = _beans_vector_search_pipeline(embedding, similarity_score, filter, group_by, None, 0, limit, None, True)
@@ -227,7 +227,7 @@ class Beansack:
     def text_search_beans(self, 
         query: str, 
         filter: dict = None,
-        group_by: str = None,
+        group_by: str|list[str] = None,
         sort_by = None, 
         skip: int = 0, 
         limit: int = 0, 
@@ -239,14 +239,14 @@ class Beansack:
     def count_text_search_beans(self, 
         query: str, 
         filter: dict = None,
-        group_by: str = None,
+        group_by: str|list[str] = None,
         limit: int = 0
     ):
         pipeline = _beans_text_search_pipeline(query, filter=filter, group_by=group_by, sort_by=None, skip=0, limit=limit, project=None, count=True)
         result = self.beanstore.aggregate(pipeline)
         return next(iter(result), {'total_count': 0})['total_count'] if result else 0
     
-    def sample_beans(self, filter: dict = None, sort_by = None, limit: int = 1, projection = None) -> list[Bean]:
+    def sample_beans(self, filter: dict = None, sort_by = None, limit: int = 1, project = None) -> list[Bean]:
         pipeline = [
             { 
                 "$match": filter 
@@ -256,7 +256,7 @@ class Beansack:
             }
         ]
         if sort_by: pipeline.append({"$sort": sort_by})
-        if projection: pipeline.append({"$project": projection})
+        if project: pipeline.append({"$project": project})
         return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
 
     def query_related_beans(self, 
@@ -288,7 +288,7 @@ class Beansack:
         url: str, 
         similarity_score: float = 0, 
         filter: dict= None, 
-        group_by: str = None, 
+        group_by: str|list[str] = None, 
         skip: int = 0, 
         limit: int = 0, 
         project: dict = None

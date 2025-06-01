@@ -41,7 +41,7 @@ class StaticDB:
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.db = duckdb.connect()
-        self.db.execute(SQL_INIT_VSS)
+        # self.db.execute(SQL_INIT_VSS)
         if self.filepath.endswith(".parquet"): self.db.execute(SQL_READ_PARQUET(self.filepath))
         elif self.filepath.endswith(".json"): self.db.execute(SQL_READ_JSON(self.filepath))
         elif self.filepath.endswith(".csv"): self.db.execute(SQL_READ_CSV(self.filepath))

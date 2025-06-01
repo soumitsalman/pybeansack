@@ -94,9 +94,6 @@ class Bean(BaseModel):
     sentiments: Optional[list[str]] = None
     tags: Optional[list[str]|str] = None
     summary: Optional[str] = None
-    # topic: Optional[str] = None
-    # highlights: Optional[list[str]] = None
-    # insight: Optional[str] = None
     
     embedding: Optional[list[float]] = None
     cluster_id: Optional[str] = None
@@ -134,6 +131,22 @@ class Bean(BaseModel):
         exclude_none = True
         exclude_unset = True
         by_alias=True
+
+class GeneratedBean(Bean):
+    kind: str = Field(default=GENERATED)
+    topic: Optional[str] = None
+    intro: Optional[list[str]] = None
+    analysis: Optional[list[str]] = None
+    insights: Optional[list[str]] = None
+    verdict: Optional[list[str]] = None
+    
+    def markdown(self):
+        lines = []
+        if self.verdict: lines.extend([f"> "+v for v in self.verdict])
+        if self.intro: lines.extend(self.intro)
+        if self.insights: lines.extend(["**Insights**"]+self.insights)
+        if self.analysis: lines.extend(["**Analysis**"]+self.analysis)
+        return "\n\n".join(lines)
 
 class Chatter(BaseModel):
     # this is the url of bean it represents
