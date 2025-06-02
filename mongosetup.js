@@ -165,7 +165,8 @@ db.beans.createIndex(
 db.beans.createIndex(
   {
       gist: 1,
-      embedding: 1
+      num_words_in_title: 1,
+      cluster_id: 1
   },
   {
       name: "espresso_retrieval_basic"
