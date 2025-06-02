@@ -141,11 +141,11 @@ class GeneratedBean(Bean):
     verdict: Optional[list[str]] = None
     
     def markdown(self):
-        lines = []
-        if self.verdict: lines.extend([f"> "+v for v in self.verdict])
-        if self.intro: lines.extend(self.intro)
-        if self.insights: lines.extend(["**Insights**"]+self.insights)
-        if self.analysis: lines.extend(["**Analysis**"]+self.analysis)
+        lines = ["##### "+self.title]
+        if self.verdict: lines.extend([f"> "+v for v in self.verdict if v])
+        if self.intro: lines.extend(self.intro)        
+        if self.analysis: lines.extend(["###### Analysis"]+self.analysis)
+        if self.insights: lines.extend(["###### Insights"]+self.insights)
         return "\n\n".join(lines)
 
 class Chatter(BaseModel):
