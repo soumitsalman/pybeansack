@@ -139,14 +139,15 @@ class GeneratedBean(Bean):
     analysis: Optional[list[str]] = None
     insights: Optional[list[str]] = None
     verdict: Optional[list[str]] = None
+    predictions: Optional[list[str]] = None
     
-    def markdown(self):
-        lines = ["##### "+self.title]
-        if self.verdict: lines.extend([f"> "+v for v in self.verdict if v])
-        if self.intro: lines.extend(self.intro)        
-        if self.analysis: lines.extend(["###### Analysis"]+self.analysis)
-        if self.insights: lines.extend(["###### Insights"]+self.insights)
-        return "\n\n".join(lines)
+    # def markdown(self):
+    #     lines = ["##### "+self.title]
+    #     if self.verdict: lines.extend([f"> "+v for v in self.verdict if v])
+    #     if self.intro: lines.extend(self.intro)        
+    #     if self.analysis: lines.extend(["###### Analysis"]+self.analysis)
+    #     if self.insights: lines.extend(["###### Insights"]+self.insights)
+    #     return "\n\n".join(lines)
 
 class Chatter(BaseModel):
     # this is the url of bean it represents
