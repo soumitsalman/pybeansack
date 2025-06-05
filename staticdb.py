@@ -5,21 +5,34 @@ from .models import *
 # init vss expressions
 SQL_INIT_VSS = "INSTALL vss; LOAD vss;"
 
+# TODO: change the vector length later
+SQL_CREATE_EMPTY_TABLE = """
+CREATE TABLE IF NOT EXISTS items (
+    _id VARCHAR PRIMARY KEY,
+    embedding FLOAT[384]
+);
+"""
+
 # ingest expressions
 SQL_READ_PARQUET = lambda filepath: f"""
-    CREATE TABLE items AS 
-    SELECT * FROM read_parquet('{filepath}');
+    INSERT INTO items
+    SELECT * FROM read_parquet('{filepath}')
+    ON CONFLICT DO NOTHING;
 """
 SQL_READ_JSON = lambda filepath: f"""
-    CREATE TABLE items AS 
-    SELECT * FROM read_json('{filepath}');
+    INSERT INTO items  
+    SELECT * FROM read_json('{filepath}')
+    ON CONFLICT DO NOTHING;
 """
 SQL_READ_CSV = lambda filepath: f"""
-    CREATE TABLE items AS 
-    SELECT * FROM read_csv('{filepath}', header=true);
+    INSERT INTO items
+    SELECT * FROM read_csv('{filepath}', header=true)
+    ON CONFLICT DO NOTHING;
 """
 SQL_READ_DATA = f"""
-    CREATE TABLE items AS SELECT * FROM data;
+    INSERT INTO items 
+    SELECT * FROM data 
+    ON CONFLICT DO NOTHING;
 """
 
 
@@ -51,6 +64,11 @@ class StaticDB:
     def __init__(self, filepath: str = None, json_data: list[dict] = None):
         
         self.db = duckdb.connect()
+        self.db.execute(SQL_CREATE_EMPTY_TABLE)
+        self.store_items(filepath, json_data)        
+
+    def store_items(self, filepath = None, json_data: list[dict] = None):
+        cursor = self.db.cursor()
         if filepath:
             self.filepath = filepath
             if self.filepath.endswith(".parquet"): self.db.execute(SQL_READ_PARQUET(self.filepath))
@@ -59,12 +77,7 @@ class StaticDB:
             else: raise ValueError(f"WTF is {filepath}")
         elif json_data:
             data = pd.DataFrame().from_dict(json_data, orient="columns")
-            self.db.execute(SQL_READ_DATA)
-
-    def store_items(self, json_data: list[dict]):
-        cursor = self.db.cursor()
-        data = pd.DataFrame().from_dict(json_data, orient="columns")
-        cursor.execute("INSERT INTO items SELECT * FROM data;")
+            cursor.execute(SQL_READ_DATA)
 
     def vector_search(self, embedding: list[float], max_distance: float = 0.0, limit: int = 0, metric: str ="cos") -> list[str]|None:
         cursor = self.db.cursor()
