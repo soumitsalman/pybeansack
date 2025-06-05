@@ -283,7 +283,30 @@ class Beansack:
         if filter: related_filter.update(filter)
         pipeline = _beans_query_pipeline(filter=related_filter, group_by=None, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
-    
+
+    def count_related_beans(self, 
+        url: str, 
+        filter: dict = None, 
+        limit: int = 0
+    ) -> int:
+        bean = self.beanstore.find_one(
+            {
+                K_ID: url, 
+                K_CLUSTER_ID: {"$exists": True}
+            }, 
+            projection = {K_CLUSTER_ID: 1}
+        )
+        if not bean: return
+
+        related_filter = {
+            K_ID: {"$ne": url},
+            K_CLUSTER_ID: bean[K_CLUSTER_ID]
+        }
+        if filter: related_filter.update(filter)
+        pipeline = _beans_query_pipeline(filter=related_filter, group_by=None, sort_by=None, skip=None, limit=limit, project=None, count=True)
+        result = list(self.beanstore.aggregate(pipeline))
+        return result[0].get('total_count', 0) if result else 0
+
     def vector_search_similar_beans(self,
         url: str, 
         similarity_score: float = 0, 
