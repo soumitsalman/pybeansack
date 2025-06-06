@@ -12,29 +12,45 @@ CREATE TABLE IF NOT EXISTS items (
     embedding FLOAT[384]
 );
 """
+# ingest expressions
+SQL_CREATE_FROM_PARQUET = lambda filepath: f"""
+    CREATE TABLE items AS
+    SELECT * FROM read_parquet('{filepath}');
+"""
+SQL_CREATE_FROM_JSON = lambda filepath: f"""
+    CREATE TABLE items AS
+    SELECT * FROM read_json('{filepath}');
+"""
+SQL_CREATE_FROM_CSV = lambda filepath: f"""
+    CREATE TABLE items AS
+    SELECT * FROM read_csv('{filepath}', header=true);
+"""
+SQL_CREATE_FROM_PANDAS = f"""
+    CREATE TABLE items AS
+    SELECT * FROM data;
+"""
 
 # ingest expressions
-SQL_READ_PARQUET = lambda filepath: f"""
+SQL_INSERT_PARQUET = lambda filepath: f"""
     INSERT INTO items
     SELECT * FROM read_parquet('{filepath}')
     ON CONFLICT DO NOTHING;
 """
-SQL_READ_JSON = lambda filepath: f"""
+SQL_INSERT_JSON = lambda filepath: f"""
     INSERT INTO items  
     SELECT * FROM read_json('{filepath}')
     ON CONFLICT DO NOTHING;
 """
-SQL_READ_CSV = lambda filepath: f"""
+SQL_INSERT_CSV = lambda filepath: f"""
     INSERT INTO items
     SELECT * FROM read_csv('{filepath}', header=true)
     ON CONFLICT DO NOTHING;
 """
-SQL_READ_DATA = f"""
+SQL_INSERT_PANDAS = f"""
     INSERT INTO items 
     SELECT * FROM data 
     ON CONFLICT DO NOTHING;
 """
-
 
 # query expressions
 SQL_WHERE_IN = lambda field, values: field + " IN ( " + (", ".join(f"'{val}'" for val in values)) + " )"
@@ -59,25 +75,36 @@ ORDER BY distance ASC
 
 class StaticDB:    
     db: duckdb.DuckDBPyConnection
-    filepath: str
 
-    def __init__(self, filepath: str = None, json_data: list[dict] = None):
-        
+    def __init__(self, data: str|list[dict] = None):
+        """
+        Create a Vector DB with fields _id and embedding.
+        If data is a string then it will be treated as a filepath to load data from
+        If data is a list[dict] then it will be treated as a list of json objects representing the data
+        If nothing is provided an empty table will be created
+        """
         self.db = duckdb.connect()
-        self.db.execute(SQL_CREATE_EMPTY_TABLE)
-        self.store_items(filepath, json_data)        
-
-    def store_items(self, filepath = None, json_data: list[dict] = None):
+        if not data: self.db.execute(SQL_CREATE_EMPTY_TABLE)
+        elif isinstance(data, str):
+            if data.endswith(".parquet"): self.db.execute(SQL_CREATE_FROM_PARQUET(data))
+            elif data.endswith(".json"): self.db.execute(SQL_CREATE_FROM_JSON(data))
+            elif data.endswith(".csv"): self.db.execute(SQL_CREATE_FROM_CSV(data))
+            else: raise NotImplementedError(f"{data} file extention not supported")
+        elif isinstance(data, list):
+            data = pd.DataFrame().from_dict(data, orient="columns")
+            self.db.execute(SQL_CREATE_FROM_PANDAS)
+        else: raise ValueError("WTF is this")
+        
+    def store_items(self, data: str|list[dict]):
         cursor = self.db.cursor()
-        if filepath:
-            self.filepath = filepath
-            if self.filepath.endswith(".parquet"): self.db.execute(SQL_READ_PARQUET(self.filepath))
-            elif self.filepath.endswith(".json"): self.db.execute(SQL_READ_JSON(self.filepath))
-            elif self.filepath.endswith(".csv"): self.db.execute(SQL_READ_CSV(self.filepath))
-            else: raise ValueError(f"WTF is {filepath}")
-        elif json_data:
-            data = pd.DataFrame().from_dict(json_data, orient="columns")
-            cursor.execute(SQL_READ_DATA)
+        if isinstance(data, str):
+            if data.endswith(".parquet"): self.db.execute(SQL_INSERT_PARQUET(data))
+            elif data.endswith(".json"): self.db.execute(SQL_INSERT_JSON(data))
+            elif data.endswith(".csv"): self.db.execute(SQL_INSERT_CSV(data))
+            else: raise NotImplementedError(f"{data} file extention not supported")
+        elif isinstance(data, list):
+            data = pd.DataFrame().from_dict(data, orient="columns")
+            cursor.execute(SQL_INSERT_PANDAS)
 
     def vector_search(self, embedding: list[float], max_distance: float = 0.0, limit: int = 0, metric: str ="cos") -> list[str]|None:
         cursor = self.db.cursor()

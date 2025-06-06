@@ -110,7 +110,13 @@ class Bean(BaseModel):
     search_score: Optional[float|int] = None
 
     def digest(self) -> str:
-        return self.gist
+        text = ""
+        if self.created: text += f"U:{self.created.strftime('%Y-%m-%d')};"
+        if self.gist: text += f"{self.gist};"
+        # TODO: add entitiies and region down the road
+        if self.categories: text += f"C:{'|'.join(self.categories)};"
+        if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
+        return text
         # lines = [
         #     "# "+(self.gist or self.title),
         #     "**Publish Date**: " + (self.created or self.collected).strftime('%Y-%m-%d %H:%M:%S')
