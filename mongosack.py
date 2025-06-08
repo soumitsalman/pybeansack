@@ -252,8 +252,8 @@ class Beansack:
         limit: int = 0
     ) -> int:
         pipeline = _beans_vector_search_pipeline(embedding, similarity_score, filter, group_by, None, 0, limit, None, True)
-        result = list(self.beanstore.aggregate(pipeline))
-        return result[0]['total_count'] if result else 0
+        result = next(self.beanstore.aggregate(pipeline), None)
+        return result.get('total_count', 0) if result else 0
     
     def text_search_beans(self, 
         query: str, 
@@ -290,7 +290,7 @@ class Beansack:
         if project: pipeline.append({"$project": project})
         return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
 
-    def query_related_beans(self, 
+    def query_beans_in_cluster(self, 
         url: str, 
         filter: dict = None, 
         sort_by = None, 
@@ -301,7 +301,7 @@ class Beansack:
         pipeline = _related_beans_pipeline(url, filter, sort_by, skip, limit, project, False)
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
-    def count_related_beans(self, 
+    def count_beans_in_cluster(self, 
         url: str, 
         filter: dict = None, 
         limit: int = 0
@@ -309,52 +309,48 @@ class Beansack:
         pipeline = _related_beans_pipeline(url, filter, None, None, limit, None, True)
         result = next(self.beanstore.aggregate(pipeline), None)
         return result.get('total_count', 0) if result else 0
-
-    def vector_search_similar_beans(self,
-        url: str, 
-        similarity_score: float = 0, 
-        filter: dict= None, 
-        group_by: str|list[str] = None, 
-        skip: int = 0, 
-        limit: int = 0, 
-        project: dict = None
-    ):
+    
+    def _find_bean_for_similar_bean(self, url: str):
         bean = self.beanstore.find_one(
             {
-                K_ID: url, 
+                K_URL: url, 
                 K_EMBEDDING: {"$exists": True},
                 K_TAGS: {"$exists": True}
             }, 
             projection = {K_TAGS: 1, K_EMBEDDING: 1}
         )
-        if not bean: return
-
+        if not bean: return (None, None)
         similar_filter = {
-            K_ID: {"$ne": url},
+            K_URL: {"$ne": url},
             K_TAGS: {"$in": bean[K_TAGS]}
         }
-        if filter: similar_filter.update(filter)
-        return self.vector_search_beans(bean[K_EMBEDDING], similarity_score, similar_filter, group_by, None, skip, limit, project)
+        return bean[K_EMBEDDING], similar_filter
+
+    def vector_search_similar_beans(self,
+        url: str, 
+        similarity_score: float = 0, 
+        filter: dict = None, 
+        group_by: str|list[str] = None, 
+        skip: int = 0, 
+        limit: int = 0, 
+        project: dict = None
+    ):
+        emb, sim_fil = self._find_bean_for_similar_bean(url)
+        if not emb: return
+        if filter: sim_fil.update(filter)
+        return self.vector_search_beans(emb, similarity_score, sim_fil, group_by, None, skip, limit, project)
     
     def count_vector_search_similar_beans(self,
-        bean_url: str, 
-        group_by: float = 0, 
-        filter: dict= None, 
-        distinct_field: str = None, 
+        url: str, 
+        similarity_score: float = 0,
+        filter: dict = None, 
+        group_by: str|list[str] = None, 
         limit: int = 0
     ):
-        bean = self.beanstore.find_one(
-            {
-                K_ID: bean_url, 
-                K_EMBEDDING: {"$exists": True}
-            }, 
-            projection = {K_TAGS: 1, K_EMBEDDING: 1}
-        )
-        if not bean: return 0
-        if K_TAGS in bean: 
-            if filter: filter.update({K_TAGS: bean[K_TAGS]})
-            else: filter = {K_TAGS: bean[K_TAGS]}
-        return self.count_vector_search_beans(bean[K_EMBEDDING], group_by, filter, distinct_field, limit)
+        emb, sim_fil = self._find_bean_for_similar_bean(url)
+        if not emb: return
+        if filter: sim_fil.update(filter)
+        return self.count_vector_search_beans(emb, similarity_score, sim_fil, group_by, limit)
     
     def query_tags(self, bean_filter: dict = None, tag_field: str = K_TAGS, remove_tags: list[str] = None, skip: int = 0, limit: int = 0):
         filter = {K_TAGS: {"$exists": True}}
