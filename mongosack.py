@@ -100,6 +100,35 @@ def _beans_vector_search_pipeline(embedding: list[float], similarity_score: floa
     if count: pipeline.append({"$count": "total_count"})
     return pipeline
 
+def _related_beans_pipeline(url, filter, sort_by, skip, limit, project, count):
+    related_filter = {K_ID: {"$ne": url}}
+    if filter: related_filter.update(filter)
+
+    pipeline = [
+        {
+            "$match": {
+                K_ID: url,
+                K_CLUSTER_ID: VALUE_EXISTS
+            }
+        },
+        {
+            "$lookup": {
+                "from": BEANS,
+                "localField": K_CLUSTER_ID,
+                "foreignField": K_CLUSTER_ID,
+                "as": 'cluster',
+                "pipeline": _beans_query_pipeline(related_filter, group_by=None, sort_by=sort_by, skip=skip, limit=limit, project=project, count=count)
+            }
+        },    
+        {   
+            "$unwind": "$cluster"
+        },
+        {
+            "$replaceRoot": { "newRoot": "$cluster" }
+        }
+    ]
+    return pipeline
+
 def _beans_text_search_pipeline(text: str, filter: dict, group_by: str|list[str], sort_by, skip: int, limit: int, project: dict, count: bool):
     match = {"$text": {"$search": text}}
     if filter: match.update(filter)
@@ -269,21 +298,7 @@ class Beansack:
         limit: int = 0, 
         project: dict = None
     ) -> list[Bean]:
-        bean = self.beanstore.find_one(
-            {
-                K_ID: url, 
-                K_CLUSTER_ID: {"$exists": True}
-            }, 
-            projection = {K_CLUSTER_ID: 1}
-        )
-        if not bean: return
-
-        related_filter = {
-            K_ID: {"$ne": url},
-            K_CLUSTER_ID: bean[K_CLUSTER_ID]
-        }
-        if filter: related_filter.update(filter)
-        pipeline = _beans_query_pipeline(filter=related_filter, group_by=None, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
+        pipeline = _related_beans_pipeline(url, filter, sort_by, skip, limit, project, False)
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
     def count_related_beans(self, 
@@ -291,23 +306,9 @@ class Beansack:
         filter: dict = None, 
         limit: int = 0
     ) -> int:
-        bean = self.beanstore.find_one(
-            {
-                K_ID: url, 
-                K_CLUSTER_ID: {"$exists": True}
-            }, 
-            projection = {K_CLUSTER_ID: 1}
-        )
-        if not bean: return
-
-        related_filter = {
-            K_ID: {"$ne": url},
-            K_CLUSTER_ID: bean[K_CLUSTER_ID]
-        }
-        if filter: related_filter.update(filter)
-        pipeline = _beans_query_pipeline(filter=related_filter, group_by=None, sort_by=None, skip=None, limit=limit, project=None, count=True)
-        result = list(self.beanstore.aggregate(pipeline))
-        return result[0].get('total_count', 0) if result else 0
+        pipeline = _related_beans_pipeline(url, filter, None, None, limit, None, True)
+        result = next(self.beanstore.aggregate(pipeline), None)
+        return result.get('total_count', 0) if result else 0
 
     def vector_search_similar_beans(self,
         url: str, 
