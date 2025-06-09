@@ -205,7 +205,7 @@ class ChatterAnalysis(BaseModel):
         exclude_defaults = True
     
 class User(BaseModel):
-    id: Optional[str] = Field(default=None, serialization_alias="_id")  
+    id: Optional[str] = Field(default=None, alias="_id")  
     email: str = None 
     name: Optional[str] = None
     image_url: Optional[str] = None  
@@ -217,6 +217,7 @@ class User(BaseModel):
     class Config:
         populate_by_name = True
         arbitrary_types_allowed=False
+        by_alias=True
 
 class Page(BaseModel):
     id: str = Field(alias="_id")
@@ -238,3 +239,4 @@ class Page(BaseModel):
     class Config:
         populate_by_name = True
         arbitrary_types_allowed=False
+        by_alias=True

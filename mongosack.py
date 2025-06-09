@@ -218,9 +218,11 @@ class Beansack:
     ################################
     ## BEANS RETRIEVAL AND SEARCH ##
     ################################
-    def get_bean(self, url: str, project: dict = None) -> Bean|None:
-        item = self.beanstore.find_one(filter={K_ID: url}, projection=project)
-        if item: return Bean(**item)
+
+    def get_bean(self, **kwargs) -> Bean|GeneratedBean|None:
+        project = kwargs.pop('project', None)
+        item = self.beanstore.find_one(filter=kwargs, projection=project)
+        if item: return GeneratedBean(**item) if item.get(K_KIND) == GENERATED else Bean(**item)
 
     def query_beans(self, filter: dict = None, group_by: str|list[str] = None, sort_by = None, skip: int = 0, limit: int = 0, project: dict = None):
         pipeline = _beans_query_pipeline(filter, group_by=group_by, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
@@ -580,10 +582,10 @@ class Beansack:
             },
             {
                 "$lookup": {
-                    "from": "baristas",
-                    "localField": "following",
-                    "foreignField": "_id",
-                    "as": "following"
+                    "from": PAGES,
+                    "localField": K_FOLLOWING,
+                    "foreignField": K_ID,
+                    "as": K_FOLLOWING
                 }
             },
             {
