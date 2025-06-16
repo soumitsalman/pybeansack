@@ -15,7 +15,7 @@ from .models import *
 log = logging.getLogger(__name__)
 
 TIMEOUT = 300000 # 3 mins
-DEFAULT_VECTOR_SEARCH_SCORE = 0.7
+DEFAULT_VECTOR_SEARCH_SCORE = 0.75
 DEFAULT_VECTOR_SEARCH_LIMIT = 1000
 
 # names of db and collections

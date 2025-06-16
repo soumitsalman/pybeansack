@@ -141,10 +141,10 @@ class Bean(BaseModel):
 class GeneratedBean(Bean):
     kind: str = Field(default=GENERATED)
     topic: Optional[str] = None
-    intro: Optional[list[str]] = None
+    intro: Optional[str] = None
     analysis: Optional[list[str]] = None
     insights: Optional[list[str]] = None
-    verdict: Optional[list[str]] = None
+    verdict: Optional[str] = None
     predictions: Optional[list[str]] = None
     
     # def markdown(self):
