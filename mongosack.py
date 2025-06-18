@@ -218,7 +218,6 @@ class Beansack:
     ################################
     ## BEANS RETRIEVAL AND SEARCH ##
     ################################
-
     def get_bean(self, **kwargs) -> Bean|GeneratedBean|None:
         project = kwargs.pop('project', None)
         item = self.beanstore.find_one(filter=kwargs, projection=project)
@@ -504,9 +503,9 @@ class Beansack:
         if filter: pipeline = [ {"$match": filter} ] + pipeline
         return pipeline
     
-    ##########################
-    ## USER AND BARISTA OPS ##
-    ##########################
+    ##############################
+    ## REGISTERED USER FUNCTION ##
+    ##############################
     def get_user(self, email: str, linked_account: str = None) -> User|None:
         user = self.userstore.find_one({"email": email})
         if user:
@@ -538,7 +537,33 @@ class Beansack:
 
     def delete_user(self, email: str):
         self.userstore.delete_one({"_id": email})
+    
+    def bookmark(self, user: User, url: str):
+        return self.pagestore.update_one(
+            filter = {K_ID: user.email}, 
+            update = { 
+                "$addToSet": { "urls": url },
+                "$setOnInsert": { 
+                    K_OWNER: user.email,
+                    K_TITLE: user.name,
+                    K_DESCRIPTION: "News, blogs and posts shared by " + user.name
+                }
+            },
+            upsert = True
+        ).acknowledged
+    
+    def unbookmark(self, user: User, url: str):
+        return self.pagestore.update_one(
+            filter = {K_ID: user.email}, 
+            update = { "$pull": { "urls": url } }
+        ).acknowledged
+    
+    def is_bookmarked(self, user: User, url: str):
+        return self.pagestore.find_one({K_ID: user.email, "urls": url})
 
+    ###########################
+    ## STORED PAGE FUNCTIONS ##
+    ###########################
     def follow_page(self, email: str, barista_id: str):
         self.userstore.update_one(
             {"email": email}, 
@@ -574,6 +599,32 @@ class Beansack:
         ]
         if project: pipeline.append({ "$project": project })
         return [Page(**barista) for barista in self.pagestore.aggregate(pipeline)]
+    
+    def get_related_pages(self, page_id: str, project=None):
+        pipeline = [
+            {
+                "$match": {K_ID: page_id}
+            },
+            {
+                "$lookup": {
+                    "from": PAGES,
+                    "localField": K_RELATED,
+                    "foreignField": K_ID,
+                    "as": K_RELATED
+                }
+            },
+            {
+                "$unwind": "$related"
+            },        
+            {
+                "$replaceRoot": { "newRoot": "$related" }
+            },
+            {
+                "$sort": {K_TITLE: 1}
+            }
+        ]
+        if project: pipeline.append({"$project": project})
+        return [Page(**page) for page in self.pagestore.aggregate(pipeline)]
      
     def get_following_pages(self, user: User, project=None):
         pipeline = [
@@ -627,30 +678,7 @@ class Beansack:
     def is_published(self, id: str):
         val = self.pagestore.find_one({K_ID: id}, {"public": 1, K_OWNER: 1})
         return val.get("public", val[K_OWNER] == SYSTEM) if val else False        
-
-    def bookmark(self, user: User, url: str):
-        return self.pagestore.update_one(
-            filter = {K_ID: user.email}, 
-            update = { 
-                "$addToSet": { "urls": url },
-                "$setOnInsert": { 
-                    K_OWNER: user.email,
-                    K_TITLE: user.name,
-                    K_DESCRIPTION: "News, blogs and posts shared by " + user.name
-                }
-            },
-            upsert = True
-        ).acknowledged
-    
-    def unbookmark(self, user: User, url: str):
-        return self.pagestore.update_one(
-            filter = {K_ID: user.email}, 
-            update = { "$pull": { "urls": url } }
-        ).acknowledged
-    
-    def is_bookmarked(self, user: User, url: str):
-        return self.pagestore.find_one({K_ID: user.email, "urls": url})
-    
+ 
 
 ## local utilities for pymongo
 def _deserialize_beans(cursor) -> list[Bean]:
