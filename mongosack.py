@@ -695,8 +695,8 @@ def _deserialize_chatters(cursor) -> list[Chatter]:
         log.error("failed deserializing chatters")
         return []
     
-def updated_after(last_ndays: int):
+def updated_in(last_ndays: int):
     return {K_UPDATED: {"$gte": ndays_ago(last_ndays)}}
 
-def created_after(last_ndays: int):
+def created_in(last_ndays: int):
     return {K_CREATED: {"$gte": ndays_ago(last_ndays)}}
