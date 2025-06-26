@@ -76,14 +76,16 @@ ORDER BY distance ASC
 class StaticDB:    
     db: duckdb.DuckDBPyConnection
 
-    def __init__(self, data: str|list[dict] = None):
+    def __init__(self, data: str|list[dict] = None, file_cache: str = None):
         """
         Create a Vector DB with fields _id and embedding.
         If data is a string then it will be treated as a filepath to load data from
         If data is a list[dict] then it will be treated as a list of json objects representing the data
         If nothing is provided an empty table will be created
         """
-        self.db = duckdb.connect()
+        if file_cache: self.db = duckdb.connect(file_cache, read_only=False)
+        else: self.db = duckdb.connect()
+
         if not data: self.db.execute(SQL_CREATE_EMPTY_TABLE)
         elif isinstance(data, str):
             if data.endswith(".parquet"): self.db.execute(SQL_CREATE_FROM_PARQUET(data))
