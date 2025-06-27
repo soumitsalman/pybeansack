@@ -100,14 +100,14 @@ def _beans_vector_search_pipeline(embedding: list[float], similarity_score: floa
     if count: pipeline.append({"$count": "total_count"})
     return pipeline
 
-def _related_beans_pipeline(url, filter, sort_by, skip, limit, project, count):
-    related_filter = {K_ID: {"$ne": url}}
+def _related_beans_pipeline(id, filter, sort_by, skip, limit, project, count):
+    related_filter = {K_ID: {"$ne": id}}
     if filter: related_filter.update(filter)
 
     pipeline = [
         {
             "$match": {
-                K_ID: url,
+                K_ID: id,
                 K_CLUSTER_ID: VALUE_EXISTS
             }
         },
@@ -292,22 +292,22 @@ class Beansack:
         return _deserialize_beans(self.beanstore.aggregate(pipeline=pipeline))
 
     def query_beans_in_cluster(self, 
-        url: str, 
+        id: str, 
         filter: dict = None, 
         sort_by = None, 
         skip: int = 0,
         limit: int = 0, 
         project: dict = None
     ) -> list[Bean]:
-        pipeline = _related_beans_pipeline(url, filter, sort_by, skip, limit, project, False)
+        pipeline = _related_beans_pipeline(id, filter, sort_by, skip, limit, project, False)
         return _deserialize_beans(self.beanstore.aggregate(pipeline))
 
     def count_beans_in_cluster(self, 
-        url: str, 
+        id: str, 
         filter: dict = None, 
         limit: int = 0
     ) -> int:
-        pipeline = _related_beans_pipeline(url, filter, None, None, limit, None, True)
+        pipeline = _related_beans_pipeline(id, filter, None, None, limit, None, True)
         result = next(self.beanstore.aggregate(pipeline), None)
         return result.get('total_count', 0) if result else 0
     
