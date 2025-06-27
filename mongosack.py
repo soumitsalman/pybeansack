@@ -184,7 +184,7 @@ class Beansack:
 
     def exists(self, beans: list[Bean]):
         if not beans: return beans
-        return [item[K_ID] for item in self.beanstore.find({K_ID: {"$in": [bean.url for bean in beans]}}, {K_ID: 1})]
+        return [item[K_URL] for item in self.beanstore.find({K_URL: {"$in": [bean.url for bean in beans]}}, {K_URL: 1})]
                 
     def store_chatters(self, chatters: list[Chatter]):
         if not chatters: return chatters
@@ -199,7 +199,7 @@ class Beansack:
         }
         updates = list(map(
             lambda bean: UpdateOne(
-                filter = {K_ID: bean.url},
+                filter = {K_ID: bean.id},
                 update = create_update(bean.model_dump(include=fields))
             ),
             beans
