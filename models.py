@@ -144,7 +144,6 @@ class GeneratedBean(Bean):
     intro: Optional[str|list[str]] = None
     analysis: Optional[list[str]] = None
     insights: Optional[list[str]] = None
-    verdict: Optional[str|list[str]] = None
     predictions: Optional[list[str]] = None
 
 class Chatter(BaseModel):
