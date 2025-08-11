@@ -73,3 +73,23 @@ class CDNStore:
             ContentType='image/png'
         )
         return f"{self.endpoint}/{IMAGES_FOLDER}/{blob_name}"
+
+    def upload_image_file(self, local_file: str, blob_name: str = None) -> str:
+        """Upload image synchronously
+        
+        Args:
+            data: binary image content
+            blob_name: Name of the file
+            
+        Returns:
+            Public URL of the uploaded file
+        """
+        blob_name = blob_name or f"{int(datetime.now().timestamp())}-{random.randint(1000, 9999)}.png"
+        self.client.upload_file(
+            local_file, 
+            IMAGES_FOLDER, 
+            blob_name,
+            ACL='public-read',
+            ContentType='image/png'
+        )
+        return f"{self.endpoint}/{IMAGES_FOLDER}/{blob_name}"

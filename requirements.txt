@@ -3,3 +3,4 @@ pymongo
 duckdb
 boto3
 pandas
+rfc3339

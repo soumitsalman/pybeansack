@@ -31,8 +31,8 @@ NEWEST = {K_CREATED: -1}
 # TRENDING = SON([(K_UPDATED, -1), (K_TRENDSCORE, -1)])
 LATEST = {K_CREATED: -1, K_TRENDSCORE: -1}
 TRENDING = {K_UPDATED: -1, K_TRENDSCORE: -1}
-_BY_TRENDSCORE = {K_TRENDSCORE: -1}
-_BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
+BY_TRENDSCORE = {K_TRENDSCORE: -1}
+BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
 VALUE_EXISTS = { "$exists": True, "$ne": None}
 
@@ -135,7 +135,7 @@ def _beans_text_search_pipeline(text: str, filter: dict, group_by: str|list[str]
     pipeline = [
         { "$match": match },            
         { "$addFields":  { K_SEARCH_SCORE: {"$meta": "textScore"}} },
-        { "$sort": sort_by or _BY_SEARCH_SCORE }
+        { "$sort": sort_by or BY_SEARCH_SCORE }
     ]   
     if group_by: 
         group_by = [group_by] if isinstance(group_by, str) else group_by
@@ -370,7 +370,7 @@ class Beansack:
             }         
         ]
         if remove_tags: pipeline.append({"$match": {"_id": {"$nin": remove_tags} if isinstance(remove_tags, list) else {"$ne": remove_tags}}})
-        pipeline.append({"$sort": _BY_TRENDSCORE})
+        pipeline.append({"$sort": BY_TRENDSCORE})
         if skip: pipeline.append({"$skip": skip})    
         if limit: pipeline.append({"$limit": limit})   
         return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]
@@ -424,7 +424,7 @@ class Beansack:
             ]
         )
         if remove_tags: pipeline.append({"$match": {"_id": {"$nin": remove_tags} if isinstance(remove_tags, list) else {"$ne": remove_tags}}})
-        pipeline.append({"$sort": _BY_TRENDSCORE})
+        pipeline.append({"$sort": BY_TRENDSCORE})
         if skip: pipeline.append({"$skip": skip})
         if limit: pipeline.append({"$limit": limit})
         return [item[K_ID] for item in self.beanstore.aggregate(pipeline=pipeline)]

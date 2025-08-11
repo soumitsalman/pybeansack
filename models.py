@@ -1,8 +1,8 @@
 ## DATA MODELS ##
-from bson import ObjectId
-from pydantic import BaseModel, Field
+from rfc3339 import rfc3339
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # CHANNEL = "social media group/forum"
 POST = "post"
@@ -62,6 +62,12 @@ K_SITE_FAVICON = "site_favicon"
 
 SYSTEM = "__SYSTEM__"
 
+# def rfc3339(dt: datetime) -> str:
+#     if dt.tzinfo is None:
+#         dt = dt.replace(tzinfo=timezone.utc)
+#     return dt.strftime('%Y-%m-%dT%H:%M:%S%z')[:-2] + ':' + dt.strftime('%z')[-2:]
+
+
 class Bean(BaseModel):
     # collected / scraped fields
     id: str = Field(default=None, alias="_id")
@@ -117,32 +123,28 @@ class Bean(BaseModel):
         if self.categories: text += f"C:{'|'.join(self.categories)};"
         if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
         return text
-        # lines = [
-        #     "# "+(self.gist or self.title),
-        #     "**Publish Date**: " + (self.created or self.collected).strftime('%Y-%m-%d %H:%M:%S')
-        # ]
-        # if self.categories: lines.append("**Categories**: " + ', '.join(self.categories))
-        # if self.entities: lines.append("**Mentions**: " + ', '.join(self.entities))
-        # if self.topic: lines.append("**Topic: " + self.topic)
-        # if self.regions: lines.append("**Location**: " + ', '.join(self.regions))
-        # if self.summary: lines.append(self.summary)
-        # if self.highlights: lines.extend(["- "+item for item in self.highlights])
-        # if self.insight: lines.append("**Actionable Insight**: "+ self.insight)
-
-        # return "\n".join(lines)
     
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
+
+    model_config = ConfigDict(
+        json_encoders={datetime: rfc3339},
+        populate_by_name = True,
+        arbitrary_types_allowed=False,
+        exclude_none = True,
+        exclude_unset = True,
         by_alias=True
+    )
+    # class Config:
+    #     populate_by_name = True
+    #     arbitrary_types_allowed=False
+    #     exclude_none = True
+    #     exclude_unset = True
+    #     by_alias=True
 
 class GeneratedBean(Bean):
     kind: str = Field(default=GENERATED)
     topic: Optional[str] = None
     intro: Optional[str|list[str]] = None
-    analysis: Optional[list[str]] = None
+    highlights: Optional[list[str]] = None
     insights: Optional[list[str]] = None
     predictions: Optional[list[str]] = None
 
@@ -160,15 +162,18 @@ class Chatter(BaseModel):
     comments: Optional[int] = Field(default=0)
     shares: Optional[int] = Field(default=0)
     subscribers: Optional[int] = Field(default=0)
-
-    class Config:
-        arbitrary_types_allowed=True
-        exclude_none = True
-        exclude_unset = True
-        exclude_defaults = True
     
     def digest(self):
         return f"From: {self.source}\nBody: {self.text}"
+
+    model_config = ConfigDict(
+        json_encoders={datetime: rfc3339},
+        populate_by_name = True,
+        arbitrary_types_allowed=False,
+        exclude_none = True,
+        exclude_unset = True,
+        by_alias=True
+    )
     
 class Source(BaseModel):
     url: str
