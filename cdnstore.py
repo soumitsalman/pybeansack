@@ -86,10 +86,9 @@ class CDNStore:
         """
         blob_name = blob_name or f"{int(datetime.now().timestamp())}-{random.randint(1000, 9999)}.png"
         self.client.upload_file(
-            local_file, 
-            IMAGES_FOLDER, 
-            blob_name,
-            ACL='public-read',
-            ContentType='image/png'
+            Filename=local_file, 
+            Bucket=IMAGES_FOLDER, 
+            Key=blob_name,
+            ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'}
         )
         return f"{self.endpoint}/{IMAGES_FOLDER}/{blob_name}"
