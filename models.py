@@ -62,12 +62,6 @@ K_SITE_FAVICON = "site_favicon"
 
 SYSTEM = "__SYSTEM__"
 
-# def rfc3339(dt: datetime) -> str:
-#     if dt.tzinfo is None:
-#         dt = dt.replace(tzinfo=timezone.utc)
-#     return dt.strftime('%Y-%m-%dT%H:%M:%S%z')[:-2] + ':' + dt.strftime('%z')[-2:]
-
-
 class Bean(BaseModel):
     # collected / scraped fields
     id: str = Field(default=None, alias="_id")
@@ -125,20 +119,21 @@ class Bean(BaseModel):
         return text
     
 
-    model_config = ConfigDict(
-        json_encoders={datetime: rfc3339},
-        populate_by_name = True,
-        arbitrary_types_allowed=False,
-        exclude_none = True,
-        exclude_unset = True,
-        by_alias=True
-    )
-    # class Config:
-    #     populate_by_name = True
-    #     arbitrary_types_allowed=False
-    #     exclude_none = True
-    #     exclude_unset = True
+    # model_config = ConfigDict(
+    #     json_encoders={datetime: rfc3339},
+    #     populate_by_name = True,
+    #     arbitrary_types_allowed=False,
+    #     exclude_none = True,
+    #     exclude_unset = True,
     #     by_alias=True
+    # )
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
+        json_encoders={datetime: rfc3339}
 
 class GeneratedBean(Bean):
     kind: str = Field(default=GENERATED)
@@ -148,38 +143,184 @@ class GeneratedBean(Bean):
     insights: Optional[list[str]] = None
     predictions: Optional[list[str]] = None
 
-class Chatter(BaseModel):
-    # this is the url of bean it represents
-    url: Optional[str] = None 
-    # this is the url in context of the social media post that contains the bean represented 'url'
-    # when the bean itself is a post (instead of a news/article url) container url is the same as 'url' 
-    chatter_url: Optional[str] = None
-    source: Optional[str] = None
-    group: Optional[str] = None    
-    collected: Optional[datetime] = None
-   
-    likes: Optional[int] = Field(default=0)    
-    comments: Optional[int] = Field(default=0)
-    shares: Optional[int] = Field(default=0)
-    subscribers: Optional[int] = Field(default=0)
-    
-    def digest(self):
-        return f"From: {self.source}\nBody: {self.text}"
 
-    model_config = ConfigDict(
-        json_encoders={datetime: rfc3339},
-        populate_by_name = True,
-        arbitrary_types_allowed=False,
-        exclude_none = True,
-        exclude_unset = True,
-        by_alias=True
-    )
-    
-class Source(BaseModel):
+class BeanCore(BaseModel):
+    # core fields
     url: str
-    kind: str
-    name: str
-    cid: Optional[str] = None
+    kind: Optional[str] = Field(default=None)
+    title: Optional[str] = Field(default=None)
+    title_length: Optional[int] = Field(default=0, ge=0)
+    summary: Optional[str] = Field(default=None)
+    summary_length: Optional[int] = Field(default=0, ge=0)
+    content: Optional[str] = Field(default=None)
+    content_length: Optional[int] = Field(default=0, ge=0)
+    restricted_content: Optional[bool] = Field(default=False)
+    author: Optional[str] = Field(default=None)
+    source: Optional[str] = Field(default=None)
+    image_url: Optional[str] = Field(default=None)
+    created: Optional[datetime] = Field(default=None)
+    collected: Optional[datetime] = Field(default=None)
+
+    def to_tuple(self) -> tuple:
+        return (
+            self.url,
+            self.kind,
+            self.title,
+            self.title_length,
+            self.summary,
+            self.summary_length,
+            self.content,
+            self.content_length,
+            self.restricted_content,
+            self.author,
+            self.source,
+            self.image_url,
+            self.created,
+            self.collected
+        )
+    
+    def to_list(self) -> list:
+        return list(self.to_tuple())
+
+    class Config:
+        json_encoders={datetime: rfc3339}
+        dtype_specs = {            
+            'kind': 'string[pyarrow]',
+            'title': 'string[pyarrow]',
+            'title_length': 'int16',
+            'summary': 'string[pyarrow]',
+            'summary_length': 'int16',
+            'content': 'string[pyarrow]',
+            'content_length': 'int16',
+            'author': 'string[pyarrow]',
+            'source': 'string[pyarrow]',
+            'image_url': 'string[pyarrow]'
+        }
+
+class BeanEmbedding(BaseModel):
+    url: str
+    embedding: list
+
+    def to_tuple(self) -> tuple:
+        return (self.url, self.embedding)
+
+    class Config:
+        dtype_specs = {
+            'url': 'string[pyarrow]',
+            'embedding': 'object',
+        }
+
+class BeanGist(BaseModel):
+    url: str
+    gist: str
+    entities: Optional[list[str]] = None
+    regions: Optional[list[str]] = None
+
+    def to_tuple(self) -> tuple:
+        return (self.url, self.gist, self.entities, self.regions)
+
+    class Config:
+        dtype_specs = {
+            'url': 'string[pyarrow]',
+            'gist': 'string[pyarrow]',
+            'regions': 'object',  # For list[str]
+            'entities': 'object'  # For list[str]
+        }
+
+class Chatter(BaseModel):
+    chatter_url: str
+    url: str # this the url from Bean
+    source: Optional[str]
+    forum: Optional[str]
+    collected: datetime
+    likes: int = 0
+    comments: int = 0
+    subscribers: int = 0
+
+    def to_tuple(self) -> tuple:
+        return (
+            self.chatter_url,
+            self.url,
+            self.source,
+            self.forum,
+            self.collected,
+            self.likes,
+            self.comments,
+            self.subscribers
+        )
+
+    class Config:
+        json_encoders={datetime: rfc3339}
+        dtype_specs = {
+            'chatter_url': 'string[pyarrow]',
+            'url': 'string[pyarrow]',
+            'source': 'string[pyarrow]',
+            'forum': 'string[pyarrow]',
+            'likes': 'int32',
+            'comments': 'int32',
+            'subscribers': 'int32'
+        }
+
+class Source(BaseModel):
+    source: str # this is domain name that gets matched with the source field in Bean
+    title: str
+    description: Optional[str]
+    base_url: str
+    favicon: Optional[str]
+    rss_feed: Optional[str]
+
+    def to_tuple(self) -> tuple:
+        return (
+            self.source,
+            self.base_url,
+            self.title,
+            self.description,
+            self.favicon,
+            self.rss_feed
+        )
+
+    class Config:
+        dtype_specs = {
+            'source': 'string[pyarrow]',
+            'title': 'string[pyarrow]',
+            'description': 'string[pyarrow]',
+            'base_url': 'string[pyarrow]',
+            'favicon': 'string[pyarrow]',
+            'rss_feed': 'string[pyarrow]'
+        }
+
+# class Chatter(BaseModel):
+#     # this is the url of bean it represents
+#     url: Optional[str] = None 
+#     # this is the url in context of the social media post that contains the bean represented 'url'
+#     # when the bean itself is a post (instead of a news/article url) container url is the same as 'url' 
+#     chatter_url: Optional[str] = None
+#     source: Optional[str] = None
+#     group: Optional[str] = None    
+#     collected: Optional[datetime] = None
+   
+#     likes: Optional[int] = Field(default=0)    
+#     comments: Optional[int] = Field(default=0)
+#     shares: Optional[int] = Field(default=0)
+#     subscribers: Optional[int] = Field(default=0)
+    
+#     def digest(self):
+#         return f"From: {self.source}\nBody: {self.text}"
+
+#     model_config = ConfigDict(
+#         json_encoders={datetime: rfc3339},
+#         populate_by_name = True,
+#         arbitrary_types_allowed=False,
+#         exclude_none = True,
+#         exclude_unset = True,
+#         by_alias=True
+#     )
+    
+# class Source(BaseModel):
+#     url: str
+#     kind: str
+#     name: str
+#     cid: Optional[str] = None
 
 class ChatterAnalysis(BaseModel):
     url: str

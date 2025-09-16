@@ -10,7 +10,7 @@ from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.database import Database
 from pymongo.collection import Collection
 from bson import SON
-from .models import *
+from models import *
 
 log = logging.getLogger(__name__)
 

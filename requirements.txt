@@ -1,6 +1,7 @@
 pydantic
+pyarrow
 pymongo
+pandas
 duckdb
 boto3
-pandas
 rfc3339
