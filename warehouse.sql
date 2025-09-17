@@ -6,11 +6,15 @@ INSTALL sqlite;
 LOAD sqlite;
 INSTALL postgres;
 LOAD postgres;
+INSTALL vss;
+LOAD vss;
 
--- postgres:user=coffeemaker password=npg_iez5lWT3PxBC host=ep-weathered-river-aa5mc59f-pooler.westus3.azure.neon.tech dbname=beans_catalogdb sslmode=require
+-- ATTACH 'ducklake:sqlite:.data/beans_catalog.sqlite.db' AS warehouse (
+--     DATA_PATH '.data/'
+-- );
 
 ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
-    DATA_PATH 's3://test-cafecito-cdn'
+    DATA_PATH '.data/'
 );
 USE warehouse;
 
@@ -63,6 +67,12 @@ CREATE TABLE IF NOT EXISTS sources (
     rss_feed VARCHAR DEFAULT NULL
 );
 
+CREATE TABLE IF NOT EXISTS exported_beans (
+    url VARCHAR NOT NULL,
+    exported TIMESTAMP NOT NULL
+);
+
+-- THESE 2 ARE STATIC TABLES. ONCE INITIALIZED OR REGISTERED, THEY DO NOT CHANGE
 CREATE TABLE IF NOT EXISTS categories (
     category VARCHAR NOT NULL,
     embedding FLOAT[] NOT NULL
@@ -73,49 +83,84 @@ CREATE TABLE IF NOT EXISTS sentiments (
     embedding FLOAT[] NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS exported_beans (
+-- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
+
+CREATE TABLE IF NOT EXISTS bean_clusters (
     url VARCHAR NOT NULL,
-    exported TIMESTAMP NOT NULL
+    related VARCHAR NOT NULL,
+    distance FLOAT DEFAULT 0.0
 );
 
-CREATE VIEW IF NOT EXISTS bean_clusters_view AS 
-SELECT 
-    be1.url as url, 
-    be2.url as related, 
-    array_distance(be1.embedding::FLOAT[384], be2.embedding::FLOAT[384]) as distance
-FROM bean_embeddings be1 
-CROSS JOIN bean_embeddings be2
-WHERE be1.url <> be2.url AND distance <= 0.43
-ORDER BY distance;
+CREATE TABLE IF NOT EXISTS bean_categories (
+    url VARCHAR NOT NULL,
+    categories VARCHAR[] NOT NULL
+);
 
-CREATE VIEW IF NOT EXISTS bean_categories_view AS
-SELECT e.url, c.category FROM bean_embeddings e
-CROSS JOIN categories c
-ORDER BY array_cosine_distance(e.embedding::FLOAT[384], c.embedding::FLOAT[384])
-LIMIT 3;
+CREATE TABLE IF NOT EXISTS bean_sentiments (
+    url VARCHAR NOT NULL,
+    sentiments VARCHAR[] NOT NULL
+);
 
-CREATE VIEW IF NOT EXISTS bean_sentiments_view AS
-SELECT e.url, s.sentiment FROM bean_embeddings e
-CROSS JOIN sentiments s
-ORDER BY array_cosine_distance(e.embedding::FLOAT[384], s.embedding::FLOAT[384])
-LIMIT 3;
+-- CREATE VIEW IF NOT EXISTS bean_clusters_view AS 
+-- SELECT e1.url, m.url as related, m.distance
+-- FROM warehouse.bean_embeddings e1
+-- LEFT JOIN LATERAL (
+--     SELECT e2.url, array_distance(e1.embedding::FLOAT[384], e2.embedding::FLOAT[384]) as distance
+--     FROM warehouse.bean_embeddings e2
+--     WHERE distance <= 0.43 AND e1.url <> e2.url
+-- ) as m ON TRUE;
 
-CREATE VIEW IF NOT EXISTS unprocessed_beans_view AS
-SELECT * EXCLUDE (e.url, g.url) FROM bean_cores b
-LEFT JOIN bean_embeddings e ON b.url = e.url
-LEFT JOIN bean_gists g ON b.url = g.url
-WHERE embedding IS NULL OR gist IS NULL;
+-- CREATE VIEW IF NOT EXISTS bean_cluster_ids_view AS
+-- SELECT 
+--     url, 
+--     FIRST(related ORDER BY distance) as cluster_id
+-- FROM bean_clusters
+-- GROUP BY url;
+
+-- CREATE VIEW IF NOT EXISTS bean_categories_view AS
+-- SELECT e.url, LIST(m.category) as categories
+-- FROM warehouse.bean_embeddings e
+-- LEFT JOIN LATERAL (
+--     SELECT category
+--     FROM warehouse.categories c
+--     ORDER BY array_cosine_distance(e.embedding::FLOAT[384], c.embedding::FLOAT[384])
+--     LIMIT 3
+-- ) as m ON TRUE
+-- GROUP BY e.url;
+
+-- CREATE VIEW IF NOT EXISTS bean_sentiments_view AS
+-- SELECT e.url, LIST(m.sentiment) as sentiments
+-- FROM warehouse.bean_embeddings e
+-- LEFT JOIN LATERAL (
+--     SELECT sentiment
+--     FROM warehouse.sentiments s
+--     ORDER BY array_cosine_distance(e.embedding::FLOAT[384], s.embedding::FLOAT[384])
+--     LIMIT 3
+-- ) as m ON TRUE
+-- GROUP BY e.url;
+
+CREATE VIEW IF NOT EXISTS missing_embeddings_view AS
+SELECT * FROM bean_cores b
+WHERE b.url NOT IN (SELECT url FROM bean_embeddings)
+ORDER BY created DESC;
+
+CREATE VIEW IF NOT EXISTS missing_gists_view AS
+SELECT * FROM bean_cores b
+WHERE b.url NOT IN (SELECT url FROM bean_gists)
+ORDER BY created DESC;
 
 CREATE VIEW IF NOT EXISTS processed_beans_view AS
 SELECT * EXCLUDE(e.url, g.url, c.url, s.url) FROM bean_cores b
 INNER JOIN bean_embeddings e ON b.url = e.url
 INNER JOIN bean_gists g ON b.url = g.url
-LEFT JOIN (
-    SELECT url, LIST(DISTINCT category) as categories FROM bean_categories_view GROUP BY url
-) as c ON b.url = c.url
-LEFT JOIN (
-    SELECT url, LIST(DISTINCT sentiment) as sentiments FROM bean_sentiments_view GROUP BY url
-) as s ON b.url = s.url;
+INNER JOIN bean_categories c ON b.url = c.url
+INNER JOIN bean_sentiments s ON b.url = s.url
+-- INNER JOIN (
+--     SELECT url, FIRST(related ORDER BY distance) as cluster_id
+--     FROM bean_clusters
+--     GROUP BY url
+-- ) cl ON b.url = cl.url;
+;
 
 CREATE VIEW IF NOT EXISTS unexported_beans_view AS
 SELECT * FROM processed_beans_view pb
