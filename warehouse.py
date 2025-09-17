@@ -18,7 +18,7 @@ SQL_VECTOR_SEARCH_BEANS = f"SELECT * EXCLUDE(title_length, summary_length, conte
 SQL_LATEST_CHATTERS = "SELECT * FROM warehouse.bean_chatters_view"
 SQL_COMPACT = """
 CALL warehouse.merge_adjacent_files();
-CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 week');
+CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 day');
 """
 
 log = logging.getLogger(__name__)
@@ -49,8 +49,8 @@ def _create_where_exprs(
 
 class BeanWarehouse:
     def __init__(self, init_sql: str = "", storage_config: dict = None):
-        config = {'threads': max(os.cpu_count() >> 1, 1)}
-        config.update(storage_config or {})
+        config = {'threads': max(os.cpu_count() >> 1, 1)}        
+        if storage_config: config.update(storage_config)
             
         self.db = duckdb.connect(config=config)
         if not init_sql: return
@@ -58,7 +58,7 @@ class BeanWarehouse:
             self.db.execute(sql_file.read())
         log.debug("Data warehouse initialized.")
             
-    def _deduplicate(self, table: str, field: str, items: list[tuple]) -> list:
+    def _deduplicate(self, table: str, field: str, items: list) -> list:
         if not items: return items
         ids = [getattr(item, field) for item in items]
         existing_ids = self._exists(table, field, ids) or []
@@ -113,11 +113,11 @@ class BeanWarehouse:
 
     def store_chatters(self, items: list[Chatter]):       
         # there is no primary key here
-        items = list(filter(lambda x: x.likes or x.comments or x.subscribers, items)) 
-        self._bulk_insert_as_df("chatters", items, Chatter.Config.dtype_specs)
+        items = list(filter(lambda x: x.likes or x.comments or x.subscribers, items))         
+        return self._bulk_insert_as_df("chatters", items, Chatter.Config.dtype_specs)
 
     def store_sources(self, items: list[Source]):      
-        items = self._deduplicate("sources", "source", items)
+        items = self._deduplicate("sources", "source", list(filter(lambda x: x.source and x.base_url, items)))
         return self._bulk_insert_as_df("sources", items, Source.Config.dtype_specs)
 
     ##### Query methods

@@ -10,7 +10,7 @@ JOB = "job"
 NEWS = "news"
 BLOG = "blog"
 COMMENTS = "comments"
-GENERATED = "AI Generated"
+OPED = "opinion"
 
 # names of important fields of collections
 K_ID="_id"
@@ -136,7 +136,7 @@ class Bean(BaseModel):
         json_encoders={datetime: rfc3339}
 
 class GeneratedBean(Bean):
-    kind: str = Field(default=GENERATED)
+    kind: str = Field(default=OPED)
     topic: Optional[str] = None
     intro: Optional[str|list[str]] = None
     highlights: Optional[list[str]] = None
@@ -230,9 +230,9 @@ class BeanGist(BaseModel):
 class Chatter(BaseModel):
     chatter_url: str
     url: str # this the url from Bean
-    source: Optional[str]
-    forum: Optional[str]
-    collected: datetime
+    source: Optional[str] = None
+    forum: Optional[str] = None
+    collected: Optional[datetime] = None
     likes: int = 0
     comments: int = 0
     subscribers: int = 0
@@ -263,28 +263,18 @@ class Chatter(BaseModel):
 
 class Source(BaseModel):
     source: str # this is domain name that gets matched with the source field in Bean
-    title: str
-    description: Optional[str]
     base_url: str
-    favicon: Optional[str]
-    rss_feed: Optional[str]
-
-    def to_tuple(self) -> tuple:
-        return (
-            self.source,
-            self.base_url,
-            self.title,
-            self.description,
-            self.favicon,
-            self.rss_feed
-        )
+    title: Optional[str] = Field(default=None)
+    summary: Optional[str] = Field(default=None)
+    favicon: Optional[str] = Field(default=None)
+    rss_feed: Optional[str] = Field(default=None)
 
     class Config:
         dtype_specs = {
             'source': 'string[pyarrow]',
-            'title': 'string[pyarrow]',
-            'description': 'string[pyarrow]',
             'base_url': 'string[pyarrow]',
+            'title': 'string[pyarrow]',
+            'summary': 'string[pyarrow]',            
             'favicon': 'string[pyarrow]',
             'rss_feed': 'string[pyarrow]'
         }

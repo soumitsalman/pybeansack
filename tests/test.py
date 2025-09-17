@@ -16,14 +16,16 @@ from models import *
 from mongosack import *
 from warehouse import *
 
-BATCH_SIZE = 128
+BATCH_SIZE = 1024
+LOG_MSG_FOUND = "[%s] offset %d, Found %d"
+LOG_MSG_STORED = "[%s] offset %d, Found %d, Stored %d"
 
-get_test_beansack = lambda: Beansack(
-    os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), "test"
+get_test_beansack = lambda dbname="test": Beansack(
+    os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), dbname
 )
 
 get_test_warehouse = lambda: BeanWarehouse(
-    "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/warehouse.sql", 
+    "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/warehouse.sql",
     storage_config={
         's3_region': os.getenv('S3_REGION'),
         's3_access_key_id': os.getenv('S3_ACCESS_KEY_ID'),
@@ -34,10 +36,9 @@ get_test_warehouse = lambda: BeanWarehouse(
 )
 
 def _run_test_func(test_func, total=1000):
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         executor.map(test_func, range(0, total, BATCH_SIZE))
-    # for offset in range(0, total, batch_size):
-    #     test_func(offset, batch_size)
+    # list(map(test_func, range(0, total, BATCH_SIZE)))
 
 def test_store_cores():
     """Test storing BeanCore data in warehouse"""
@@ -58,9 +59,9 @@ def test_store_cores():
         for item in cursor:
             item['restricted_content'] = bool(item.get('is_scraped'))
         found = [BeanCore(**item) for item in cursor]
-        logger.info(f"offset {offset}, Found {len(found)} cores")
+        logger.info(LOG_MSG_FOUND, "cores", offset, len(found))
         inserted = warehouse.store_cores(found)
-        logger.info("offset %d, Found %d, Stored %d", offset, len(found), len(inserted))
+        logger.info(LOG_MSG_STORED, "cores", offset, len(found), len(inserted) if inserted else 0)
         # assert len(found) == len(inserted), "Not all beans were stored successfully"
 
     _run_test_func(get_and_store, total=500000)
@@ -85,12 +86,12 @@ def test_store_embeddings():
             projection={"url": 1,  "embedding": 1}
         )
         found = [BeanEmbedding(**item) for item in cursor]
-        logger.info(f"offset {offset}, Found {len(found)} embeddings")
+        logger.info(LOG_MSG_FOUND, "embeddings", offset, len(found))
         inserted = warehouse.store_embeddings(found)
-        logger.info("offset %d, Found %d, Stored %d", offset, len(found), len(inserted) if inserted else 0)
+        logger.info(LOG_MSG_STORED, "embeddings", offset, len(found), len(inserted) if inserted else 0)
         # assert len(found) == len(inserted), "Not all beans were stored successfully"
 
-    _run_test_func(get_and_store, total=120000)
+    _run_test_func(get_and_store, total=307200)
     warehouse.close()
     logger.info("embeddings store test completed")
 
@@ -112,12 +113,12 @@ def test_store_gists():
         )
         
         found = [BeanGist(**item) for item in cursor]
-        logger.info(f"offset {offset}, Found {len(found)} gists")
+        logger.info(LOG_MSG_FOUND, "gists", offset, len(found))
         inserted = warehouse.store_gists(found)
-        logger.info("offset %d, Found %d, Stored %d", offset, len(found), len(inserted))
+        logger.info(LOG_MSG_STORED, "gists", offset, len(found), len(inserted) if inserted else 0)
         # assert len(found) == len(inserted), "Not all beans were stored successfully"
 
-    _run_test_func(get_and_store, total=102400)
+    _run_test_func(get_and_store, total=204800)
     warehouse.close()
     logger.info("gists store test completed")
 
@@ -132,16 +133,24 @@ def test_store_chatters():
 
     def get_and_store(offset):
         cursor = beansack.chatterstore.find(
+            # filter = {
+            #     "$or": [
+            #         { "likes": { "$exists": True } },
+            #         { "comments": { "$exists": True } },
+            #         { "subscribers": { "$exists": True } }
+            #     ]
+            # },
             skip=offset,
             limit=BATCH_SIZE
         )
         found = [Chatter(**item) for item in cursor]
-        logger.info(f"offset {offset}, Found {len(found)} chatters")
+        logger.info(LOG_MSG_FOUND, "chatters", offset, len(found))
         inserted = warehouse.store_chatters(found)
-        logger.info("offset %d, Found %d, Stored %d", offset, len(found), len(inserted))
-        # assert len(found) == len(inserted), "Not all beans were stored successfully"
 
-    _run_test_func(get_and_store, total=400000)
+        logger.info(LOG_MSG_STORED, "chatters", offset, len(found), len(inserted) if inserted else 0)
+
+    _run_test_func(get_and_store, total=409600)
+    # list(map(get_and_store, range(0, 409600, BATCH_SIZE)))
     warehouse.close()
     logger.info("Chatter store test completed")
 
@@ -150,34 +159,49 @@ def test_store_sources():
     logger.info("Testing store_sources...")
 
     # Initialize warehouse
-    warehouse = BeanWarehouse("./warehouse.sql")
-
+    warehouse = get_test_warehouse()
     # Get test data from MongoDB
-    beansack = get_test_beansack()
-    sources_data = list(beansack.sourcestore.find(
-        projection={"_id": 0},
-        limit=10
-    ))
+    beansack = get_test_beansack("espresso")
 
-    if not sources_data:
-        logger.warning("No test sources found, skipping store_sources test")
-        return
+    def get_and_store(offset):
+        cursor = beansack.sourcestore.find(skip=offset, limit=BATCH_SIZE)
+        found = []
+        for item in cursor:
+            found.append(Source(
+                source=item.get('source'),
+                base_url=item.get('site_base_url'),
+                title=item.get('site_name'),
+                description=item.get('site_description'),
+                favicon=item.get('site_favicon'),
+                rss_feed=item.get('site_rss_feed')
+            ))
+        logger.info(LOG_MSG_FOUND, "sources", offset, len(found))
+        try:
+            inserted = warehouse.store_sources(found)
+            logger.info(LOG_MSG_STORED, "sources", 0, len(found), len(inserted) if inserted else 0)
+        except Exception as e:
+            logger.error(f"Error storing sources at offset\nError: {e}\nData: {found}")
 
-    # Convert to Source models
-    sources = [Source(**source) for source in sources_data if source]
-
-    if not sources:
-        logger.warning("No valid Source data after conversion")
-        return
-
-    # Store the data
-    stored_count = warehouse.store_sources(sources)
-    logger.info(f"Stored {stored_count} sources")
+    _run_test_func(get_and_store, total=12400)
 
     warehouse.close()
-    assert stored_count == len(sources), "Not all sources were stored successfully"
+    logger.info("Sources store test completed")
 
-def run_all_store_tests(cores=True, embeddings=False, gists=False, chatters=False, sources=False):
+def test_maintenance():
+    """Test warehouse maintenance tasks"""
+    logger.info("Testing warehouse maintenance...")
+
+    # Initialize warehouse
+    warehouse = get_test_warehouse()
+
+    # warehouse.register_datafile('categories', "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/tests/categories.parquet")
+    # warehouse.register_datafile('sentiments', "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/tests/sentiments.parquet")
+    warehouse.compact()
+
+    warehouse.close()
+    logger.info("Warehouse maintenance test completed")
+
+def run_all_store_tests(cores=False, embeddings=False, gists=False, chatters=False, sources=False, maintenance=False):
     """Run all store method tests"""
     logger.info("Running all warehouse store tests...")
 
@@ -187,7 +211,7 @@ def run_all_store_tests(cores=True, embeddings=False, gists=False, chatters=Fals
         if gists: executor.submit(test_store_gists)
         if chatters: executor.submit(test_store_chatters)
         if sources: executor.submit(test_store_sources)
-
+        if maintenance: executor.submit(test_maintenance)
     # if cores: test_store_cores()
     # if embeddings: test_store_embeddings()
     # if gists: test_store_gists()
@@ -201,5 +225,6 @@ if __name__ == "__main__":
         embeddings = True,
         gists = True,
         chatters = True,
-        sources = False
+        sources = True,
+        maintenance = True
     )

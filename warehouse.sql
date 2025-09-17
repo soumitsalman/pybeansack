@@ -1,8 +1,15 @@
 INSTALL ducklake;
+LOAD ducklake;
 INSTALL httpfs;
+LOAD httpfs;
 INSTALL sqlite;
+LOAD sqlite;
+INSTALL postgres;
+LOAD postgres;
 
-ATTACH 'ducklake:sqlite:.data/catalog.sqlite.db' AS warehouse (
+-- postgres:user=coffeemaker password=npg_iez5lWT3PxBC host=ep-weathered-river-aa5mc59f-pooler.westus3.azure.neon.tech dbname=beans_catalogdb sslmode=require
+
+ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
     DATA_PATH 's3://test-cafecito-cdn'
 );
 USE warehouse;
@@ -51,7 +58,7 @@ CREATE TABLE IF NOT EXISTS sources (
     source VARCHAR NOT NULL,
     base_url VARCHAR NOT NULL,
     title VARCHAR DEFAULT NULL,
-    description TEXT DEFAULT NULL,    
+    summary TEXT DEFAULT NULL,    
     favicon VARCHAR DEFAULT NULL,
     rss_feed VARCHAR DEFAULT NULL
 );

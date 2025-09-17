@@ -221,7 +221,7 @@ class Beansack:
     def get_bean(self, **kwargs) -> Bean|GeneratedBean|None:
         project = kwargs.pop('project', None)
         item = self.beanstore.find_one(filter=kwargs, projection=project)
-        if item: return GeneratedBean(**item) if item.get(K_KIND) == GENERATED else Bean(**item)
+        if item: return GeneratedBean(**item) if item.get(K_KIND) == OPED else Bean(**item)
 
     def query_beans(self, filter: dict = None, group_by: str|list[str] = None, sort_by = None, skip: int = 0, limit: int = 0, project: dict = None):
         pipeline = _beans_query_pipeline(filter, group_by=group_by, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
