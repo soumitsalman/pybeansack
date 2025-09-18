@@ -1,4 +1,4 @@
-## DATA MODELS ##
+import os
 from rfc3339 import rfc3339
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
@@ -59,6 +59,8 @@ K_SITE_NAME = "site_name"
 K_SITE_BASE_URL = "site_base_url"
 K_SITE_RSS_FEED = "site_rss_feed"
 K_SITE_FAVICON = "site_favicon"
+
+VECTOR_LEN = int(os.getenv('VECTOR_LEN', 384))
 
 SYSTEM = "__SYSTEM__"
 
@@ -146,9 +148,9 @@ class GeneratedBean(Bean):
 
 class BeanCore(BaseModel):
     # core fields
-    url: str
+    url: str = Field(min_length=1)
     kind: Optional[str] = Field(default=None)
-    title: Optional[str] = Field(default=None)
+    title: str
     title_length: Optional[int] = Field(default=0, ge=0)
     summary: Optional[str] = Field(default=None)
     summary_length: Optional[int] = Field(default=0, ge=0)
@@ -185,34 +187,34 @@ class BeanCore(BaseModel):
     class Config:
         json_encoders={datetime: rfc3339}
         dtype_specs = {            
-            'kind': 'string[pyarrow]',
-            'title': 'string[pyarrow]',
-            'title_length': 'int16',
-            'summary': 'string[pyarrow]',
-            'summary_length': 'int16',
-            'content': 'string[pyarrow]',
-            'content_length': 'int16',
-            'author': 'string[pyarrow]',
-            'source': 'string[pyarrow]',
-            'image_url': 'string[pyarrow]'
+            'kind': 'string',
+            'title': 'string',
+            'title_length': 'uint16',
+            'summary': 'string',
+            'summary_length': 'uint16',
+            'content': 'string',
+            'content_length': 'uint16',
+            'author': 'string',
+            'source': 'string',
+            'image_url': 'string'
         }
 
 class BeanEmbedding(BaseModel):
-    url: str
-    embedding: list
+    url: str = Field(min_length=1)
+    embedding: list = Field(min_length=VECTOR_LEN, max_length=VECTOR_LEN)
 
     def to_tuple(self) -> tuple:
         return (self.url, self.embedding)
 
     class Config:
         dtype_specs = {
-            'url': 'string[pyarrow]',
+            'url': 'string',
             'embedding': 'object',
         }
 
 class BeanGist(BaseModel):
-    url: str
-    gist: str
+    url: str = Field(min_length=1)
+    gist: str = Field(min_length=10)
     entities: Optional[list[str]] = None
     regions: Optional[list[str]] = None
 
@@ -221,21 +223,21 @@ class BeanGist(BaseModel):
 
     class Config:
         dtype_specs = {
-            'url': 'string[pyarrow]',
-            'gist': 'string[pyarrow]',
+            'url': 'string',
+            'gist': 'string',
             'regions': 'object',  # For list[str]
             'entities': 'object'  # For list[str]
         }
 
 class Chatter(BaseModel):
-    chatter_url: str
-    url: str # this the url from Bean
-    source: Optional[str] = None
-    forum: Optional[str] = None
-    collected: Optional[datetime] = None
-    likes: int = 0
-    comments: int = 0
-    subscribers: int = 0
+    chatter_url: str = Field(min_length=1) # this is the url of the social media post that contains the Bean url
+    url: str = Field(min_length=1) # this the url from Bean
+    source: Optional[str] = Field(default=None) # this is the domain name of the source
+    forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
+    collected: Optional[datetime] = Field(default=None)
+    likes: int = Field(default=0)
+    comments: int = Field(default=0)
+    subscribers: int = Field(default=0)
 
     def to_tuple(self) -> tuple:
         return (
@@ -252,18 +254,18 @@ class Chatter(BaseModel):
     class Config:
         json_encoders={datetime: rfc3339}
         dtype_specs = {
-            'chatter_url': 'string[pyarrow]',
-            'url': 'string[pyarrow]',
-            'source': 'string[pyarrow]',
-            'forum': 'string[pyarrow]',
-            'likes': 'int32',
-            'comments': 'int32',
-            'subscribers': 'int32'
+            'chatter_url': 'string',
+            'url': 'string',
+            'source': 'string',
+            'forum': 'string',
+            'likes': 'uint32',
+            'comments': 'uint32',
+            'subscribers': 'uint32'
         }
 
 class Source(BaseModel):
-    source: str # this is domain name that gets matched with the source field in Bean
-    base_url: str
+    source: str = Field(min_length=1) # this is domain name that gets matched with the source field in Bean
+    base_url: str = Field(min_length=1)
     title: Optional[str] = Field(default=None)
     summary: Optional[str] = Field(default=None)
     favicon: Optional[str] = Field(default=None)
@@ -271,12 +273,12 @@ class Source(BaseModel):
 
     class Config:
         dtype_specs = {
-            'source': 'string[pyarrow]',
-            'base_url': 'string[pyarrow]',
-            'title': 'string[pyarrow]',
-            'summary': 'string[pyarrow]',            
-            'favicon': 'string[pyarrow]',
-            'rss_feed': 'string[pyarrow]'
+            'source': 'string',
+            'base_url': 'string',
+            'title': 'string',
+            'summary': 'string',
+            'favicon': 'string',
+            'rss_feed': 'string'
         }
 
 # class Chatter(BaseModel):

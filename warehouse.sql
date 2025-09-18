@@ -1,36 +1,39 @@
 INSTALL ducklake;
-LOAD ducklake;
 INSTALL httpfs;
-LOAD httpfs;
 INSTALL sqlite;
 LOAD sqlite;
 INSTALL postgres;
 LOAD postgres;
-INSTALL vss;
-LOAD vss;
+
+SET ducklake_max_retry_count = 100;
 
 -- ATTACH 'ducklake:sqlite:.data/beans_catalog.sqlite.db' AS warehouse (
 --     DATA_PATH '.data/'
 -- );
 
-ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
+ATTACH 'ducklake:postgres:dbname=beans_catalogdb' AS warehouse (
     DATA_PATH '.data/'
 );
+
+-- ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
+--     DATA_PATH 's3://beans-storagedb'
+-- );
+
 USE warehouse;
 
 CREATE TABLE IF NOT EXISTS bean_cores (
     url VARCHAR NOT NULL,
     kind VARCHAR NOT NULL,
-    title VARCHAR NOT NULL,
-    title_length SMALLINT DEFAULT 0,
-    summary TEXT DEFAULT NULL,
-    summary_length SMALLINT DEFAULT 0,
+    title VARCHAR,
+    title_length UINT16,
+    summary TEXT,
+    summary_length UINT16,
     content TEXT,
-    content_length SMALLINT DEFAULT 0,
-    restricted_content BOOLEAN DEFAULT 0,  -- 0 for False, 1 for True
-    author VARCHAR DEFAULT NULL,
+    content_length UINT16,
+    restricted_content BOOLEAN,  -- 0 for False, 1 for True
+    author VARCHAR,
     source VARCHAR NOT NULL,  
-    image_url VARCHAR DEFAULT NULL,
+    image_url VARCHAR,
     created TIMESTAMP NOT NULL,  -- ISO format datetime string
     collected TIMESTAMP NOT NULL  -- ISO format datetime string
 );
@@ -50,12 +53,12 @@ CREATE TABLE IF NOT EXISTS bean_gists (
 CREATE TABLE IF NOT EXISTS chatters (
     chatter_url VARCHAR NOT NULL,
     url VARCHAR NOT NULL,  -- Foreign key to Bean.url
-    source VARCHAR DEFAULT NULL,
-    forum VARCHAR DEFAULT NULL,
+    source VARCHAR,
+    forum VARCHAR,
     collected TIMESTAMP, 
-    likes INTEGER DEFAULT 0,
-    comments INTEGER DEFAULT 0,
-    subscribers INTEGER DEFAULT 0
+    likes UINT32,
+    comments UINT32,
+    subscribers UINT32
 );
 
 CREATE TABLE IF NOT EXISTS sources (
@@ -73,71 +76,35 @@ CREATE TABLE IF NOT EXISTS exported_beans (
 );
 
 -- THESE 2 ARE STATIC TABLES. ONCE INITIALIZED OR REGISTERED, THEY DO NOT CHANGE
-CREATE TABLE IF NOT EXISTS categories (
+CREATE TABLE IF NOT EXISTS fixed_categories (
     category VARCHAR NOT NULL,
     embedding FLOAT[] NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sentiments (
+CREATE TABLE IF NOT EXISTS fixed_sentiments (
     sentiment VARCHAR NOT NULL,
     embedding FLOAT[] NOT NULL
 );
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
 
-CREATE TABLE IF NOT EXISTS bean_clusters (
+CREATE TABLE IF NOT EXISTS computed_bean_clusters (
     url VARCHAR NOT NULL,
     related VARCHAR NOT NULL,
     distance FLOAT DEFAULT 0.0
 );
 
-CREATE TABLE IF NOT EXISTS bean_categories (
+CREATE TABLE IF NOT EXISTS computed_bean_categories (
     url VARCHAR NOT NULL,
     categories VARCHAR[] NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS bean_sentiments (
+CREATE TABLE IF NOT EXISTS computed_bean_sentiments (
     url VARCHAR NOT NULL,
     sentiments VARCHAR[] NOT NULL
 );
 
--- CREATE VIEW IF NOT EXISTS bean_clusters_view AS 
--- SELECT e1.url, m.url as related, m.distance
--- FROM warehouse.bean_embeddings e1
--- LEFT JOIN LATERAL (
---     SELECT e2.url, array_distance(e1.embedding::FLOAT[384], e2.embedding::FLOAT[384]) as distance
---     FROM warehouse.bean_embeddings e2
---     WHERE distance <= 0.43 AND e1.url <> e2.url
--- ) as m ON TRUE;
-
--- CREATE VIEW IF NOT EXISTS bean_cluster_ids_view AS
--- SELECT 
---     url, 
---     FIRST(related ORDER BY distance) as cluster_id
--- FROM bean_clusters
--- GROUP BY url;
-
--- CREATE VIEW IF NOT EXISTS bean_categories_view AS
--- SELECT e.url, LIST(m.category) as categories
--- FROM warehouse.bean_embeddings e
--- LEFT JOIN LATERAL (
---     SELECT category
---     FROM warehouse.categories c
---     ORDER BY array_cosine_distance(e.embedding::FLOAT[384], c.embedding::FLOAT[384])
---     LIMIT 3
--- ) as m ON TRUE
--- GROUP BY e.url;
-
--- CREATE VIEW IF NOT EXISTS bean_sentiments_view AS
--- SELECT e.url, LIST(m.sentiment) as sentiments
--- FROM warehouse.bean_embeddings e
--- LEFT JOIN LATERAL (
---     SELECT sentiment
---     FROM warehouse.sentiments s
---     ORDER BY array_cosine_distance(e.embedding::FLOAT[384], s.embedding::FLOAT[384])
---     LIMIT 3
--- ) as m ON TRUE
--- GROUP BY e.url;
+-- THERE ARE VIEWS/DYNAMIC QUERIES THAT ARE USED TO SIMPLIFY APP LEVEL QUERIES
 
 CREATE VIEW IF NOT EXISTS missing_embeddings_view AS
 SELECT * FROM bean_cores b
@@ -149,12 +116,27 @@ SELECT * FROM bean_cores b
 WHERE b.url NOT IN (SELECT url FROM bean_gists)
 ORDER BY created DESC;
 
+CREATE VIEW IF NOT EXISTS missing_clusters_view AS
+SELECT * FROM bean_embeddings e
+WHERE e.url NOT IN (SELECT url FROM computed_bean_clusters);
+
+CREATE VIEW IF NOT EXISTS missing_categories_view AS
+SELECT * FROM bean_embeddings e
+WHERE e.url NOT IN (SELECT url FROM computed_bean_categories);
+
+CREATE VIEW IF NOT EXISTS missing_sentiments_view AS
+SELECT * FROM bean_embeddings e
+WHERE e.url NOT IN (SELECT url FROM computed_bean_sentiments);
+
+-- TODO: create a clusters id view
+
+
 CREATE VIEW IF NOT EXISTS processed_beans_view AS
 SELECT * EXCLUDE(e.url, g.url, c.url, s.url) FROM bean_cores b
 INNER JOIN bean_embeddings e ON b.url = e.url
 INNER JOIN bean_gists g ON b.url = g.url
-INNER JOIN bean_categories c ON b.url = c.url
-INNER JOIN bean_sentiments s ON b.url = s.url
+INNER JOIN computed_bean_categories c ON b.url = c.url
+INNER JOIN computed_bean_sentiments s ON b.url = s.url
 -- INNER JOIN (
 --     SELECT url, FIRST(related ORDER BY distance) as cluster_id
 --     FROM bean_clusters
@@ -166,6 +148,7 @@ CREATE VIEW IF NOT EXISTS unexported_beans_view AS
 SELECT * FROM processed_beans_view pb
 WHERE pb.url NOT IN (SELECT url FROM exported_beans);
 
+-- TODO: look to see if it can be replaced with FIRST(collected ORDER BY likes DESC)
 CREATE VIEW IF NOT EXISTS bean_chatters_view AS
 WITH 
     max_stats AS (

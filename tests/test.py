@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 from models import *
 from mongosack import Beansack as Mongosack
-from warehouse import Beansack as Beanwarehouse
+from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS
 import argparse
 
-BATCH_SIZE = 1024
+BATCH_SIZE = 128
 LOG_MSG_FOUND = "[%s] offset %d, Found %d"
 LOG_MSG_STORED = "[%s] offset %d, Found %d, Stored %d"
 
@@ -39,9 +39,9 @@ get_test_warehouse = lambda: Beanwarehouse(
 )
 
 def _run_test_func(test_func, total=1000):
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        executor.map(test_func, range(0, total, BATCH_SIZE))
-    # list(map(test_func, range(11264+1024, total, BATCH_SIZE)))
+    # with ThreadPoolExecutor(max_workers=8) as executor:
+    #     executor.map(test_func, range(0, total, BATCH_SIZE))
+    list(map(test_func, range(0, total, BATCH_SIZE)))
 
 def test_store_cores():
     """Test storing BeanCore data in warehouse"""
@@ -53,15 +53,19 @@ def test_store_cores():
     beansack = get_test_beansack()
 
     def get_and_store(offset):
-        cursor = list(beansack.beanstore.find(
+        found = list(beansack.beanstore.find(
             filter={"title": {"$exists": True}},
             skip=offset,
             limit=BATCH_SIZE,
             projection={"_id": 0, "gist": 0, "embedding": 0}
         ))
-        for item in cursor:
-            item['restricted_content'] = bool(item.get('is_scraped'))
-        found = [BeanCore(**item) for item in cursor]
+        found = list(filter(lambda x: x.get('source'), found))
+        for item in found:
+            item['restricted_content'] = bool(item.get('is_scraped'))            
+            # item['summary'] = item.get('summary') or None
+            # item['author'] = item.get('author') or None
+            # item['image_url'] = item.get('image_url') or None
+        found = [BeanCore(**item) for item in found]
         logger.info(LOG_MSG_FOUND, "cores", offset, len(found))
         inserted = warehouse.store_cores(found)
         logger.info(LOG_MSG_STORED, "cores", offset, len(found), len(inserted) if inserted else 0)
@@ -132,14 +136,14 @@ def test_store_chatters():
     beansack = get_test_beansack()
 
     def get_and_store(offset):
-        cursor = beansack.chatterstore.find(
+        found = beansack.chatterstore.find(
             skip=offset,
             limit=BATCH_SIZE
         )
-        found = [Chatter(**item) for item in cursor]
+        found = list(filter(lambda x: x.get('source') and x.get('chatter_url') , found))
+        found = [Chatter(**item) for item in found]
         logger.info(LOG_MSG_FOUND, "chatters", offset, len(found))
         inserted = warehouse.store_chatters(found)
-
         logger.info(LOG_MSG_STORED, "chatters", offset, len(found), len(inserted) if inserted else 0)
 
     _run_test_func(get_and_store, total=409600)
@@ -168,12 +172,9 @@ def test_store_sources():
                 favicon=item.get('site_favicon'),
                 rss_feed=item.get('site_rss_feed')
             ))
-        logger.info(LOG_MSG_FOUND, "sources", offset, len(found))
-        try:
-            inserted = warehouse.store_sources(found)
-            logger.info(LOG_MSG_STORED, "sources", 0, len(found), len(inserted) if inserted else 0)
-        except Exception as e:
-            logger.error(f"Error storing sources at offset\nError: {e}\nData: {found}")
+        logger.info(LOG_MSG_FOUND, "sources", offset, len(found))        
+        inserted = warehouse.store_sources(found)
+        logger.info(LOG_MSG_STORED, "sources", 0, len(found), len(inserted) if inserted else 0)    
 
     _run_test_func(get_and_store, total=12400)
 
@@ -186,26 +187,20 @@ def test_maintenance():
 
     # Initialize warehouse
     warehouse = get_test_warehouse()
-
-    # warehouse.register_datafile('categories', "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/tests/categories.parquet")
-    # warehouse.register_datafile('sentiments', "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/tests/sentiments.parquet")
-    warehouse.compact()
-
+    warehouse.reorganize()
     warehouse.close()
     logger.info("Warehouse maintenance test completed")
 
-def test_register():
+
+def test_setup():
     """Test warehouse maintenance tasks"""
-    logger.info("Testing warehouse register...")
+    logger.info("Testing warehouse maintenance...")
 
     # Initialize warehouse
     warehouse = get_test_warehouse()
-
-    warehouse.register_datafile('categories', "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/tests/categories.parquet")
-    warehouse.register_datafile('sentiments', "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/tests/sentiments.parquet")
-
+    warehouse.setup()
     warehouse.close()
-    logger.info("Warehouse register test completed")
+    logger.info("Warehouse maintenance test completed")
 
 def test_unprocessed_beans():
     """Test querying unprocessed beans"""
@@ -656,47 +651,46 @@ def test_random_query():
     # Initialize warehouse
     warehouse = get_test_warehouse()
 
+    # warehouse.execute(f"""
+    # CALL ducklake_add_data_files('warehouse', 'fixed_categories', 'factory/categories.parquet', ignore_extra_columns => true);
+    # """)
+    query_expr = f"""
+    SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
+FROM warehouse.missing_clusters_view mcl
+CROSS JOIN warehouse.bean_embeddings e
+WHERE distance BETWEEN 0.01 AND {CLUSTER_EPS}
+LIMIT 5
+    """
+    beans = warehouse.query(query_expr)
+    [ic(bean) for bean in beans]
+
     # query_expr = """
-    # SELECT * EXCLUDE(e.url, g.url, c.url, s.url) 
-    # FROM warehouse.bean_cores b
-    # INNER JOIN warehouse.bean_embeddings e ON b.url = e.url
-    # INNER JOIN warehouse.bean_gists g ON b.url = g.url
-    # INNER JOIN warehouse.bean_categories c ON b.url = c.url
-    # INNER JOIN warehouse.bean_sentiments s ON b.url = s.url
-    # LIMIT 10
+    # SELECT * FROM warehouse.bean_categories LIMIT 5
     # """
-    query_expr = """SELECT * FROM warehouse.processed_beans_view LIMIT 5"""
-    params = None
-    beans = warehouse.query(query_expr, params=params)
-    [ic(bean) for bean in beans]
+    # params = None
+    # beans = warehouse.query(query_expr, params=params)
+    # [ic(bean) for bean in beans]
 
-    query_expr = """
-    SELECT * FROM warehouse.bean_categories LIMIT 5
-    """
-    params = None
-    beans = warehouse.query(query_expr, params=params)
-    [ic(bean) for bean in beans]
+    # query_expr = """
+    # SELECT * FROM warehouse.bean_sentiments LIMIT 5
+    # """
+    # params = None
+    # beans = warehouse.query(query_expr, params=params)
+    # [ic(bean) for bean in beans]
 
-    query_expr = """
-    SELECT * FROM warehouse.bean_sentiments LIMIT 5
-    """
-    params = None
-    beans = warehouse.query(query_expr, params=params)
-    [ic(bean) for bean in beans]
+    # query_expr = """
+    # SELECT * FROM warehouse.bean_gists LIMIT 5
+    # """
+    # params = None
+    # beans = warehouse.query(query_expr, params=params)
+    # [ic(bean) for bean in beans]
 
-    query_expr = """
-    SELECT * FROM warehouse.bean_gists LIMIT 5
-    """
-    params = None
-    beans = warehouse.query(query_expr, params=params)
-    [ic(bean) for bean in beans]
-
-    query_expr = """
-    SELECT url FROM warehouse.bean_embeddings LIMIT 5
-    """
-    params = None
-    beans = warehouse.query(query_expr, params=params)
-    [ic(bean) for bean in beans]
+    # query_expr = """
+    # SELECT url FROM warehouse.bean_embeddings LIMIT 5
+    # """
+    # params = None
+    # beans = warehouse.query(query_expr, params=params)
+    # [ic(bean) for bean in beans]
 
     # query_expr = """
     # SELECT * FROM warehouse.processed_beans_view LIMIT 10
@@ -748,7 +742,7 @@ parser.add_argument('--sources', action='store_true', help='Run store sources te
 parser.add_argument('--maintenance', action='store_true', help='Run maintenance test')
 parser.add_argument('--unprocessed', action='store_true', help='Run unprocessed beans query test')
 parser.add_argument('--processed', action='store_true', help='Run processed beans query test')
-parser.add_argument('--register', action='store_true', help='Run register test')
+parser.add_argument('--setup', action='store_true', help='Run register test')
 parser.add_argument('--random', action='store_true', help='Run random query test')
 
 if __name__ == "__main__":
@@ -761,5 +755,5 @@ if __name__ == "__main__":
     if args.maintenance: test_maintenance()
     if args.unprocessed: test_unprocessed_beans()
     if args.processed: test_processed_beans()
-    if args.register: test_register()
+    if args.setup: test_setup()
     if args.random: test_random_query()
