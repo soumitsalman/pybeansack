@@ -9,9 +9,13 @@ LOAD postgres;
 --     DATA_PATH '{data_dir}/data/'
 -- );
 
-ATTACH 'ducklake:postgres:dbname=catalogdb' AS warehouse (
+ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
     DATA_PATH '{data_dir}/data/'
 );
+
+-- ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
+--     DATA_PATH 's3://beans-storagedb'
+-- );
 
 USE warehouse;
 

@@ -5,3 +5,4 @@ pandas
 duckdb
 boto3
 rfc3339
+retry

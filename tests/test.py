@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from models import *
 from mongosack import Beansack as Mongosack
-from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS
+from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS, SQL_COMPACT
 import argparse
 
 DATA_DIR = os.getenv("DATA_DIR", ".coffeemaker")
@@ -652,18 +652,16 @@ def test_random_query():
     # Initialize warehouse
     warehouse = get_test_warehouse()
 
-    # warehouse.execute(f"""
-    # CALL ducklake_add_data_files('warehouse', 'fixed_categories', 'factory/categories.parquet', ignore_extra_columns => true);
-    # """)
-    query_expr = f"""
-    SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
-FROM warehouse.missing_clusters_view mcl
-CROSS JOIN warehouse.bean_embeddings e
-WHERE distance BETWEEN 0.01 AND {CLUSTER_EPS}
-LIMIT 5
-    """
-    beans = warehouse.query(query_expr)
-    [ic(bean) for bean in beans]
+    warehouse.execute(SQL_COMPACT)
+#     query_expr = f"""
+#     SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
+# FROM warehouse.missing_clusters_view mcl
+# CROSS JOIN warehouse.bean_embeddings e
+# WHERE distance BETWEEN 0.01 AND {CLUSTER_EPS}
+# LIMIT 5
+#     """
+#     beans = warehouse.query(query_expr)
+#     [ic(bean) for bean in beans]
 
     # query_expr = """
     # SELECT * FROM warehouse.bean_categories LIMIT 5

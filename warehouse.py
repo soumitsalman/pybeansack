@@ -2,8 +2,11 @@ import os
 import random
 import logging
 import duckdb
+from duckdb import TransactionException
 import pandas as pd
 from datetime import datetime
+
+from retry import retry
 from models import *
 from icecream import ic
 
@@ -50,6 +53,7 @@ from icecream import ic
 # ) ON url <> related
 # WHERE related IS NOT NULL;
 
+RETRY_COUNT = 5
 CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.3))
 
 SQL_INSERT_PARQUET = "CALL ducklake_add_data_files('warehouse', ?, ?, ignore_extra_columns => true);"
@@ -60,25 +64,27 @@ SQL_SCALAR_SEARCH_BEANS = "SELECT * EXCLUDE(title_length, summary_length, conten
 SQL_VECTOR_SEARCH_BEANS = f"SELECT * EXCLUDE(title_length, summary_length, content_length), array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance FROM warehouse.processed_beans_view"
 SQL_LATEST_CHATTERS = "SELECT * FROM warehouse.bean_chatters_view"
 
-SQL_REFRESH = f"""
+SQL_REFRESH_CATEGORIES = f"""
 INSERT INTO warehouse.computed_bean_categories
 SELECT url, LIST(category) as categories FROM warehouse.missing_categories_view mc
 LEFT JOIN LATERAL (
-	SELECT category FROM warehouse.fixed_categories
-	ORDER BY array_cosine_distance(mc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-	LIMIT 3
+    SELECT category FROM warehouse.fixed_categories
+    ORDER BY array_cosine_distance(mc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+    LIMIT 3
 ) ON TRUE
 GROUP BY url;
-
+"""
+SQL_REFRESH_SENTIMENTS = f"""
 INSERT INTO warehouse.computed_bean_sentiments
 SELECT url, LIST(sentiment) as sentiments FROM warehouse.missing_sentiments_view ms
 LEFT JOIN LATERAL (
-	SELECT sentiment FROM warehouse.fixed_sentiments
-	ORDER BY array_cosine_distance(ms.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-	LIMIT 3
+    SELECT sentiment FROM warehouse.fixed_sentiments
+    ORDER BY array_cosine_distance(ms.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+    LIMIT 3
 ) ON TRUE
 GROUP BY url;
-
+"""
+SQL_REFRESH_CLUSTERS = f"""
 INSERT INTO warehouse.computed_bean_clusters
 SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
 FROM warehouse.missing_clusters_view mcl
@@ -90,10 +96,6 @@ CALL ducklake_merge_adjacent_files('warehouse');
 CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
 CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 """
-# SQL_REGISTER_FIXED_TABLES = """
-# CALL ducklake_add_data_files('warehouse', 'fixed_categories', 'factory/categories.parquet', ignore_extra_columns => true);
-# CALL ducklake_add_data_files('warehouse', 'fixed_sentiments', 'factory/sentiments.parquet', ignore_extra_columns => true);
-# """
 
 log = logging.getLogger(__name__)
 
@@ -180,12 +182,14 @@ class Beansack:
         log.debug(f"Inserted {len(items)} records into {table}.")
         return items
 
+    @retry(exceptions=TransactionException, tries=RETRY_COUNT, delay=1)
     def _bulk_insert_as_df(self, table: str, items: list, dtype_specs):
         if not items: return
         df = pd.DataFrame([item.model_dump() for item in items])
         if dtype_specs: df = df.astype(dtype_specs)
         cursor = self.db.cursor()       
         cursor.execute(SQL_INSERT_DF.format(table=table))
+        cursor.close()
         log.debug(f"Inserted {len(items)} records into {table}.")
         return items
 
@@ -194,7 +198,7 @@ class Beansack:
         items = self._deduplicate("bean_cores", "url", items)  
         items = _prepare_cores_for_storage(items)
         return self._bulk_insert_as_df("bean_cores", items, BeanCore.Config.dtype_specs)
-
+    
     def store_embeddings(self, items: list[BeanEmbedding]):
         # items = list(filter(lambda x: len(x.embedding) == VECTOR_LEN, items))
         items = self._deduplicate("bean_embeddings", "url", items)
@@ -204,7 +208,7 @@ class Beansack:
         # items = list(filter(lambda x: x.gist, items))
         items = self._deduplicate("bean_gists", "url", items)
         return self._bulk_insert_as_df("bean_gists", items, BeanGist.Config.dtype_specs)
-
+    
     def store_chatters(self, items: list[Chatter]):       
         # there is no primary key here
         items = list(filter(lambda x: x.likes or x.comments or x.subscribers, items))         
@@ -266,21 +270,21 @@ class Beansack:
         rel = cursor.query(query_expr, params=params)
         return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
 
+    @retry(exceptions=TransactionException, tries=RETRY_COUNT, delay=1)
     def execute(self, sql_expr: str, params: list = None):
         cursor = self.db.cursor()
         cursor.execute(sql_expr, params)
+        cursor.close()
 
     def reorganize(self):
-        cursor = self.db.cursor()
-        cursor.execute(ic(SQL_REFRESH))
-        # cursor.execute(SQL_COMPACT)
-        cursor.close()
-        log.debug("Reorganized (refreshed computed tables and compacted data files) database.")
-
-    # def setup(self):
-    #     cursor = self.db.cursor()
-    #     cursor.execute(SQL_REGISTER_FIXED_TABLES)
-    #     log.debug("Registered fixed tables.")
+        self.db.execute(SQL_REFRESH_CLUSTERS)
+        log.debug("Refreshed computed clusters.")
+        self.db.execute(SQL_REFRESH_CATEGORIES)
+        log.debug("Refreshed computed categories.")
+        self.db.execute(SQL_REFRESH_SENTIMENTS)
+        log.debug("Refreshed computed sentiments.")
+        # self.db.execute(SQL_COMPACT)
+        # log.debug("Compacted data files.")
     
     def close(self):
         if not self.db: return        
