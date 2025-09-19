@@ -5,19 +5,13 @@ LOAD sqlite;
 INSTALL postgres;
 LOAD postgres;
 
-SET ducklake_max_retry_count = 100;
-
--- ATTACH 'ducklake:sqlite:.data/beans_catalog.sqlite.db' AS warehouse (
---     DATA_PATH '.data/'
+-- ATTACH 'ducklake:sqlite:{data_dir}/data/catalog_sqlite.db' AS warehouse (
+--     DATA_PATH '{data_dir}/data/'
 -- );
 
-ATTACH 'ducklake:postgres:dbname=beans_catalogdb' AS warehouse (
-    DATA_PATH '.data/'
+ATTACH 'ducklake:postgres:dbname=catalogdb' AS warehouse (
+    DATA_PATH '{data_dir}/data/'
 );
-
--- ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
---     DATA_PATH 's3://beans-storagedb'
--- );
 
 USE warehouse;
 
@@ -76,15 +70,18 @@ CREATE TABLE IF NOT EXISTS exported_beans (
 );
 
 -- THESE 2 ARE STATIC TABLES. ONCE INITIALIZED OR REGISTERED, THEY DO NOT CHANGE
-CREATE TABLE IF NOT EXISTS fixed_categories (
-    category VARCHAR NOT NULL,
-    embedding FLOAT[] NOT NULL
-);
+
+CREATE TABLE IF NOT EXISTS fixed_categories AS
+SELECT * FROM read_parquet('{data_dir}/factory/categories.parquet');
+
+CREATE TABLE IF NOT EXISTS fixed_sentiments AS
+SELECT * FROM read_parquet('{data_dir}/factory/sentiments.parquet');
 
 CREATE TABLE IF NOT EXISTS fixed_sentiments (
     sentiment VARCHAR NOT NULL,
     embedding FLOAT[] NOT NULL
 );
+
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
 

@@ -19,6 +19,7 @@ from mongosack import Beansack as Mongosack
 from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS
 import argparse
 
+DATA_DIR = os.getenv("DATA_DIR", ".coffeemaker")
 BATCH_SIZE = 128
 LOG_MSG_FOUND = "[%s] offset %d, Found %d"
 LOG_MSG_STORED = "[%s] offset %d, Found %d, Stored %d"
@@ -28,7 +29,7 @@ get_test_beansack = lambda dbname="test": Mongosack(
 )
 
 get_test_warehouse = lambda: Beanwarehouse(
-    "/workspaces/beansack/pycoffeemaker/coffeemaker/pybeansack/warehouse.sql",
+    DATA_DIR,
     storage_config={
         's3_region': os.getenv('S3_REGION'),
         's3_access_key_id': os.getenv('S3_ACCESS_KEY_ID'),

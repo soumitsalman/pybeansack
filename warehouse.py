@@ -90,10 +90,10 @@ CALL ducklake_merge_adjacent_files('warehouse');
 CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
 CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 """
-SQL_REGISTER_FIXED_TABLES = """
-CALL ducklake_add_data_files('warehouse', 'fixed_categories', 'factory/categories.parquet', ignore_extra_columns => true);
-CALL ducklake_add_data_files('warehouse', 'fixed_sentiments', 'factory/sentiments.parquet', ignore_extra_columns => true);
-"""
+# SQL_REGISTER_FIXED_TABLES = """
+# CALL ducklake_add_data_files('warehouse', 'fixed_categories', 'factory/categories.parquet', ignore_extra_columns => true);
+# CALL ducklake_add_data_files('warehouse', 'fixed_sentiments', 'factory/sentiments.parquet', ignore_extra_columns => true);
+# """
 
 log = logging.getLogger(__name__)
 
@@ -139,14 +139,14 @@ def _create_where_exprs(
     return conditions, params
 
 class Beansack:
-    def __init__(self, init_sql: str = "", storage_config: dict = None):
+    def __init__(self, data_dir: str = ".data", storage_config: dict = None):
         config = {'threads': max(os.cpu_count() >> 1, 1)}        
         if storage_config: config.update(storage_config)
             
         self.db = duckdb.connect(config=config)
-        if not init_sql: return
-        with open(init_sql, 'r') as sql_file:
-            self.db.execute(sql_file.read())
+        init_sql_path = os.path.join(os.path.dirname(__file__), 'warehouse.sql')
+        with open(init_sql_path, 'r') as sql_file:
+            self.db.execute(sql_file.read().format(data_dir=os.path.expanduser(data_dir)))
         log.debug("Data warehouse initialized.")
             
     def _deduplicate(self, table: str, field: str, items: list) -> list:
@@ -277,10 +277,10 @@ class Beansack:
         cursor.close()
         log.debug("Reorganized (refreshed computed tables and compacted data files) database.")
 
-    def setup(self):
-        cursor = self.db.cursor()
-        cursor.execute(SQL_REGISTER_FIXED_TABLES)
-        log.debug("Registered fixed tables.")
+    # def setup(self):
+    #     cursor = self.db.cursor()
+    #     cursor.execute(SQL_REGISTER_FIXED_TABLES)
+    #     log.debug("Registered fixed tables.")
     
     def close(self):
         if not self.db: return        
