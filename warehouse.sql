@@ -9,7 +9,7 @@ LOAD postgres;
 --     DATA_PATH '{data_dir}/data/'
 -- );
 
-ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
+ATTACH 'ducklake:postgres:dbname=cafecitomedia_catalogdb' AS warehouse (
     DATA_PATH '{data_dir}/data/'
 );
 
@@ -85,7 +85,6 @@ CREATE TABLE IF NOT EXISTS fixed_sentiments (
     sentiment VARCHAR NOT NULL,
     embedding FLOAT[] NOT NULL
 );
-
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
 
