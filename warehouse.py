@@ -149,7 +149,7 @@ class Beansack:
         cur_dir = os.path.dirname(__file__)
         with open(os.path.join(cur_dir, 'warehouse.sql'), 'r') as sql_file:
             init_sql = sql_file.read().format(
-                factory=os.path.join(cur_dir, 'factory'),
+                factory=os.path.expanduser(os.getenv('FACTORY_DIR', 'factory')),
                 s3_access_key_id=os.getenv('S3_ACCESS_KEY_ID'),
                 s3_secret_access_key=os.getenv('S3_SECRET_ACCESS_KEY'),
                 s3_endpoint=os.getenv('S3_ENDPOINT'),
