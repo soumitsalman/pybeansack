@@ -6,3 +6,5 @@ duckdb
 boto3
 rfc3339
 retry
+icecream
+python-dotenv

@@ -1,23 +1,37 @@
 INSTALL ducklake;
+LOAD ducklake;
 INSTALL httpfs;
-INSTALL sqlite;
-LOAD sqlite;
+LOAD httpfs;
 INSTALL postgres;
 LOAD postgres;
+-- INSTALL cache_httpfs FROM community;
+-- LOAD cache_httpfs;
 
--- ATTACH 'ducklake:sqlite:{data_dir}/data/catalog_sqlite.db' AS warehouse (
---     DATA_PATH '{data_dir}/data/'
--- );
+-- SET cache_httpfs_type = 'on_disk';
+-- SET cache_httpfs_cache_directory = '.cache';
 
-ATTACH 'ducklake:postgres:dbname=cafecitomedia_catalogdb' AS warehouse (
-    DATA_PATH '{data_dir}/data/'
+CREATE OR REPLACE SECRET secret (
+    TYPE s3,
+    PROVIDER config,
+    KEY_ID '{s3_access_key_id}',
+    SECRET '{s3_secret_access_key}',
+    ENDPOINT '{s3_endpoint}',
+    REGION '{s3_region}'
 );
 
--- ATTACH 'ducklake:postgres:dbname=beans_catalogdb sslmode=require' AS warehouse (
---     DATA_PATH 's3://beans-storagedb'
--- );
 
+CREATE OR REPLACE SECRET pgsecrets (
+    TYPE postgres,
+    PROVIDER config,
+    HOST '{pg_host}',
+    PORT '{pg_port}',
+    USER '{pg_user}',
+    PASSWORD '{pg_password}'    
+);
+
+ATTACH 'ducklake:postgres:dbname=beansackcatalogdb' AS warehouse (DATA_PATH 's3://{s3_tenant_id}/beansackstoragedb');
 USE warehouse;
+CALL warehouse.set_option('per_thread_output', true);
 
 CREATE TABLE IF NOT EXISTS bean_cores (
     url VARCHAR NOT NULL,
@@ -76,10 +90,10 @@ CREATE TABLE IF NOT EXISTS exported_beans (
 -- THESE 2 ARE STATIC TABLES. ONCE INITIALIZED OR REGISTERED, THEY DO NOT CHANGE
 
 CREATE TABLE IF NOT EXISTS fixed_categories AS
-SELECT * FROM read_parquet('{data_dir}/factory/categories.parquet');
+SELECT * FROM read_parquet('{factory}/categories.parquet');
 
 CREATE TABLE IF NOT EXISTS fixed_sentiments AS
-SELECT * FROM read_parquet('{data_dir}/factory/sentiments.parquet');
+SELECT * FROM read_parquet('{factory}/sentiments.parquet');
 
 CREATE TABLE IF NOT EXISTS fixed_sentiments (
     sentiment VARCHAR NOT NULL,

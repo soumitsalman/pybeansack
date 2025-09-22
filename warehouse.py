@@ -5,10 +5,11 @@ import duckdb
 from duckdb import TransactionException
 import pandas as pd
 from datetime import datetime
-
 from retry import retry
 from models import *
 from icecream import ic
+import time
+from functools import wraps
 
 # SQL_INSERT_CATEGORIES = """INSERT INTO warehouse.bean_categories
 # SELECT e.url, LIST(m.category) AS categories
@@ -53,7 +54,8 @@ from icecream import ic
 # ) ON url <> related
 # WHERE related IS NOT NULL;
 
-RETRY_COUNT = 5
+RETRY_COUNT = 10
+RETRY_DELAY = (1,5)  # seconds
 CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.3))
 
 SQL_INSERT_PARQUET = "CALL ducklake_add_data_files('warehouse', ?, ?, ignore_extra_columns => true);"
@@ -141,14 +143,26 @@ def _create_where_exprs(
     return conditions, params
 
 class Beansack:
-    def __init__(self, data_dir: str = ".data", storage_config: dict = None):
-        config = {'threads': max(os.cpu_count() >> 1, 1)}        
-        if storage_config: config.update(storage_config)
-            
-        self.db = duckdb.connect(config=config)
-        init_sql_path = os.path.join(os.path.dirname(__file__), 'warehouse.sql')
-        with open(init_sql_path, 'r') as sql_file:
-            self.db.execute(sql_file.read().format(data_dir=os.path.expanduser(data_dir)))
+    def __init__(self):
+        config = {'threads': max(os.cpu_count() >> 1, 1)}
+
+        cur_dir = os.path.dirname(__file__)
+        with open(os.path.join(cur_dir, 'warehouse.sql'), 'r') as sql_file:
+            init_sql = sql_file.read().format(
+                factory=os.path.join(cur_dir, 'factory'),
+                s3_access_key_id=os.getenv('S3_ACCESS_KEY_ID'),
+                s3_secret_access_key=os.getenv('S3_SECRET_ACCESS_KEY'),
+                s3_endpoint=os.getenv('S3_ENDPOINT'),
+                s3_tenant_id=os.getenv('S3_TENANT_ID'),
+                s3_region=os.getenv('S3_REGION'),
+                pg_host=os.getenv('PGHOST'),
+                pg_port=os.getenv('PGPORT'),
+                pg_user=os.getenv('PGUSER'),
+                pg_password=os.getenv('PGPASSWORD')
+            )
+
+        self.db = duckdb.connect(config=config) 
+        self.execute(init_sql)
         log.debug("Data warehouse initialized.")
             
     def _deduplicate(self, table: str, field: str, items: list) -> list:
@@ -169,55 +183,62 @@ class Beansack:
             params=ids
         )
         return [row[0] for row in rel.fetchall()]
+    
+    def to_dataframe(self, items: list, dtype_specs=None):
+        if not items: return
+        df = pd.DataFrame([item.model_dump() for item in items])
+        if dtype_specs: df = df.astype(dtype_specs)
+        return df    
+    
+    def _bulk_insert_as_dataframe(self, table: str, items: list, dtype_specs):
+        @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
+        def _insert_dataframe(df):
+            cursor = self.db.cursor()
+            cursor.execute(SQL_INSERT_DF.format(table=table))
+            cursor.close()
+
+        if items: _insert_dataframe(self.to_dataframe(items, dtype_specs))
+        log.debug(f"inserted", {"source": table, "count": len(items)})
+        return items
 
     def _bulk_insert_as_parquet(self, table: str, items: list, dtype_specs):
-        if not items: return
-        df = pd.DataFrame([item.model_dump() for item in items])
-        if dtype_specs: df = df.astype(dtype_specs)
-        
-        filename = f".data/{table}_{int(datetime.now().timestamp())}_{random.randint(1000, 9999)}.parquet"
-        df.to_parquet(filename)
-        cursor = self.db.cursor()
-        cursor.execute(SQL_INSERT_PARQUET, (table, filename,))
-        log.debug(f"Inserted {len(items)} records into {table}.")
-        return items
+        @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
+        def _insert_parquet(df):
+            filename = f".beansack/{table}/{int(datetime.now().timestamp())}_{random.randint(1000, 9999)}.parquet"
+            df.to_parquet(filename)
+            cursor = self.db.cursor()
+            cursor.execute(SQL_INSERT_PARQUET, (table, filename,))
+            cursor.close()
 
-    @retry(exceptions=TransactionException, tries=RETRY_COUNT, delay=1)
-    def _bulk_insert_as_df(self, table: str, items: list, dtype_specs):
-        if not items: return
-        df = pd.DataFrame([item.model_dump() for item in items])
-        if dtype_specs: df = df.astype(dtype_specs)
-        cursor = self.db.cursor()       
-        cursor.execute(SQL_INSERT_DF.format(table=table))
-        cursor.close()
-        log.debug(f"Inserted {len(items)} records into {table}.")
-        return items
+        if items: _insert_parquet(self.to_dataframe(items, dtype_specs))
+        log.debug(f"inserted", {"source": table, "count": len(items)})
+        return items    
 
     ##### Store methods
     def store_cores(self, items: list[BeanCore]):                   
         items = self._deduplicate("bean_cores", "url", items)  
         items = _prepare_cores_for_storage(items)
-        return self._bulk_insert_as_df("bean_cores", items, BeanCore.Config.dtype_specs)
+        return self._bulk_insert_as_dataframe("bean_cores", items, BeanCore.Config.dtype_specs)
     
     def store_embeddings(self, items: list[BeanEmbedding]):
         # items = list(filter(lambda x: len(x.embedding) == VECTOR_LEN, items))
         items = self._deduplicate("bean_embeddings", "url", items)
-        return self._bulk_insert_as_df("bean_embeddings", items, None)        
+        return self._bulk_insert_as_dataframe("bean_embeddings", items, None)        
 
     def store_gists(self, items: list[BeanGist]):        
         # items = list(filter(lambda x: x.gist, items))
         items = self._deduplicate("bean_gists", "url", items)
-        return self._bulk_insert_as_df("bean_gists", items, BeanGist.Config.dtype_specs)
+        return self._bulk_insert_as_dataframe("bean_gists", items, BeanGist.Config.dtype_specs)
     
     def store_chatters(self, items: list[Chatter]):       
         # there is no primary key here
         items = list(filter(lambda x: x.likes or x.comments or x.subscribers, items))         
-        return self._bulk_insert_as_df("chatters", items, Chatter.Config.dtype_specs)
+        return self._bulk_insert_as_dataframe("chatters", items, Chatter.Config.dtype_specs)
 
     def store_sources(self, items: list[Source]):      
         # items = list(filter(lambda x: x.source and x.base_url, items))
         items = self._deduplicate("sources", "source", items)
-        return self._bulk_insert_as_df("sources", items, Source.Config.dtype_specs)
+        return self._bulk_insert_as_dataframe("sources", items, Source.Config.dtype_specs)
 
     ###### Query methods
     def exists(self, urls: list[str]) -> list[str]:
@@ -270,19 +291,20 @@ class Beansack:
         rel = cursor.query(query_expr, params=params)
         return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
 
-    @retry(exceptions=TransactionException, tries=RETRY_COUNT, delay=1)
+    @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def execute(self, sql_expr: str, params: list = None):
         cursor = self.db.cursor()
         cursor.execute(sql_expr, params)
         cursor.close()
 
+    # TODO: this dies with more than 10000
     def reorganize(self):
-        self.db.execute(SQL_REFRESH_CLUSTERS)
+        self.execute(SQL_REFRESH_CLUSTERS)
         log.debug("Refreshed computed clusters.")
-        self.db.execute(SQL_REFRESH_CATEGORIES)
+        self.execute(SQL_REFRESH_CATEGORIES)
         log.debug("Refreshed computed categories.")
-        self.db.execute(SQL_REFRESH_SENTIMENTS)
-        log.debug("Refreshed computed sentiments.")
+        self.execute(SQL_REFRESH_SENTIMENTS)
+        log.debug("Refreshed computed sentiments.")        
         # self.db.execute(SQL_COMPACT)
         # log.debug("Compacted data files.")
     

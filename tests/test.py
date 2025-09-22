@@ -28,16 +28,7 @@ get_test_beansack = lambda dbname="test": Mongosack(
     os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), dbname
 )
 
-get_test_warehouse = lambda: Beanwarehouse(
-    DATA_DIR,
-    storage_config={
-        's3_region': os.getenv('S3_REGION'),
-        's3_access_key_id': os.getenv('S3_ACCESS_KEY_ID'),
-        's3_secret_access_key': os.getenv('S3_SECRET_ACCESS_KEY'),
-        's3_endpoint': os.getenv('S3_ENDPOINT'),
-        's3_use_ssl': True
-    }
-)
+get_test_warehouse = lambda: Beanwarehouse()
 
 def _run_test_func(test_func, total=1000):
     # with ThreadPoolExecutor(max_workers=8) as executor:

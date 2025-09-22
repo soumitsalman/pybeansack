@@ -1,2 +1,2 @@
-mkdir -p .data
-cp -r ./factory .data
+mkdir -p ~/.beansack
+cp -r ./factory ~/.beansack/
