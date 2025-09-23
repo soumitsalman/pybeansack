@@ -123,11 +123,12 @@ def _create_where_exprs(
     return conditions, params
 
 class Beansack:
-    def __init__(self, catalogdb: str, storagedb: str):
+    def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
             'preserve_insertion_order': False,
-            'enable_http_metadata_cache': True
+            'enable_http_metadata_cache': True,
+            'ducklake_max_retry_count': 100
         }        
 
         if catalogdb.startswith("postgresql://"): catalogdb = f"postgres:{catalogdb}"
@@ -142,7 +143,7 @@ class Beansack:
         with open(os.path.join(os.path.dirname(__file__), 'warehouse.sql'), 'r') as sql_file:
             init_sql = sql_file.read().format(
                 # loading prefixed categories and sentiments
-                factory=os.path.expanduser(os.getenv('FACTORY_DIR', 'factory')),
+                factory=os.path.expanduser(factory_dir),
                 catalog_path=catalogdb,
                 data_path=storagedb,
                 # s3 storage configurations
@@ -207,18 +208,18 @@ class Beansack:
 
     ##### Store methods
     def store_cores(self, items: list[BeanCore]):                   
-        items = self.deduplicate("bean_cores", "url", items)  
+        # items = self.deduplicate("bean_cores", "url", items)  
         # items = _prepare_cores_for_storage(items)
         return self._bulk_insert_as_dataframe("bean_cores", items, BeanCore.Config.dtype_specs)
     
     def store_embeddings(self, items: list[BeanEmbedding]):
         # items = list(filter(lambda x: len(x.embedding) == VECTOR_LEN, items))
-        items = self.deduplicate("bean_embeddings", "url", items)
+        # items = self.deduplicate("bean_embeddings", "url", items)
         return self._bulk_insert_as_dataframe("bean_embeddings", items, None)        
 
     def store_gists(self, items: list[BeanGist]):        
         # items = list(filter(lambda x: x.gist, items))
-        items = self.deduplicate("bean_gists", "url", items)
+        # items = self.deduplicate("bean_gists", "url", items)
         return self._bulk_insert_as_dataframe("bean_gists", items, BeanGist.Config.dtype_specs)
     
     def store_chatters(self, items: list[Chatter]):       
@@ -226,10 +227,10 @@ class Beansack:
         items = list(filter(lambda x: x.likes or x.comments or x.subscribers, items))         
         return self._bulk_insert_as_dataframe("chatters", items, Chatter.Config.dtype_specs)
 
-    def store_sources(self, items: list[Source]):      
+    def store_publishers(self, items: list[Publisher]):      
         # items = list(filter(lambda x: x.source and x.base_url, items))
-        items = self.deduplicate("sources", "source", items)
-        return self._bulk_insert_as_dataframe("sources", items, Source.Config.dtype_specs)
+        items = self.deduplicate("publishers", "source", items)
+        return self._bulk_insert_as_dataframe("publishers", items, Publisher.Config.dtype_specs)
 
     ###### Query methods
     def exists(self, urls: list[str]) -> list[str]:
@@ -243,6 +244,10 @@ class Beansack:
         rel = cursor.query(query_expr)
         if offset or limit: rel = rel.limit(limit, offset=offset)
         return [BeanCore(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+
+    def query_unprocessed_beans(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:
+        query_expr = "SELECT * FROM warehouse.unprocessed_beans_view"
+        return self._query_cores(query_expr, conditions, 0, limit)
 
     def query_contents_with_missing_embeddings(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:        
         query_expr = "SELECT * FROM warehouse.missing_embeddings_view"

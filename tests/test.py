@@ -156,7 +156,7 @@ def test_store_sources():
         cursor = beansack.sourcestore.find(skip=offset, limit=BATCH_SIZE)
         found = []
         for item in cursor:
-            found.append(Source(
+            found.append(Publisher(
                 source=item.get('source'),
                 base_url=item.get('site_base_url'),
                 title=item.get('site_name'),
@@ -165,7 +165,7 @@ def test_store_sources():
                 rss_feed=item.get('site_rss_feed')
             ))
         logger.info(LOG_MSG_FOUND, "sources", offset, len(found))        
-        inserted = warehouse.store_sources(found)
+        inserted = warehouse.store_publishers(found)
         logger.info(LOG_MSG_STORED, "sources", 0, len(found), len(inserted) if inserted else 0)    
 
     _run_test_func(get_and_store, total=12400)

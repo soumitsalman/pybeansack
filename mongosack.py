@@ -180,6 +180,11 @@ class Beansack:
         res = self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False)            
         return len(res.inserted_ids)
 
+    # TODO: split out function for adding embeddings and gists. code commented out below
+    # TODO: add function for recompute (for clusters, categories, sentiments and trendscore)
+    # TODO: add a deduplicate function
+    # TODO: add a recompute and cleanup function
+
     def exists(self, beans: list[Bean]):
         if not beans: return beans
         return [item[K_URL] for item in self.beanstore.find({K_URL: {"$in": [bean.url for bean in beans]}}, {K_URL: 1})]
@@ -216,10 +221,10 @@ class Beansack:
     ################################
     ## BEANS RETRIEVAL AND SEARCH ##
     ################################
-    def get_bean(self, **kwargs) -> Bean|GeneratedBean|None:
+    def get_bean(self, **kwargs) -> Bean|None:
         project = kwargs.pop('project', None)
         item = self.beanstore.find_one(filter=kwargs, projection=project)
-        if item: return GeneratedBean(**item) if item.get(K_KIND) == OPED else Bean(**item)
+        if item: return Bean(**item)
 
     def query_beans(self, filter: dict = None, group_by: str|list[str] = None, sort_by = None, skip: int = 0, limit: int = 0, project: dict = None):
         pipeline = _beans_query_pipeline(filter, group_by=group_by, sort_by=sort_by, skip=skip, limit=limit, project=project, count=False)
@@ -698,3 +703,124 @@ def updated_in(last_ndays: int):
 
 def created_in(last_ndays: int):
     return {K_CREATED: {"$gte": ndays_ago(last_ndays)}}
+
+
+    # def classify_beans(self, beans: list[Bean]) -> list[Bean]:
+    #     if not beans: return beans
+
+    #     # these are IO heavy so create thread pools
+    #     with ThreadPoolExecutor(max_workers=BATCH_SIZE, thread_name_prefix="classify") as exec:
+    #         cats = list(exec.map(lambda bean: self.categories.vector_search(bean.embedding, limit=3), beans))
+    #         sents = list(exec.map(lambda bean: self.sentiments.vector_search(bean.embedding, limit=3), beans))
+
+    #     # these are simple calculations. threading causes more time loss
+    #     updates = list(map(_make_classification_update, beans, cats, sents))
+    #     self._push_update(updates, "classified", beans[0].source)
+    #     return beans
+    
+    # find_cluster = lambda self, bean: self.cluster_db.vector_search(embedding=bean.embedding, max_distance=MAX_RELATED_EPS, limit=MAX_RELATED, metric="l2")
+
+    # # current clustering approach
+    # # new beans (essentially beans without cluster gets priority for defining cluster)
+    # # for each bean without a cluster_id (essentially a new bean) find the related beans within cluster_eps threshold
+    # # override their current cluster_id (if any) with the new bean's url   
+    # def cluster_beans(self, beans: list[Bean]):
+    #     if not beans: return beans
+
+    #     # these are IO heavy so create thread pools
+    #     with ThreadPoolExecutor(max_workers=BATCH_SIZE, thread_name_prefix="cluster") as exec:
+    #         clusters = list(exec.map(self.find_cluster, beans))
+
+    #     # these are simple calculations. threading causes more time loss
+    #     updates = chain(*map(_make_cluster_update, beans, clusters))
+    #     updates = list({up._filter[K_ID]:up for up in updates}.values())
+    #     self._push_update(updates, "clustered", beans[0].source)
+    #     return beans
+
+# def _make_update_one(id, update_fields):
+#     update_fields = {k:v for k,v in update_fields.items() if v}
+#     tags = update_fields.pop(K_TAGS, None)
+#     update = {"$set": update_fields}
+#     if tags: update["$addToSet"] = {
+#         K_TAGS: {
+#             "$each": tags if isinstance(tags, list) else [tags]
+#         }
+#     }
+#     return UpdateOne({K_ID: id}, update)
+
+# def _make_cluster_update(bean: Bean, cluster_ids: list[str]): 
+#     bean.cluster_id = bean.id
+#     bean.related = len(cluster_ids)
+#     update_fields = { 
+#         K_CLUSTER_ID: bean.cluster_id,
+#         K_RELATED: bean.related
+#     } 
+#     return list(map(_make_update_one, cluster_ids, [update_fields]*len(cluster_ids)))
+
+# def _make_classification_update(bean: Bean, cat: list[str], sent: list[str]): 
+#     bean.categories = cat
+#     bean.sentiments = sent
+#     bean.tags = merge_tags(bean.categories)
+#     return _make_update_one(
+#         bean.id, 
+#         {
+#             K_CATEGORIES: bean.categories,
+#             K_SENTIMENTS: bean.sentiments,
+#             K_TAGS: bean.tags
+#         }
+#     )    
+
+# def _make_digest_update(bean: Bean, digest: Digest):
+#     if not digest: return    
+#     bean.regions = digest.regions
+#     bean.entities = digest.entities
+#     bean.tags = merge_tags(bean.regions, bean.entities)
+#     bean.gist = digest.raw
+#     return _make_update_one(
+#         bean.id,
+#         {
+#             K_REGIONS: bean.regions,
+#             K_ENTITIES: bean.entities,
+#             K_TAGS: bean.tags,
+#             K_GIST: bean.gist
+#         }
+#     )
+
+# def run_trend_ranking(self):
+    #     # get ranking data from the master db
+    #     trends = self.db.get_latest_chatters(None)
+    #     for trend in trends:
+    #         trend.trend_score = calculate_trend_score(trend)
+    #     updates = [UpdateOne(
+    #         filter={K_ID: trend.url}, 
+    #         update={
+    #             "$set": {
+    #                 K_LIKES: trend.likes,
+    #                 K_COMMENTS: trend.comments,
+    #                 K_SHARES: trend.shares,
+    #                 K_SHARED_IN: trend.shared_in,
+    #                 K_LATEST_LIKES: trend.likes_change,
+    #                 K_LATEST_COMMENTS: trend.comments_change,
+    #                 K_LATEST_SHARES: trend.shares_change,
+    #                 K_TRENDSCORE: trend.trend_score,
+    #                 K_UPDATED: trend.collected      
+    #             }
+    #         }
+    #     ) for trend in trends if trend.trend_score] 
+    #     count = self.db.update_beans(updates)
+    #     log.info("trend ranked", extra={"source": self.run_id, "num_items": count})
+
+    # def cleanup(self):
+    #     # NOTE: remove anything collected 7 days ago that did not get processed by analyzer
+    #     # TODO: this is a temporary fix.
+    #     _CLEANUP_WINDOW = 7
+    #     _CLEANUP_FILTER = {
+    #         K_COLLECTED: {"$lt": ndays_ago(_CLEANUP_WINDOW)},
+    #         K_CLUSTER_ID: {"$exists": False},
+    #         K_GIST: {"$exists": False},
+    #         K_KIND: {"$ne": GENERATED}
+    #     }
+    #     count = self.db.beanstore.delete_many(_CLEANUP_FILTER).deleted_count
+    #     log.info("cleaned up beans", extra={"source": self.run_id, "num_items": count})
+    #     count = self.db.chatterstore.delete_many({K_COLLECTED: {"$lt": ndays_ago(_CLEANUP_WINDOW)}}).deleted_count
+    #     log.info("cleaned up chatters", extra={"source": self.run_id, "num_items": count})

@@ -62,53 +62,104 @@ K_SITE_FAVICON = "site_favicon"
 
 SYSTEM = "__SYSTEM__"
 
+class Chatter(BaseModel):
+    chatter_url: str = Field(min_length=1) # this is the url of the social media post that contains the Bean url
+    url: str = Field(min_length=1) # this the url from Bean
+    source: Optional[str] = Field(default=None) # this is the domain name of the source
+    forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
+    collected: Optional[datetime] = Field(default=None)
+    likes: int = Field(default=0)
+    comments: int = Field(default=0)
+    subscribers: int = Field(default=0)
+
+    def to_tuple(self) -> tuple:
+        return (
+            self.chatter_url,
+            self.url,
+            self.source,
+            self.forum,
+            self.collected,
+            self.likes,
+            self.comments,
+            self.subscribers
+        )
+
+    class Config:
+        json_encoders={datetime: rfc3339}
+        dtype_specs = {
+            'chatter_url': 'string',
+            'url': 'string',
+            'source': 'string',
+            'forum': 'string',
+            'likes': 'uint32',
+            'comments': 'uint32',
+            'subscribers': 'uint32'
+        }
+
+class Publisher(BaseModel):
+    source: str = Field(min_length=1) # this is domain name that gets matched with the source field in Bean
+    base_url: str = Field(min_length=1)
+    title: Optional[str] = Field(default=None)
+    summary: Optional[str] = Field(default=None)
+    favicon: Optional[str] = Field(default=None)
+    rss_feed: Optional[str] = Field(default=None)
+
+    class Config:
+        dtype_specs = {
+            'source': 'string',
+            'base_url': 'string',
+            'title': 'string',
+            'summary': 'string',
+            'favicon': 'string',
+            'rss_feed': 'string'
+        }
+
 class Bean(BaseModel):
     # collected / scraped fields
     id: str = Field(default=None, alias="_id")
     url: str    
+    kind: Optional[str] = None
     source: Optional[str] = None
     title: Optional[str] = None
-    kind: Optional[str] = None
+    title_length: Optional[int] = None
+    summary: Optional[str] = None
+    summary_length: Optional[int] = None
     content: Optional[str] = None
+    content_length: Optional[int] = None
     restricted_content: Optional[bool] = None
     image_url: Optional[str] = None
     author: Optional[str] = None    
     created: Optional[datetime] = None 
     collected: Optional[datetime] = None
-    updated: Optional[datetime] = None
-
-    site_name: Optional[str] = None
-    site_base_url: Optional[str] = None
-    site_rss_feed: Optional[str] = None
-    site_favicon: Optional[str] = None
-
-    title_length: Optional[int] = None
-    summary_length: Optional[int] = None
-    content_length: Optional[int] = None
 
     # generated fields
+    embedding: Optional[list[float]] = None
     gist: Optional[str] = None
+
+    # computed fields
+    cluster_id: Optional[str] = None
+    cluster_size: Optional[int] = Field(default=0)
+    related: Optional[list[str]] = Field(default=None)    
     categories: Optional[list[str]] = None
     entities: Optional[list[str]] = None
     regions: Optional[list[str]] = None
     sentiments: Optional[list[str]] = None
     tags: Optional[list[str]|str] = None
-    summary: Optional[str] = None
-    
-    embedding: Optional[list[float]] = None
-    cluster_id: Optional[str] = None
-    cluster_size: Optional[int] = Field(default=0)
     
     # social media stats
-    chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
-    chatter_source: Optional[str] = Field(default=None) # this is the domain name of the source
-    chatter_forum: Optional[str] = Field(default=None) # this is the
-    likes: Optional[int] = Field(default=0)
-    comments: Optional[int] = Field(default=0)
-    shares: Optional[int] = Field(default=0)
+    publisher: Optional[Publisher] = Field(default=None) # this is the source info
+    shares: Optional[list[Chatter]] = Field(default=None) # this is the latest chatter info
+
+    # chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
+    # chatter_source: Optional[str] = Field(default=None) # this is the domain name of the source
+    # forum: Optional[str] = Field(default=None) # this is the
+    # likes: Optional[int] = Field(default=0)
+    # comments: Optional[int] = Field(default=0)
+    # shares: Optional[int] = Field(default=0)
     
+    # computed fields related to media
     trend_score: Optional[int] = Field(default=0) # a bean is always similar to itself
-    shared_in: Optional[list[str]] = None
+    updated: Optional[datetime] = None
 
     # query result fields
     search_score: Optional[float|int] = None
@@ -130,14 +181,13 @@ class Bean(BaseModel):
         by_alias=True
         json_encoders={datetime: rfc3339}
 
-class GeneratedBean(Bean):
-    kind: str = Field(default=OPED)
-    topic: Optional[str] = None
-    intro: Optional[str|list[str]] = None
-    highlights: Optional[list[str]] = None
-    insights: Optional[list[str]] = None
-    predictions: Optional[list[str]] = None
-
+# class GeneratedBean(Bean):
+#     kind: str = Field(default=OPED)
+#     topic: Optional[str] = None
+#     intro: Optional[str|list[str]] = None
+#     highlights: Optional[list[str]] = None
+#     insights: Optional[list[str]] = None
+#     predictions: Optional[list[str]] = None
 
 class BeanCore(BaseModel):
     # core fields
@@ -156,26 +206,26 @@ class BeanCore(BaseModel):
     created: Optional[datetime] = Field(default=None)
     collected: Optional[datetime] = Field(default=None)
 
-    def to_tuple(self) -> tuple:
-        return (
-            self.url,
-            self.kind,
-            self.title,
-            self.title_length,
-            self.summary,
-            self.summary_length,
-            self.content,
-            self.content_length,
-            self.restricted_content,
-            self.author,
-            self.source,
-            self.image_url,
-            self.created,
-            self.collected
-        )
+    # def to_tuple(self) -> tuple:
+    #     return (
+    #         self.url,
+    #         self.kind,
+    #         self.title,
+    #         self.title_length,
+    #         self.summary,
+    #         self.summary_length,
+    #         self.content,
+    #         self.content_length,
+    #         self.restricted_content,
+    #         self.author,
+    #         self.source,
+    #         self.image_url,
+    #         self.created,
+    #         self.collected
+    #     )
     
-    def to_list(self) -> list:
-        return list(self.to_tuple())
+    # def to_list(self) -> list:
+    #     return list(self.to_tuple())
 
     class Config:
         json_encoders={datetime: rfc3339}
@@ -221,91 +271,6 @@ class BeanGist(BaseModel):
             'regions': 'object',  # For list[str]
             'entities': 'object'  # For list[str]
         }
-
-class Chatter(BaseModel):
-    chatter_url: str = Field(min_length=1) # this is the url of the social media post that contains the Bean url
-    url: str = Field(min_length=1) # this the url from Bean
-    source: Optional[str] = Field(default=None) # this is the domain name of the source
-    forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
-    collected: Optional[datetime] = Field(default=None)
-    likes: int = Field(default=0)
-    comments: int = Field(default=0)
-    subscribers: int = Field(default=0)
-
-    def to_tuple(self) -> tuple:
-        return (
-            self.chatter_url,
-            self.url,
-            self.source,
-            self.forum,
-            self.collected,
-            self.likes,
-            self.comments,
-            self.subscribers
-        )
-
-    class Config:
-        json_encoders={datetime: rfc3339}
-        dtype_specs = {
-            'chatter_url': 'string',
-            'url': 'string',
-            'source': 'string',
-            'forum': 'string',
-            'likes': 'uint32',
-            'comments': 'uint32',
-            'subscribers': 'uint32'
-        }
-
-class Source(BaseModel):
-    source: str = Field(min_length=1) # this is domain name that gets matched with the source field in Bean
-    base_url: str = Field(min_length=1)
-    title: Optional[str] = Field(default=None)
-    summary: Optional[str] = Field(default=None)
-    favicon: Optional[str] = Field(default=None)
-    rss_feed: Optional[str] = Field(default=None)
-
-    class Config:
-        dtype_specs = {
-            'source': 'string',
-            'base_url': 'string',
-            'title': 'string',
-            'summary': 'string',
-            'favicon': 'string',
-            'rss_feed': 'string'
-        }
-
-# class Chatter(BaseModel):
-#     # this is the url of bean it represents
-#     url: Optional[str] = None 
-#     # this is the url in context of the social media post that contains the bean represented 'url'
-#     # when the bean itself is a post (instead of a news/article url) container url is the same as 'url' 
-#     chatter_url: Optional[str] = None
-#     source: Optional[str] = None
-#     group: Optional[str] = None    
-#     collected: Optional[datetime] = None
-   
-#     likes: Optional[int] = Field(default=0)    
-#     comments: Optional[int] = Field(default=0)
-#     shares: Optional[int] = Field(default=0)
-#     subscribers: Optional[int] = Field(default=0)
-    
-#     def digest(self):
-#         return f"From: {self.source}\nBody: {self.text}"
-
-#     model_config = ConfigDict(
-#         json_encoders={datetime: rfc3339},
-#         populate_by_name = True,
-#         arbitrary_types_allowed=False,
-#         exclude_none = True,
-#         exclude_unset = True,
-#         by_alias=True
-#     )
-    
-# class Source(BaseModel):
-#     url: str
-#     kind: str
-#     name: str
-#     cid: Optional[str] = None
 
 class ChatterAnalysis(BaseModel):
     url: str

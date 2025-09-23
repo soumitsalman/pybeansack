@@ -16,7 +16,6 @@ CREATE OR REPLACE SECRET s3secret (
 
 ATTACH 'ducklake:{catalog_path}' AS warehouse (DATA_PATH '{data_path}');
 USE warehouse;
--- CALL warehouse.set_option('per_thread_output', true);
 
 CREATE TABLE IF NOT EXISTS bean_cores (
     url VARCHAR NOT NULL,
@@ -58,7 +57,7 @@ CREATE TABLE IF NOT EXISTS chatters (
     subscribers UINT32
 );
 
-CREATE TABLE IF NOT EXISTS sources (
+CREATE TABLE IF NOT EXISTS publishers (
     source VARCHAR NOT NULL,
     base_url VARCHAR NOT NULL,
     title VARCHAR DEFAULT NULL,
@@ -104,8 +103,12 @@ CREATE TABLE IF NOT EXISTS computed_bean_sentiments (
 );
 
 -- THERE ARE VIEWS/DYNAMIC QUERIES THAT ARE USED TO SIMPLIFY APP LEVEL QUERIES
-
-
+-- NOTE: Technically this table is merger of bean_cores, bean_embeddings and bean_gists. so there are processed contents here
+CREATE VIEW IF NOT EXISTS unprocessed_beans_view AS
+SELECT * EXCLUDE(e.url, g.url) FROM bean_cores b
+LEFT JOIN bean_embeddings e ON b.url = e.url
+LEFT JOIN bean_gists g ON b.url = g.url
+ORDER BY created DESC;
 
 CREATE VIEW IF NOT EXISTS missing_embeddings_view AS
 SELECT * FROM bean_cores b
