@@ -1,8 +1,8 @@
-import os
 from rfc3339 import rfc3339
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime
+from .utils import *
 
 # CHANNEL = "social media group/forum"
 POST = "post"
@@ -50,17 +50,15 @@ K_OWNER = "owner"
 K_FOLLOWING = "following"
 K_DESCRIPTION = "description"
 
-K_IS_SCRAPED = "is_scraped"
-K_NUM_WORDS_CONTENT = "num_words_in_content"
-K_NUM_WORDS_SUMMARY = "num_words_in_summary"
-K_NUM_WORDS_TITLE = "num_words_in_title"
+K_RESTRICTED_CONTENT = "restricted_content"
+K_CONTENT_LENGTH = "content_length"
+SUMMARY_LENGTH = "summary_length"
+TITLE_LENGTH = "title_length"
 
 K_SITE_NAME = "site_name"
 K_SITE_BASE_URL = "site_base_url"
 K_SITE_RSS_FEED = "site_rss_feed"
 K_SITE_FAVICON = "site_favicon"
-
-VECTOR_LEN = int(os.getenv('VECTOR_LEN', 384))
 
 SYSTEM = "__SYSTEM__"
 
@@ -72,7 +70,7 @@ class Bean(BaseModel):
     title: Optional[str] = None
     kind: Optional[str] = None
     content: Optional[str] = None
-    is_scraped: Optional[bool] = None
+    restricted_content: Optional[bool] = None
     image_url: Optional[str] = None
     author: Optional[str] = None    
     created: Optional[datetime] = None 
@@ -84,9 +82,9 @@ class Bean(BaseModel):
     site_rss_feed: Optional[str] = None
     site_favicon: Optional[str] = None
 
-    num_words_in_title: Optional[int] = None
-    num_words_in_summary: Optional[int] = None
-    num_words_in_content: Optional[int] = None
+    title_length: Optional[int] = None
+    summary_length: Optional[int] = None
+    content_length: Optional[int] = None
 
     # generated fields
     gist: Optional[str] = None
@@ -99,12 +97,16 @@ class Bean(BaseModel):
     
     embedding: Optional[list[float]] = None
     cluster_id: Optional[str] = None
+    cluster_size: Optional[int] = Field(default=0)
     
     # social media stats
+    chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
+    chatter_source: Optional[str] = Field(default=None) # this is the domain name of the source
+    chatter_forum: Optional[str] = Field(default=None) # this is the
     likes: Optional[int] = Field(default=0)
     comments: Optional[int] = Field(default=0)
     shares: Optional[int] = Field(default=0)
-    related: Optional[int] = Field(default=0)
+    
     trend_score: Optional[int] = Field(default=0) # a bean is always similar to itself
     shared_in: Optional[list[str]] = None
 
@@ -120,15 +122,6 @@ class Bean(BaseModel):
         if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
         return text
     
-
-    # model_config = ConfigDict(
-    #     json_encoders={datetime: rfc3339},
-    #     populate_by_name = True,
-    #     arbitrary_types_allowed=False,
-    #     exclude_none = True,
-    #     exclude_unset = True,
-    #     by_alias=True
-    # )
     class Config:
         populate_by_name = True
         arbitrary_types_allowed=False

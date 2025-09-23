@@ -4,34 +4,19 @@ INSTALL httpfs;
 LOAD httpfs;
 INSTALL postgres;
 LOAD postgres;
--- INSTALL cache_httpfs FROM community;
--- LOAD cache_httpfs;
 
--- SET cache_httpfs_type = 'on_disk';
--- SET cache_httpfs_cache_directory = '.cache';
-
-CREATE OR REPLACE SECRET secret (
+CREATE OR REPLACE SECRET s3secret (
     TYPE s3,
     PROVIDER config,
-    KEY_ID '{s3_access_key_id}',
-    SECRET '{s3_secret_access_key}',
     ENDPOINT '{s3_endpoint}',
-    REGION '{s3_region}'
+    REGION '{s3_region}',
+    KEY_ID '{s3_access_key_id}',
+    SECRET '{s3_secret_access_key}'
 );
 
-
-CREATE OR REPLACE SECRET pgsecrets (
-    TYPE postgres,
-    PROVIDER config,
-    HOST '{pg_host}',
-    PORT '{pg_port}',
-    USER '{pg_user}',
-    PASSWORD '{pg_password}'    
-);
-
-ATTACH 'ducklake:postgres:dbname=beansackcatalogdb' AS warehouse (DATA_PATH 's3://{s3_tenant_id}/beansackstoragedb');
+ATTACH 'ducklake:{catalog_path}' AS warehouse (DATA_PATH '{data_path}');
 USE warehouse;
-CALL warehouse.set_option('per_thread_output', true);
+-- CALL warehouse.set_option('per_thread_output', true);
 
 CREATE TABLE IF NOT EXISTS bean_cores (
     url VARCHAR NOT NULL,
@@ -119,6 +104,8 @@ CREATE TABLE IF NOT EXISTS computed_bean_sentiments (
 );
 
 -- THERE ARE VIEWS/DYNAMIC QUERIES THAT ARE USED TO SIMPLIFY APP LEVEL QUERIES
+
+
 
 CREATE VIEW IF NOT EXISTS missing_embeddings_view AS
 SELECT * FROM bean_cores b

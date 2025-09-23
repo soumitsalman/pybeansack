@@ -179,7 +179,7 @@ def test_maintenance():
 
     # Initialize warehouse
     warehouse = get_test_warehouse()
-    warehouse.reorganize()
+    warehouse.recompute()
     warehouse.close()
     logger.info("Warehouse maintenance test completed")
 

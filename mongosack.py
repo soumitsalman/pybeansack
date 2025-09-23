@@ -10,7 +10,8 @@ from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.database import Database
 from pymongo.collection import Collection
 from bson import SON
-from models import *
+from .models import *
+from .utils import *
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +36,6 @@ BY_TRENDSCORE = {K_TRENDSCORE: -1}
 BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
 VALUE_EXISTS = { "$exists": True, "$ne": None}
-
-now = lambda: datetime.now(timezone.utc)
-ndays_ago = lambda ndays: now() - timedelta(days=ndays)
 
 field_value = lambda items: {"$in": items} if isinstance(items, list) else items
 lower_case = lambda items: {"$in": [item.lower() for item in items]} if isinstance(items, list) else items.lower()

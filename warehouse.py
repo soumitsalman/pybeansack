@@ -6,10 +6,8 @@ from duckdb import TransactionException
 import pandas as pd
 from datetime import datetime
 from retry import retry
-from models import *
-from icecream import ic
-import time
-from functools import wraps
+from .models import *
+from .utils import *
 
 # SQL_INSERT_CATEGORIES = """INSERT INTO warehouse.bean_categories
 # SELECT e.url, LIST(m.category) AS categories
@@ -56,7 +54,6 @@ from functools import wraps
 
 RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
-CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.3))
 
 SQL_INSERT_PARQUET = "CALL ducklake_add_data_files('warehouse', ?, ?, ignore_extra_columns => true);"
 SQL_INSERT_DF = "INSERT INTO warehouse.{table} SELECT * FROM df;"
@@ -95,28 +92,11 @@ WHERE distance <= {CLUSTER_EPS};
 """
 SQL_COMPACT = """
 CALL ducklake_merge_adjacent_files('warehouse');
-CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
-CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
+-- CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
+-- CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 """
 
 log = logging.getLogger(__name__)
-
-clean_text = lambda x: x.strip() if x and x.strip() else None
-num_words = lambda x: min(len(x.split()) if x else 0, 1<<32)  # SMALLINT max value
-
-def _prepare_cores_for_storage(items: list[BeanCore]) -> list[BeanCore]:
-    for item in items:
-        item.title = clean_text(item.title)
-        item.title_length = num_words(item.title)
-        item.summary = clean_text(item.summary)
-        item.summary_length = num_words(item.summary)
-        item.content = clean_text(item.content)
-        item.content_length = num_words(item.content)
-        item.author = clean_text(item.author)
-        item.image_url = clean_text(item.image_url)
-        item.created = item.created or datetime.now()
-        item.collected = item.collected or datetime.now()
-    return items
 
 def _create_where_exprs(
     kind: str = None,
@@ -143,29 +123,40 @@ def _create_where_exprs(
     return conditions, params
 
 class Beansack:
-    def __init__(self):
-        config = {'threads': max(os.cpu_count() >> 1, 1)}
+    def __init__(self, catalogdb: str, storagedb: str):
+        config = {
+            'threads': max(os.cpu_count() >> 1, 1),
+            'preserve_insertion_order': False,
+            'enable_http_metadata_cache': True
+        }        
 
-        cur_dir = os.path.dirname(__file__)
-        with open(os.path.join(cur_dir, 'warehouse.sql'), 'r') as sql_file:
+        if catalogdb.startswith("postgresql://"): catalogdb = f"postgres:{catalogdb}"
+        s3_endpoint, s3_region, s3_access_key_id, s3_secret_access_key = "", "", "", ""
+        if storagedb.startswith("s3://"):
+            s3_endpoint = os.getenv('S3_ENDPOINT', '')
+            s3_region = os.getenv('S3_REGION', '')
+            s3_access_key_id = os.getenv('S3_ACCESS_KEY_ID', '')
+            s3_secret_access_key = os.getenv('S3_SECRET_ACCESS_KEY', '')
+        else: storagedb = os.path.expanduser(storagedb)
+
+        with open(os.path.join(os.path.dirname(__file__), 'warehouse.sql'), 'r') as sql_file:
             init_sql = sql_file.read().format(
+                # loading prefixed categories and sentiments
                 factory=os.path.expanduser(os.getenv('FACTORY_DIR', 'factory')),
-                s3_access_key_id=os.getenv('S3_ACCESS_KEY_ID'),
-                s3_secret_access_key=os.getenv('S3_SECRET_ACCESS_KEY'),
-                s3_endpoint=os.getenv('S3_ENDPOINT'),
-                s3_tenant_id=os.getenv('S3_TENANT_ID'),
-                s3_region=os.getenv('S3_REGION'),
-                pg_host=os.getenv('PGHOST'),
-                pg_port=os.getenv('PGPORT'),
-                pg_user=os.getenv('PGUSER'),
-                pg_password=os.getenv('PGPASSWORD')
+                catalog_path=catalogdb,
+                data_path=storagedb,
+                # s3 storage configurations
+                s3_access_key_id=s3_access_key_id,
+                s3_secret_access_key=s3_secret_access_key,
+                s3_endpoint=s3_endpoint,
+                s3_region=s3_region,
             )
 
         self.db = duckdb.connect(config=config) 
         self.execute(init_sql)
         log.debug("Data warehouse initialized.")
             
-    def _deduplicate(self, table: str, field: str, items: list) -> list:
+    def deduplicate(self, table: str, field: str, items: list) -> list:
         if not items: return items
         ids = [getattr(item, field) for item in items]
         existing_ids = self._exists(table, field, ids) or []
@@ -216,18 +207,18 @@ class Beansack:
 
     ##### Store methods
     def store_cores(self, items: list[BeanCore]):                   
-        items = self._deduplicate("bean_cores", "url", items)  
-        items = _prepare_cores_for_storage(items)
+        items = self.deduplicate("bean_cores", "url", items)  
+        # items = _prepare_cores_for_storage(items)
         return self._bulk_insert_as_dataframe("bean_cores", items, BeanCore.Config.dtype_specs)
     
     def store_embeddings(self, items: list[BeanEmbedding]):
         # items = list(filter(lambda x: len(x.embedding) == VECTOR_LEN, items))
-        items = self._deduplicate("bean_embeddings", "url", items)
+        items = self.deduplicate("bean_embeddings", "url", items)
         return self._bulk_insert_as_dataframe("bean_embeddings", items, None)        
 
     def store_gists(self, items: list[BeanGist]):        
         # items = list(filter(lambda x: x.gist, items))
-        items = self._deduplicate("bean_gists", "url", items)
+        items = self.deduplicate("bean_gists", "url", items)
         return self._bulk_insert_as_dataframe("bean_gists", items, BeanGist.Config.dtype_specs)
     
     def store_chatters(self, items: list[Chatter]):       
@@ -237,7 +228,7 @@ class Beansack:
 
     def store_sources(self, items: list[Source]):      
         # items = list(filter(lambda x: x.source and x.base_url, items))
-        items = self._deduplicate("sources", "source", items)
+        items = self.deduplicate("sources", "source", items)
         return self._bulk_insert_as_dataframe("sources", items, Source.Config.dtype_specs)
 
     ###### Query methods
@@ -254,11 +245,11 @@ class Beansack:
         return [BeanCore(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
 
     def query_contents_with_missing_embeddings(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:        
-        query_expr = "SELECT url, title, content FROM warehouse.missing_embeddings_view"
+        query_expr = "SELECT * FROM warehouse.missing_embeddings_view"
         return self._query_cores(query_expr, conditions, 0, limit)
 
     def query_contents_with_missing_gists(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:        
-        query_expr = "SELECT url, title, content FROM warehouse.missing_gists_view"
+        query_expr = "SELECT * FROM warehouse.missing_gists_view"
         return self._query_cores(query_expr, conditions, 0, limit)
 
     def query_processed_beans(self, kind: str = None, created: datetime = None, categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, sources: list[str] = None, embedding: list[float] = None, distance: float = 0, offset: int = 0, limit: int = 0) -> list:
@@ -298,15 +289,17 @@ class Beansack:
         cursor.close()
 
     # TODO: this dies with more than 10000
-    def reorganize(self):
+    def recompute(self):
         self.execute(SQL_REFRESH_CLUSTERS)
         log.debug("Refreshed computed clusters.")
         self.execute(SQL_REFRESH_CATEGORIES)
         log.debug("Refreshed computed categories.")
         self.execute(SQL_REFRESH_SENTIMENTS)
-        log.debug("Refreshed computed sentiments.")        
-        # self.db.execute(SQL_COMPACT)
-        # log.debug("Compacted data files.")
+        log.debug("Refreshed computed sentiments.")   
+
+    def cleanup(self):     
+        self.db.execute(SQL_COMPACT)
+        log.debug("Compacted data files.")
     
     def close(self):
         if not self.db: return        
