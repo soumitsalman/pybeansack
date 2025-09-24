@@ -57,6 +57,7 @@ RETRY_DELAY = (1,5)  # seconds
 
 SQL_INSERT_PARQUET = "CALL ducklake_add_data_files('warehouse', ?, ?, ignore_extra_columns => true);"
 SQL_INSERT_DF = "INSERT INTO warehouse.{table} SELECT * FROM df;"
+SQL_INSERT_CHATTERS_DF = "INSERT INTO warehouse.chatters SELECT * EXCLUDE(shares) FROM df;"
 
 SQL_EXISTS = "SELECT {field} FROM warehouse.{table} WHERE {field} IN ({placeholders})"
 SQL_SCALAR_SEARCH_BEANS = "SELECT * EXCLUDE(title_length, summary_length, content_length) FROM warehouse.processed_beans_view"
@@ -87,13 +88,18 @@ SQL_REFRESH_CLUSTERS = f"""
 INSERT INTO warehouse.computed_bean_clusters
 SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
 FROM warehouse.missing_clusters_view mcl
-CROSS JOIN warehouse.bean_embeddings e
+CROSS JOIN (
+    SELECT * FROM warehouse.bean_embeddings
+    WHERE url IN (
+        SELECT url FROM warehouse.bean_cores WHERE created >= CURRENT_TIMESTAMP - INTERVAL '14 days'
+    )
+) e
 WHERE distance <= {CLUSTER_EPS};
 """
 SQL_COMPACT = """
-CALL ducklake_merge_adjacent_files('warehouse');
--- CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
--- CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
+-- CALL ducklake_merge_adjacent_files('warehouse');
+CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
+CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 """
 
 log = logging.getLogger(__name__)
@@ -101,7 +107,7 @@ log = logging.getLogger(__name__)
 def _create_where_exprs(
     kind: str = None,
     created: datetime = None,
-    updated: datetime = None,
+    collected: datetime = None,
     categories: list[str] = None,
     regions: list[str] = None,
     entities: list[str] = None,
@@ -113,7 +119,7 @@ def _create_where_exprs(
     params = []
     if kind: conditions.append("kind = ?"), params.append(kind)
     if created: conditions.append("created >= ?"), params.append(created)
-    if updated: conditions.append("updated >= ?"), params.append(updated)
+    if collected: conditions.append("collected >= ?"), params.append(collected)
     if categories: conditions.append("ARRAY_HAS_ANY(categories, ?)"), params.append(categories)
     if regions: conditions.append("ARRAY_HAS_ANY(regions, ?)"), params.append(regions)
     if entities: conditions.append("ARRAY_HAS_ANY(entities, ?)"), params.append(entities)
@@ -126,7 +132,7 @@ class Beansack:
     def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
-            'preserve_insertion_order': False,
+            # 'preserve_insertion_order': False,
             'enable_http_metadata_cache': True,
             'ducklake_max_retry_count': 100
         }        
@@ -185,8 +191,10 @@ class Beansack:
     def _bulk_insert_as_dataframe(self, table: str, items: list, dtype_specs):
         @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
         def _insert_dataframe(df):
+            if table == "chatters": expr = SQL_INSERT_CHATTERS_DF
+            else: expr = SQL_INSERT_DF.format(table=table)
             cursor = self.db.cursor()
-            cursor.execute(SQL_INSERT_DF.format(table=table))
+            cursor.execute(expr)
             cursor.close()
 
         if items: _insert_dataframe(self.to_dataframe(items, dtype_specs))
@@ -257,7 +265,7 @@ class Beansack:
         query_expr = "SELECT * FROM warehouse.missing_gists_view"
         return self._query_cores(query_expr, conditions, 0, limit)
 
-    def query_processed_beans(self, kind: str = None, created: datetime = None, categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, sources: list[str] = None, embedding: list[float] = None, distance: float = 0, offset: int = 0, limit: int = 0) -> list:
+    def query_processed_beans(self, kind: str = None, created: datetime = None, categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, sources: list[str] = None, embedding: list[float] = None, distance: float = 0, offset: int = 0, limit: int = 0):
         query_expr = SQL_VECTOR_SEARCH_BEANS if embedding else SQL_SCALAR_SEARCH_BEANS
         conditions, params = _create_where_exprs(
             kind=kind, created=created, categories=categories, regions=regions, entities=entities, sources=sources, distance=distance)
@@ -266,20 +274,19 @@ class Beansack:
 
         cursor = self.db.cursor()
         rel = cursor.query(query_expr, params=params)
-        rel = rel.order("created DESC")
+        # rel = rel.order("created DESC")
         if distance: rel = rel.order("distance ASC")
         if offset or limit: rel = rel.limit(limit, offset=offset)
-        return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+        return [Bean(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
 
-    def query_latest_chatters(self, updated: datetime, limit: int) -> list:        
+    def query_bean_chatters(self, collected: datetime, limit: int):        
         query_expr = SQL_LATEST_CHATTERS
-        conditions, params = _create_where_exprs(updated=updated)
+        conditions, params = _create_where_exprs(collected=collected)
         if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
         cursor = self.db.cursor()
-        rel = cursor.sql(query_expr, params=params)
-        rel = rel.order("updated DESC")
+        rel = cursor.query(query_expr, params=params)
         if limit: rel = rel.limit(limit)
-        return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+        return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
     
     ##### Maintenance methods
     def query(self, query_expr: str, params: list = None) -> list[dict]:

@@ -55,21 +55,22 @@ K_CONTENT_LENGTH = "content_length"
 SUMMARY_LENGTH = "summary_length"
 TITLE_LENGTH = "title_length"
 
-K_SITE_NAME = "site_name"
-K_SITE_BASE_URL = "site_base_url"
-K_SITE_RSS_FEED = "site_rss_feed"
-K_SITE_FAVICON = "site_favicon"
+# K_SITE_NAME = "site_name"
+K_BASE_URL = "base_url"
+K_RSS_FEED = "rss_feed"
+K_FAVICON = "favicon"
 
 SYSTEM = "__SYSTEM__"
 
 class Chatter(BaseModel):
-    chatter_url: str = Field(min_length=1) # this is the url of the social media post that contains the Bean url
+    chatter_url: Optional[str] = Field(default=None, min_length=1) # this is the url of the social media post that contains the Bean url
     url: str = Field(min_length=1) # this the url from Bean
     source: Optional[str] = Field(default=None) # this is the domain name of the source
     forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
     collected: Optional[datetime] = Field(default=None)
     likes: int = Field(default=0)
     comments: int = Field(default=0)
+    shares: int = Field(default=0)
     subscribers: int = Field(default=0)
 
     def to_tuple(self) -> tuple:
@@ -93,6 +94,7 @@ class Chatter(BaseModel):
             'forum': 'string',
             'likes': 'uint32',
             'comments': 'uint32',
+            'shares': 'uint32',
             'subscribers': 'uint32'
         }
 
@@ -148,7 +150,7 @@ class Bean(BaseModel):
     
     # social media stats
     publisher: Optional[Publisher] = Field(default=None) # this is the source info
-    shares: Optional[list[Chatter]] = Field(default=None) # this is the latest chatter info
+    chatter: Optional[Chatter] = Field(default=None) # this is the latest chatter info
 
     # chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
     # chatter_source: Optional[str] = Field(default=None) # this is the domain name of the source
@@ -272,6 +274,7 @@ class BeanGist(BaseModel):
             'entities': 'object'  # For list[str]
         }
 
+# TODO: DEPRECATE THIS
 class ChatterAnalysis(BaseModel):
     url: str
     likes: Optional[int] = 0

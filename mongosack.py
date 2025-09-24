@@ -7,6 +7,7 @@ import re
 from icecream import ic
 from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient, UpdateMany, UpdateOne
+from pymongo.errors import BulkWriteError
 from pymongo.database import Database
 from pymongo.collection import Collection
 from bson import SON
@@ -26,16 +27,14 @@ SOURCES = "sources"
 PAGES = "pages"
 USERS = "users"
 
-# LAST_UPDATED = {K_UPDATED: -1}
 NEWEST = {K_CREATED: -1}
-# LATEST = SON([(K_CREATED, -1), (K_TRENDSCORE, -1)])
-# TRENDING = SON([(K_UPDATED, -1), (K_TRENDSCORE, -1)])
 LATEST = {K_CREATED: -1, K_TRENDSCORE: -1}
 TRENDING = {K_UPDATED: -1, K_TRENDSCORE: -1}
 BY_TRENDSCORE = {K_TRENDSCORE: -1}
 BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 
 VALUE_EXISTS = { "$exists": True, "$ne": None}
+CLEANUP_WINDOW = 7
 
 field_value = lambda items: {"$in": items} if isinstance(items, list) else items
 lower_case = lambda items: {"$in": [item.lower() for item in items]} if isinstance(items, list) else items.lower()
@@ -174,11 +173,18 @@ class Beansack:
     ###################
     ## BEANS STORING ##
     ###################
+    def _fix_bean_ids(self, beans: list[Bean]) -> list[Bean]:
+        for bean in beans:
+            if not bean.id: bean.id = bean.url
+        return beans
+
     def store_beans(self, beans: list[Bean]) -> int:   
         # beans = self.not_exists(beans)
         if not beans: return 0
-        res = self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False)            
-        return len(res.inserted_ids)
+        beans = self._fix_bean_ids(beans)
+        try: num_items = self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False).inserted_ids
+        except BulkWriteError as e: num_items = e.details['nInserted']
+        return num_items
 
     # TODO: split out function for adding embeddings and gists. code commented out below
     # TODO: add function for recompute (for clusters, categories, sentiments and trendscore)
@@ -194,22 +200,22 @@ class Beansack:
         res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True, exclude_defaults=True) for item in chatters])
         return len(res.inserted_ids or [])
 
-    def update_bean_fields(self, beans: list[Bean], fields: list[str]):
+    def update_beans(self, beans: list[Bean]):
         if not beans: return 0
-        create_update = lambda field_values: {
-            "$set": {k:v for k,v in field_values.items() if v},
-            "$unset": {k:None for k,v in field_values.items() if not v}
-        }
         updates = list(map(
             lambda bean: UpdateOne(
-                filter = {K_ID: bean.id},
-                update = create_update(bean.model_dump(include=fields))
+                filter = {K_ID: bean.url},
+                update = {"$set": bean.model_dump(by_alias=True, exclude_unset=True, exclude_none=True, exclude_defaults=True)}
             ),
             beans
         ))
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
-    def update_beans(self, updates: list[UpdateOne|UpdateMany]):
+    def update_beans_adhoc(self, updates: list[UpdateOne|UpdateMany]):
+        # create_update = lambda field_values: {
+        #     "$set": {k:v for k,v in field_values.items() if v},
+        #     "$unset": {k:None for k,v in field_values.items() if not v}
+        # }
         if not updates: return 0
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
@@ -680,8 +686,26 @@ class Beansack:
         
     def is_published(self, id: str):
         val = self.pagestore.find_one({K_ID: id}, {"public": 1, K_OWNER: 1})
-        return val.get("public", val[K_OWNER] == SYSTEM) if val else False        
- 
+        return val.get("public", val[K_OWNER] == SYSTEM) if val else False  
+
+    ###########################     
+    ## MAINTENANCE FUNCTIONS ##
+    ###########################
+    def cleanup(self):
+        # NOTE: remove anything collected 7 days ago that did not get processed by analyzer
+        # TODO: this is a temporary fix.
+        cleanup_filter = {
+            K_COLLECTED: {"$lt": ndays_ago(CLEANUP_WINDOW)},
+            # TODO: remove these later
+            K_CLUSTER_ID: {"$exists": False},
+            K_GIST: {"$exists": False},
+            K_KIND: {"$ne": "AI Generated"}
+        }
+        count = self.db.beanstore.delete_many(cleanup_filter).deleted_count
+        log.debug("cleaned up", extra={"source": "beans", "num_items": count})
+        count = self.db.chatterstore.delete_many({K_COLLECTED: {"$lt": ndays_ago(CLEANUP_WINDOW)}}).deleted_count
+        log.debug("cleaned up", extra={"source": "chatters", "num_items": count})
+
 
 ## local utilities for pymongo
 def _deserialize_beans(cursor) -> list[Bean]:
@@ -810,17 +834,4 @@ def created_in(last_ndays: int):
     #     count = self.db.update_beans(updates)
     #     log.info("trend ranked", extra={"source": self.run_id, "num_items": count})
 
-    # def cleanup(self):
-    #     # NOTE: remove anything collected 7 days ago that did not get processed by analyzer
-    #     # TODO: this is a temporary fix.
-    #     _CLEANUP_WINDOW = 7
-    #     _CLEANUP_FILTER = {
-    #         K_COLLECTED: {"$lt": ndays_ago(_CLEANUP_WINDOW)},
-    #         K_CLUSTER_ID: {"$exists": False},
-    #         K_GIST: {"$exists": False},
-    #         K_KIND: {"$ne": GENERATED}
-    #     }
-    #     count = self.db.beanstore.delete_many(_CLEANUP_FILTER).deleted_count
-    #     log.info("cleaned up beans", extra={"source": self.run_id, "num_items": count})
-    #     count = self.db.chatterstore.delete_many({K_COLLECTED: {"$lt": ndays_ago(_CLEANUP_WINDOW)}}).deleted_count
-    #     log.info("cleaned up chatters", extra={"source": self.run_id, "num_items": count})
+    

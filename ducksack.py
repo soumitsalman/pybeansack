@@ -298,6 +298,7 @@ class Beansack:
             slots=True
         ) for chatter in local_conn.sql(query).fetchall()]
 
+    # TODO: switch to chatters and deprcate chatter analysis
     def get_latest_chatters(self, last_ndays: int, urls: list[str] = None) -> list[ChatterAnalysis]:
         local_conn = self.db.cursor()
         total = local_conn.query(SQL_TOTAL_CHATTERS)
