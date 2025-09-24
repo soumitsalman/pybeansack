@@ -294,13 +294,13 @@ class Beansack:
         cursor.close()
 
     # TODO: this dies with more than 10000
-    def recompute(self):
-        self.execute(SQL_REFRESH_CLUSTERS)
-        log.debug("Refreshed computed clusters.")
+    def recompute(self):       
         self.execute(SQL_REFRESH_CATEGORIES)
         log.debug("Refreshed computed categories.")
         self.execute(SQL_REFRESH_SENTIMENTS)
         log.debug("Refreshed computed sentiments.")   
+        self.execute(SQL_REFRESH_CLUSTERS)
+        log.debug("Refreshed computed clusters.")
 
     def cleanup(self):     
         self.db.execute(SQL_COMPACT)
