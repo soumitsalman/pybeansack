@@ -92,6 +92,11 @@ CREATE TABLE IF NOT EXISTS computed_bean_categories (
     categories VARCHAR[] NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS computed_bean_sentiments (
+    url VARCHAR NOT NULL,
+    sentiments VARCHAR[] NOT NULL
+);
+
 -- THERE ARE VIEWS/DYNAMIC QUERIES THAT ARE USED TO SIMPLIFY APP LEVEL QUERIES
 -- NOTE: Technically this table is merger of bean_cores, bean_embeddings and bean_gists. so there are processed contents here
 CREATE VIEW IF NOT EXISTS unprocessed_beans_view AS

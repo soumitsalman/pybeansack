@@ -86,17 +86,17 @@ GROUP BY url;
 """
 SQL_REFRESH_CLUSTERS = f"""
 INSERT INTO warehouse.computed_bean_clusters
-WITH last_14_days AS (
-    SELECT url FROM warehouse.bean_cores WHERE created >= CURRENT_TIMESTAMP - INTERVAL '14 days'
+WITH last_n_days AS (
+    SELECT url FROM warehouse.bean_cores WHERE created >= CURRENT_TIMESTAMP - INTERVAL '21 days'
 )
 SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
 FROM (
     SELECT * FROM warehouse.missing_clusters_view
-    WHERE url IN (SELECT * FROM last_14_days)
+    WHERE url IN (SELECT * FROM last_n_days)
 ) mcl
 CROSS JOIN (
     SELECT * FROM warehouse.bean_embeddings
-    WHERE url IN (SELECT * FROM last_14_days)
+    WHERE url IN (SELECT * FROM last_n_days)
 ) e
 WHERE distance <= {CLUSTER_EPS};
 """
