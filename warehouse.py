@@ -86,13 +86,17 @@ GROUP BY url;
 """
 SQL_REFRESH_CLUSTERS = f"""
 INSERT INTO warehouse.computed_bean_clusters
+WITH last_14_days AS (
+    SELECT url FROM warehouse.bean_cores WHERE created >= CURRENT_TIMESTAMP - INTERVAL '14 days'
+)
 SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
-FROM warehouse.missing_clusters_view mcl
+FROM (
+    SELECT * FROM warehouse.missing_clusters_view
+    WHERE url IN (SELECT * FROM last_14_days)
+) mcl
 CROSS JOIN (
     SELECT * FROM warehouse.bean_embeddings
-    WHERE url IN (
-        SELECT url FROM warehouse.bean_cores WHERE created >= CURRENT_TIMESTAMP - INTERVAL '14 days'
-    )
+    WHERE url IN (SELECT * FROM last_14_days)
 ) e
 WHERE distance <= {CLUSTER_EPS};
 """
@@ -216,18 +220,18 @@ class Beansack:
 
     ##### Store methods
     def store_cores(self, items: list[BeanCore]):                   
-        # items = self.deduplicate("bean_cores", "url", items)  
-        # items = _prepare_cores_for_storage(items)
+        items = self.deduplicate("bean_cores", "url", items)  
+        items = rectify_bean_fields(items)
         return self._bulk_insert_as_dataframe("bean_cores", items, BeanCore.Config.dtype_specs)
     
     def store_embeddings(self, items: list[BeanEmbedding]):
         # items = list(filter(lambda x: len(x.embedding) == VECTOR_LEN, items))
-        # items = self.deduplicate("bean_embeddings", "url", items)
+        items = self.deduplicate("bean_embeddings", "url", items)
         return self._bulk_insert_as_dataframe("bean_embeddings", items, None)        
 
     def store_gists(self, items: list[BeanGist]):        
         # items = list(filter(lambda x: x.gist, items))
-        # items = self.deduplicate("bean_gists", "url", items)
+        items = self.deduplicate("bean_gists", "url", items)
         return self._bulk_insert_as_dataframe("bean_gists", items, BeanGist.Config.dtype_specs)
     
     def store_chatters(self, items: list[Chatter]):       

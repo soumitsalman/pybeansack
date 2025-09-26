@@ -330,3 +330,22 @@ class Page(BaseModel):
         populate_by_name = True
         arbitrary_types_allowed=False
         by_alias=True
+
+clean_text = lambda text: text.strip() if text and text.strip() else None
+num_words = lambda text: min(len(text.split()) if text else 0, 1<<32)  # SMALLINT max value
+
+def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
+    for item in items:
+        item.title = clean_text(item.title)
+        item.title_length = num_words(item.title)
+        item.summary = clean_text(item.summary)
+        item.summary_length = num_words(item.summary)
+        item.content = clean_text(item.content)
+        item.content_length = num_words(item.content)
+        item.author = clean_text(item.author)
+        item.image_url = clean_text(item.image_url)
+        item.created = item.created or now()
+        item.collected = item.collected or now()
+        if item.author == "[no-author]": item.author = None
+        if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
+    return items

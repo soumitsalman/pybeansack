@@ -152,8 +152,8 @@ class Beansack:
     pagestore: Collection
 
     def __init__(self, 
-        conn_str: str = os.getenv("REMOTE_DB_CONNECTION_STRING", "mongodb://localhost:27017"), 
-        db_name: str = os.getenv("DB_NAME", "beansack")
+        conn_str: str = os.getenv("MONGO_CONNECTION_STRING", "mongodb://localhost:27017"), 
+        db_name: str = os.getenv("MONGO_DATABASE", "beansack")
     ):  
         self.db = MongoClient(
             conn_str, 
@@ -182,6 +182,7 @@ class Beansack:
         # beans = self.not_exists(beans)
         if not beans: return 0
         beans = self._fix_bean_ids(beans)
+        beans = rectify_bean_fields(beans)
         try: num_items = self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False).inserted_ids
         except BulkWriteError as e: num_items = e.details['nInserted']
         return num_items
@@ -711,8 +712,8 @@ class Beansack:
 def _deserialize_beans(cursor) -> list[Bean]:
     try:
         return [Bean(**item) for item in cursor]
-    except:
-        log.error("failed deserializing beans")
+    except Exception as e:
+        log.error("failed deserializing beans", e)
         return []
 
 def _deserialize_chatters(cursor) -> list[Chatter]:
