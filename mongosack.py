@@ -183,9 +183,9 @@ class Beansack:
         if not beans: return 0
         beans = self._fix_bean_ids(beans)
         beans = rectify_bean_fields(beans)
-        try: num_items = self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False).inserted_ids
-        except BulkWriteError as e: num_items = e.details['nInserted']
-        return num_items
+        try: inserted_ids = self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False).inserted_ids
+        except BulkWriteError as e: inserted_ids = e.details['nInserted']
+        return len(inserted_ids) if inserted_ids else 0
 
     # TODO: split out function for adding embeddings and gists. code commented out below
     # TODO: add function for recompute (for clusters, categories, sentiments and trendscore)
