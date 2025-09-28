@@ -37,7 +37,7 @@ VALUE_EXISTS = { "$exists": True, "$ne": None}
 CLEANUP_WINDOW = 7
 
 field_value = lambda items: {"$in": items} if isinstance(items, list) else items
-lower_case = lambda items: {"$in": [item.lower() for item in items]} if isinstance(items, list) else items.lower()
+lower_case = lambda items: {"$in": [item.lower() for item in items if item]} if isinstance(items, list) else items.lower()
 case_insensitive = lambda items: {"$in": [re.compile(item, re.IGNORECASE) for item in items]} if isinstance(items, list) else re.compile(items, re.IGNORECASE)
 
 _create_group_by = lambda field, sort_by: [
