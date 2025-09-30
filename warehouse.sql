@@ -14,7 +14,7 @@ CREATE OR REPLACE SECRET s3secret (
     SECRET '{s3_secret_access_key}'
 );
 
-ATTACH 'ducklake:{catalog_path}' AS warehouse (DATA_PATH '{data_path}');
+ATTACH 'ducklake:{catalog_path}' AS warehouse (DATA_PATH '{data_path}', METADATA_SCHEMA 'beansack');
 USE warehouse;
 
 CREATE TABLE IF NOT EXISTS bean_cores (
@@ -139,9 +139,13 @@ INNER JOIN computed_bean_sentiments s ON b.url = s.url
 INNER JOIN bean_cluster_ids_view cl ON b.url = cl.url
 ORDER BY created DESC;
 
--- CREATE VIEW IF NOT EXISTS unexported_beans_view AS
--- SELECT * FROM processed_beans_view pb
--- WHERE pb.url NOT IN (SELECT url FROM exported_beans);
+CREATE VIEW IF NOT EXISTS indexed_beans_view AS
+SELECT * EXCLUDE(e.url, c.url, s.url, cl.url) FROM bean_cores b
+INNER JOIN bean_embeddings e ON b.url = e.url
+INNER JOIN computed_bean_categories c ON b.url = c.url
+INNER JOIN computed_bean_sentiments s ON b.url = s.url
+INNER JOIN bean_cluster_ids_view cl ON b.url = cl.url
+ORDER BY created DESC;
 
 -- TODO: look to see if it can be replaced with FIRST(collected ORDER BY likes DESC)
 CREATE VIEW IF NOT EXISTS bean_chatters_view AS

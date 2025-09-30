@@ -100,11 +100,13 @@ CROSS JOIN (
 ) e
 WHERE distance <= {CLUSTER_EPS};
 """
-SQL_COMPACT = """
--- CALL ducklake_merge_adjacent_files('warehouse');
-CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
+SQL_CLEANUP = """
+CALL ducklake_merge_adjacent_files('warehouse');
+CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 week');
+CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 week');
 CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 """
+SQL_CURRENT_SNAPSHOT = "SELECT * FROM warehouse.current_snapshot();"
 
 log = logging.getLogger(__name__)
 
@@ -136,7 +138,6 @@ class Beansack:
     def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
-            # 'preserve_insertion_order': False,
             'enable_http_metadata_cache': True,
             'ducklake_max_retry_count': 100
         }        
@@ -314,8 +315,15 @@ class Beansack:
         log.debug("Refreshed computed clusters.")
 
     def cleanup(self):     
-        self.db.execute(SQL_COMPACT)
+        self.db.execute(SQL_CLEANUP)
         log.debug("Compacted data files.")
+
+    def snapshot(self):
+        cursor = self.db.cursor()
+        rel = cursor.query(SQL_CURRENT_SNAPSHOT)
+        snapshot_id = rel.fetchone()[0]
+        cursor.close()
+        return snapshot_id
     
     def close(self):
         if not self.db: return        

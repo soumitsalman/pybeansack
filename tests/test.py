@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from models import *
 from mongosack import Beansack as Mongosack
-from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS, SQL_COMPACT
+from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS, SQL_CLEANUP
 import argparse
 
 DATA_DIR = os.getenv("DATA_DIR", ".coffeemaker")
@@ -643,7 +643,7 @@ def test_random_query():
     # Initialize warehouse
     warehouse = get_test_warehouse()
 
-    warehouse.execute(SQL_COMPACT)
+    warehouse.execute(SQL_CLEANUP)
 #     query_expr = f"""
 #     SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
 # FROM warehouse.missing_clusters_view mcl
