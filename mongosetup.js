@@ -126,6 +126,17 @@ db.beans.createIndex(
   }
 );
 
+db.beans.createIndex(
+  {
+      entities: 1,
+      kind: 1,
+      created: -1
+  },
+  {
+      name: "beans_entities_and_kind_and_created"
+  }
+);
+
 // needed for group by cluster
 db.beans.createIndex(
   {
