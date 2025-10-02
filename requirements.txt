@@ -8,3 +8,4 @@ rfc3339
 retry
 icecream
 python-dotenv
+s3fs

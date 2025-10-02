@@ -1,94 +1,75 @@
-import boto3
+import os
 import random
 from datetime import datetime
+import s3fs
 
-IMAGES_FOLDER = "images"
-ARTICLES_FOLDER = "articles"
 
-class CDNStore:
-    endpoint = None
-    _client = None
+_random_blob_name = lambda ext: f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}-{random.randint(1000, 9999)}"
+def _ext_to_dir(ext: str) -> str:
+    if ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'webp']: return "images"
+    elif ext in ['txt', 'md', 'markdown', 'html', 'htm']: return "articles"
+    else: return "files"
+
+class S3Store:
+    """Lightweight S3 store using s3fs.
+
+    The store exposes simple helpers: upload_bytes and upload_file. It constructs
+    object keys using the parsed bucket prefix and ensures objects are saved
+    under the 'articles' folder by default (per your request images go to that
+    folder as well).
+    """
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        access_key_id: str,
+        secret_key: str,
+        bucket: str,
+        region: str = None,
+        public_url: str = None
+    ):      
+        self.endpoint_url = endpoint_url
+        self.bucket = bucket  
+        self.fs = s3fs.S3FileSystem(
+            endpoint_url=endpoint_url,
+            key=access_key_id, 
+            secret=secret_key, 
+            client_kwargs={"region_name": region} if region else None
+        )     
+        self.public_url = (public_url or endpoint_url).rstrip('/')   
+
+    def _relative_path(self, blob_name: str, ext: str) -> str:
+        """Return s3fs-style path: 'bucket/key'"""
+        blob_name = blob_name or _random_blob_name(ext)
+        return f"{self.bucket}/{_ext_to_dir(ext)}/{blob_name}.{ext}"
+
+    def _public_url(self, key: str) -> str:
+        return f"{self.public_url}/{key}"
+
+    def upload_bytes(self, data: bytes, blob_name: str = None, ext: str = "png") -> str:
+        """Upload raw bytes into '.../articles/<blob_name>' and return public URL."""
+        file_key = self._relative_path(blob_name, ext)
+        mode = "wb" if "/images/" in file_key else "w"
+        data = data if mode == "wb" else str(data.decode('utf-8'))
+        with self.fs.open(file_key, mode) as f:
+            f.write(data)
+        return self._public_url(file_key)
     
-    def __init__(self, endpoint: str, key: str, secret: str):
-        """Initialize store with credentials
-        
-        Args:
-            endpoint: S3 endpoint URL including the container name (e.g. https://espresso-cdn.nyc3.digitaloceanspaces.com)
-            container: Bucket/container name
-            key: Access key
-            secret: Secret key
-        """
-        self.endpoint = endpoint
-        self.key = key
-        self.secret = secret       
-
-    @property
-    def client(self):
-        if not self._client:
-            self._client = boto3.client(
-                's3',
-                endpoint_url=self.endpoint,
-                aws_access_key_id=self.key,
-                aws_secret_access_key=self.secret
-            )
-        return self._client
-
-    def upload_article(self, data: str, blob_name: str = None) -> str:
-        """Upload article synchronously
-        
-        Args:
-            data: Article text content
-            blob_name: Name of the file
-            
-        Returns:
-            Public URL of the uploaded file
-        """
-        data = data.encode('utf-8')
-        blob_name = blob_name or f"{int(datetime.now().timestamp())}-{random.randint(1000, 9999)}.txt"
-        self.client.put_object(
-            Bucket=ARTICLES_FOLDER,
-            Key=blob_name,
-            Body=data,
-            ACL='public-read',
-            ContentType='text/markdown'
+    def upload_file(self, file_path: str) -> str:
+        """Upload a local file into '.../articles/<blob_name>' and return public URL."""
+        from icecream import ic
+        file_key = self._relative_path(
+            os.path.splitext(os.path.basename(file_path))[0], 
+            os.path.splitext(file_path)[1].lstrip('.') or 'png'
         )
-        return f"{self.endpoint}/{ARTICLES_FOLDER}/{blob_name}"
-        
+        self.fs.put(file_path, file_key)
+        return self._public_url(file_key)
+    
     def upload_image(self, data: bytes, blob_name: str = None) -> str:
-        """Upload image synchronously
-        
-        Args:
-            data: binary image content
-            blob_name: Name of the file
-            
-        Returns:
-            Public URL of the uploaded file
-        """
-        blob_name = blob_name or f"{int(datetime.now().timestamp())}-{random.randint(1000, 9999)}.png"
-        self.client.put_object(
-            Bucket=IMAGES_FOLDER,
-            Key=blob_name,
-            Body=data,
-            ACL='public-read',
-            ContentType='image/png'
-        )
-        return f"{self.endpoint}/{IMAGES_FOLDER}/{blob_name}"
+        """Upload image synchronously to ./images/"""
+        return self.upload_bytes(data, blob_name, ext='png')
+    
+    def upload_article(self, data: str, blob_name: str = None) -> str:
+        """Upload article synchronously t ./articles/"""
+        return self.upload_bytes(data.encode('utf-8'), blob_name, ext='html')
 
-    def upload_image_file(self, local_file: str, blob_name: str = None) -> str:
-        """Upload image synchronously
-        
-        Args:
-            data: binary image content
-            blob_name: Name of the file
-            
-        Returns:
-            Public URL of the uploaded file
-        """
-        blob_name = blob_name or f"{int(datetime.now().timestamp())}-{random.randint(1000, 9999)}.png"
-        self.client.upload_file(
-            Filename=local_file, 
-            Bucket=IMAGES_FOLDER, 
-            Key=blob_name,
-            ExtraArgs={'ACL': 'public-read', 'ContentType': 'image/png'}
-        )
-        return f"{self.endpoint}/{IMAGES_FOLDER}/{blob_name}"

@@ -84,24 +84,28 @@ LEFT JOIN LATERAL (
 ) ON TRUE
 GROUP BY url;
 """
+# This is an expensive operation. So working in batches of 512
 SQL_REFRESH_CLUSTERS = f"""
 INSERT INTO warehouse.computed_bean_clusters
-WITH last_n_days AS (
-    SELECT url FROM warehouse.bean_cores WHERE created >= CURRENT_TIMESTAMP - INTERVAL '21 days'
-)
+WITH 
+    bean_embeddings_query AS (
+        SELECT e.*, b.created, b.collected, 
+        FROM warehouse.bean_embeddings e
+        INNER JOIN warehouse.bean_cores b ON b.url = e.url  
+        WHERE created >= CURRENT_TIMESTAMP - INTERVAL '30 days'      
+    ),
+    missing_clusters_query AS (
+        SELECT * FROM warehouse.missing_clusters_view LIMIT 512
+    )
 SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
-FROM (
-    SELECT * FROM warehouse.missing_clusters_view
-    WHERE url IN (SELECT * FROM last_n_days)
-) mcl
-CROSS JOIN (
-    SELECT * FROM warehouse.bean_embeddings
-    WHERE url IN (SELECT * FROM last_n_days)
-) e
+FROM missing_clusters_query mcl
+CROSS JOIN bean_embeddings_query e
 WHERE distance <= {CLUSTER_EPS};
 """
+SQL_COUNT_MISSING_CLUSTERS = "SELECT count(*) FROM warehouse.missing_clusters_view;"
+
 SQL_CLEANUP = """
-CALL ducklake_merge_adjacent_files('warehouse');
+-- CALL ducklake_merge_adjacent_files('warehouse');
 CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 week');
 CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 week');
 CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
@@ -298,6 +302,13 @@ class Beansack:
         cursor = self.db.cursor()
         rel = cursor.query(query_expr, params=params)
         return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+    
+    def query_one(self, query_expr: str, params: list = None):
+        cursor = self.db.cursor()
+        rel = cursor.query(query_expr, params=params)
+        count = rel.fetchone()[0]
+        cursor.close()
+        return count
 
     @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def execute(self, sql_expr: str, params: list = None):
@@ -305,13 +316,14 @@ class Beansack:
         cursor.execute(sql_expr, params)
         cursor.close()
 
-    # TODO: this dies with more than 10000
     def recompute(self):       
         self.execute(SQL_REFRESH_CATEGORIES)
         log.debug("Refreshed computed categories.")
         self.execute(SQL_REFRESH_SENTIMENTS)
-        log.debug("Refreshed computed sentiments.")   
-        self.execute(SQL_REFRESH_CLUSTERS)
+        log.debug("Refreshed computed sentiments.")
+        # NOTE: clustering needs to be done in smaller batches or else it dies
+        while self.query_one(SQL_COUNT_MISSING_CLUSTERS):
+            self.execute(SQL_REFRESH_CLUSTERS)
         log.debug("Refreshed computed clusters.")
 
     def cleanup(self):     
@@ -319,11 +331,7 @@ class Beansack:
         log.debug("Compacted data files.")
 
     def snapshot(self):
-        cursor = self.db.cursor()
-        rel = cursor.query(SQL_CURRENT_SNAPSHOT)
-        snapshot_id = rel.fetchone()[0]
-        cursor.close()
-        return snapshot_id
+        return self.query_one(SQL_CURRENT_SNAPSHOT)
     
     def close(self):
         if not self.db: return        

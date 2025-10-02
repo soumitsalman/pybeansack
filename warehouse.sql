@@ -14,7 +14,8 @@ CREATE OR REPLACE SECRET s3secret (
     SECRET '{s3_secret_access_key}'
 );
 
-ATTACH 'ducklake:{catalog_path}' AS warehouse (DATA_PATH '{data_path}', METADATA_SCHEMA 'beansack');
+ATTACH 'ducklake:{catalog_path}' AS warehouse 
+(METADATA_SCHEMA 'beansack', DATA_PATH '{data_path}');
 USE warehouse;
 
 CREATE TABLE IF NOT EXISTS bean_cores (
@@ -105,49 +106,65 @@ LEFT JOIN bean_embeddings e ON b.url = e.url
 LEFT JOIN bean_gists g ON b.url = g.url
 ORDER BY created DESC;
 
+
+DROP VIEW IF EXISTS missing_clusters_view;
 CREATE VIEW IF NOT EXISTS missing_clusters_view AS
 SELECT * FROM bean_embeddings e
-WHERE e.url NOT IN (SELECT url FROM computed_bean_clusters);
+WHERE NOT EXISTS (
+    SELECT 1 FROM warehouse.computed_bean_clusters cl 
+    WHERE cl.url = e.url
+);
 
+DROP VIEW IF EXISTS missing_categories_view;
 CREATE VIEW IF NOT EXISTS missing_categories_view AS
 SELECT * FROM bean_embeddings e
-WHERE e.url NOT IN (SELECT url FROM computed_bean_categories);
+WHERE NOT EXISTS (
+    SELECT 1 FROM warehouse.computed_bean_categories c 
+    WHERE c.url = e.url
+);
 
+DROP VIEW IF EXISTS missing_sentiments_view;
 CREATE VIEW IF NOT EXISTS missing_sentiments_view AS
 SELECT * FROM bean_embeddings e
-WHERE e.url NOT IN (SELECT url FROM computed_bean_sentiments);
+WHERE NOT EXISTS (
+    SELECT 1 FROM warehouse.computed_bean_sentiments s 
+    WHERE s.url = e.url
+);
 
-CREATE VIEW IF NOT EXISTS bean_cluster_ids_view AS
+DROP VIEW IF EXISTS bean_cluster_ids_view;
+CREATE VIEW IF NOT EXISTS bean_clusters_view AS
 SELECT 
     url, 
     FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id, -- this is the larger cluster url is part of
     COUNT(*) AS cluster_size -- this is the number of related items
 FROM computed_bean_clusters cl
-LEFT JOIN LATERAL (
+INNER JOIN (
     SELECT related, count(*) AS cluster_size 
     FROM computed_bean_clusters GROUP BY related
-) clsz
-ON cl.related = clsz.related
+) clsz ON cl.related = clsz.related
 GROUP BY url;
 
+DROP VIEW IF EXISTS processed_beans_view;
 CREATE VIEW IF NOT EXISTS processed_beans_view AS
 SELECT * EXCLUDE(e.url, g.url, c.url, s.url, cl.url) FROM bean_cores b
 INNER JOIN bean_embeddings e ON b.url = e.url
 INNER JOIN bean_gists g ON b.url = g.url
 INNER JOIN computed_bean_categories c ON b.url = c.url
 INNER JOIN computed_bean_sentiments s ON b.url = s.url
-INNER JOIN bean_cluster_ids_view cl ON b.url = cl.url
+INNER JOIN bean_clusters_view cl ON b.url = cl.url
 ORDER BY created DESC;
 
+DROP VIEW IF EXISTS indexed_beans_view;
 CREATE VIEW IF NOT EXISTS indexed_beans_view AS
 SELECT * EXCLUDE(e.url, c.url, s.url, cl.url) FROM bean_cores b
 INNER JOIN bean_embeddings e ON b.url = e.url
 INNER JOIN computed_bean_categories c ON b.url = c.url
 INNER JOIN computed_bean_sentiments s ON b.url = s.url
-INNER JOIN bean_cluster_ids_view cl ON b.url = cl.url
+INNER JOIN bean_clusters_view cl ON b.url = cl.url
 ORDER BY created DESC;
 
 -- TODO: look to see if it can be replaced with FIRST(collected ORDER BY likes DESC)
+DROP VIEW bean_chatters_view;
 CREATE VIEW IF NOT EXISTS bean_chatters_view AS
 WITH 
     max_stats AS (
@@ -169,7 +186,7 @@ WITH
     )
 SELECT 
     url,
-    MAX(collected) as collected,
+    DATE(MAX(collected)) as collected,
     SUM(likes) as likes, 
     SUM(comments) as comments, 
     SUM(subscribers) as subscribers,
