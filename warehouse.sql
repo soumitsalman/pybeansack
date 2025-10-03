@@ -106,8 +106,6 @@ LEFT JOIN bean_embeddings e ON b.url = e.url
 LEFT JOIN bean_gists g ON b.url = g.url
 ORDER BY created DESC;
 
-
-DROP VIEW IF EXISTS missing_clusters_view;
 CREATE VIEW IF NOT EXISTS missing_clusters_view AS
 SELECT * FROM bean_embeddings e
 WHERE NOT EXISTS (
@@ -115,7 +113,6 @@ WHERE NOT EXISTS (
     WHERE cl.url = e.url
 );
 
-DROP VIEW IF EXISTS missing_categories_view;
 CREATE VIEW IF NOT EXISTS missing_categories_view AS
 SELECT * FROM bean_embeddings e
 WHERE NOT EXISTS (
@@ -123,7 +120,6 @@ WHERE NOT EXISTS (
     WHERE c.url = e.url
 );
 
-DROP VIEW IF EXISTS missing_sentiments_view;
 CREATE VIEW IF NOT EXISTS missing_sentiments_view AS
 SELECT * FROM bean_embeddings e
 WHERE NOT EXISTS (
@@ -131,7 +127,6 @@ WHERE NOT EXISTS (
     WHERE s.url = e.url
 );
 
-DROP VIEW IF EXISTS bean_cluster_ids_view;
 CREATE VIEW IF NOT EXISTS bean_clusters_view AS
 SELECT 
     url, 
@@ -144,7 +139,6 @@ INNER JOIN (
 ) clsz ON cl.related = clsz.related
 GROUP BY url;
 
-DROP VIEW IF EXISTS indexed_beans_view;
 CREATE VIEW IF NOT EXISTS indexed_beans_view AS
 SELECT * EXCLUDE(e.url, c.url, s.url, cl.url) 
 FROM bean_embeddings e
@@ -164,7 +158,6 @@ SELECT pb.* FROM newest_beans nb
 INNER JOIN indexed_beans_view pb 
 ON nb.cluster_id = pb.cluster_id AND nb.created=pb.created;
 
-DROP VIEW IF EXISTS processed_beans_view;
 CREATE VIEW IF NOT EXISTS processed_beans_view AS
 SELECT * EXCLUDE(ib.url) 
 FROM bean_gists g
@@ -175,11 +168,7 @@ SELECT * EXCLUDE(ib.url)
 FROM bean_gists g
 INNER JOIN unique_indexed_beans_view ib ON ib.url = g.url;
 
-
-
-
 -- TODO: look to see if it can be replaced with FIRST(collected ORDER BY likes DESC)
-DROP VIEW bean_chatters_view;
 CREATE VIEW IF NOT EXISTS bean_chatters_view AS
 WITH 
     max_stats AS (
