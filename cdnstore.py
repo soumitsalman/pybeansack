@@ -1,16 +1,13 @@
 import os
-import random
-from datetime import datetime
 import s3fs
+from .utils import random_filename
 
-
-_random_blob_name = lambda ext: f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}-{random.randint(1000, 9999)}"
 def _ext_to_dir(ext: str) -> str:
     if ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'webp']: return "images"
     elif ext in ['txt', 'md', 'markdown', 'html', 'htm']: return "articles"
     else: return "files"
 
-class S3Store:
+class CDNStore:
     """Lightweight S3 store using s3fs.
 
     The store exposes simple helpers: upload_bytes and upload_file. It constructs
@@ -40,7 +37,7 @@ class S3Store:
 
     def _relative_path(self, blob_name: str, ext: str) -> str:
         """Return s3fs-style path: 'bucket/key'"""
-        blob_name = blob_name or _random_blob_name(ext)
+        blob_name = blob_name or random_filename(ext)
         return f"{self.bucket}/{_ext_to_dir(ext)}/{blob_name}.{ext}"
 
     def _public_url(self, key: str) -> str:

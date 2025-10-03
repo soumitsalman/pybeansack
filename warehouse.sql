@@ -144,24 +144,39 @@ INNER JOIN (
 ) clsz ON cl.related = clsz.related
 GROUP BY url;
 
-DROP VIEW IF EXISTS processed_beans_view;
-CREATE VIEW IF NOT EXISTS processed_beans_view AS
-SELECT * EXCLUDE(e.url, g.url, c.url, s.url, cl.url) FROM bean_cores b
-INNER JOIN bean_embeddings e ON b.url = e.url
-INNER JOIN bean_gists g ON b.url = g.url
+DROP VIEW IF EXISTS indexed_beans_view;
+CREATE VIEW IF NOT EXISTS indexed_beans_view AS
+SELECT * EXCLUDE(e.url, c.url, s.url, cl.url) 
+FROM bean_embeddings e
+INNER JOIN bean_cores b ON b.url = e.url
 INNER JOIN computed_bean_categories c ON b.url = c.url
 INNER JOIN computed_bean_sentiments s ON b.url = s.url
 INNER JOIN bean_clusters_view cl ON b.url = cl.url
 ORDER BY created DESC;
 
-DROP VIEW IF EXISTS indexed_beans_view;
-CREATE VIEW IF NOT EXISTS indexed_beans_view AS
-SELECT * EXCLUDE(e.url, c.url, s.url, cl.url) FROM bean_cores b
-INNER JOIN bean_embeddings e ON b.url = e.url
-INNER JOIN computed_bean_categories c ON b.url = c.url
-INNER JOIN computed_bean_sentiments s ON b.url = s.url
-INNER JOIN bean_clusters_view cl ON b.url = cl.url
-ORDER BY created DESC;
+CREATE VIEW IF NOT EXISTS unique_indexed_beans_view AS
+WITH newest_beans AS (
+    SELECT cluster_id, MAX(created) as created 
+    FROM indexed_beans_view 
+    GROUP BY cluster_id
+)
+SELECT pb.* FROM newest_beans nb
+INNER JOIN indexed_beans_view pb 
+ON nb.cluster_id = pb.cluster_id AND nb.created=pb.created;
+
+DROP VIEW IF EXISTS processed_beans_view;
+CREATE VIEW IF NOT EXISTS processed_beans_view AS
+SELECT * EXCLUDE(ib.url) 
+FROM bean_gists g
+INNER JOIN indexed_beans_view ib ON ib.url = g.url;
+
+CREATE VIEW IF NOT EXISTS unique_processed_beans_view AS
+SELECT * EXCLUDE(ib.url) 
+FROM bean_gists g
+INNER JOIN unique_indexed_beans_view ib ON ib.url = g.url;
+
+
+
 
 -- TODO: look to see if it can be replaced with FIRST(collected ORDER BY likes DESC)
 DROP VIEW bean_chatters_view;

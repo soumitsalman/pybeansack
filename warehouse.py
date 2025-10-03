@@ -1,3 +1,4 @@
+from dataclasses import fields
 import os
 import random
 import logging
@@ -60,6 +61,7 @@ SQL_INSERT_DF = "INSERT INTO warehouse.{table} SELECT * FROM df;"
 SQL_INSERT_CHATTERS_DF = "INSERT INTO warehouse.chatters SELECT * EXCLUDE(shares) FROM df;"
 
 SQL_EXISTS = "SELECT {field} FROM warehouse.{table} WHERE {field} IN ({placeholders})"
+SQL_QUERY_BEANS = "SELECT {select_fields} FROM warehouse.processed_beans_view"
 SQL_SCALAR_SEARCH_BEANS = "SELECT * EXCLUDE(title_length, summary_length, content_length) FROM warehouse.processed_beans_view"
 SQL_VECTOR_SEARCH_BEANS = f"SELECT * EXCLUDE(title_length, summary_length, content_length), array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance FROM warehouse.processed_beans_view"
 SQL_LATEST_CHATTERS = "SELECT * FROM warehouse.bean_chatters_view"
@@ -89,17 +91,23 @@ SQL_REFRESH_CLUSTERS = f"""
 INSERT INTO warehouse.computed_bean_clusters
 WITH 
     bean_embeddings_query AS (
-        SELECT e.*, b.created, b.collected, 
-        FROM warehouse.bean_embeddings e
-        INNER JOIN warehouse.bean_cores b ON b.url = e.url  
-        WHERE created >= CURRENT_TIMESTAMP - INTERVAL '30 days'      
+        SELECT e.* FROM warehouse.bean_embeddings e
+        INNER JOIN ( 
+           SELECT * FROM warehouse.bean_cores 
+           WHERE collected >= CURRENT_TIMESTAMP - INTERVAL '28 days'
+        ) b ON b.url = e.url 
     ),
     missing_clusters_query AS (
         SELECT * FROM warehouse.missing_clusters_view LIMIT 512
+    ),
+    combined_embeddings AS (
+        SELECT * FROM bean_embeddings_query
+        UNION
+        SELECT * FROM missing_clusters_query
     )
 SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
 FROM missing_clusters_query mcl
-CROSS JOIN bean_embeddings_query e
+CROSS JOIN combined_embeddings e
 WHERE distance <= {CLUSTER_EPS};
 """
 SQL_COUNT_MISSING_CLUSTERS = "SELECT count(*) FROM warehouse.missing_clusters_view;"
@@ -113,6 +121,11 @@ CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 SQL_CURRENT_SNAPSHOT = "SELECT * FROM warehouse.current_snapshot();"
 
 log = logging.getLogger(__name__)
+
+def _create_select_expr(table: str, select_fields: list[str] = None, embedding: list[float] = None):
+    select_fields = select_fields or ["*"]
+    if embedding: select_fields.append(f"array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance")
+    return f"SELECT {', '.join(select_fields)} FROM warehouse.{table}"
 
 def _create_where_exprs(
     kind: str = None,
@@ -224,7 +237,7 @@ class Beansack:
         return items    
 
     ##### Store methods
-    def store_cores(self, items: list[BeanCore]):                   
+    def store_cores(self, items: list[BeanCore]) -> list[BeanCore]:                   
         items = self.deduplicate("bean_cores", "url", items)  
         items = rectify_bean_fields(items)
         return self._bulk_insert_as_dataframe("bean_cores", items, BeanCore.Config.dtype_specs)
@@ -273,9 +286,9 @@ class Beansack:
     def query_contents_with_missing_gists(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:        
         query_expr = "SELECT * FROM warehouse.missing_gists_view"
         return self._query_cores(query_expr, conditions, 0, limit)
-
-    def query_processed_beans(self, kind: str = None, created: datetime = None, categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, sources: list[str] = None, embedding: list[float] = None, distance: float = 0, offset: int = 0, limit: int = 0):
-        query_expr = SQL_VECTOR_SEARCH_BEANS if embedding else SQL_SCALAR_SEARCH_BEANS
+    
+    def query_processed_beans(self, kind: str = None, created: datetime = None, categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, sources: list[str] = None, embedding: list[float] = None, distance: float = 0, offset: int = 0, limit: int = 0, select: list[str] = None):        
+        query_expr = _create_select_expr("processed_beans_view", select or ["* EXCLUDE(title_length, summary_length, content_length)"], embedding)
         conditions, params = _create_where_exprs(
             kind=kind, created=created, categories=categories, regions=regions, entities=entities, sources=sources, distance=distance)
         if conditions: query_expr += " WHERE " + " AND ".join(conditions)
@@ -283,7 +296,7 @@ class Beansack:
 
         cursor = self.db.cursor()
         rel = cursor.query(query_expr, params=params)
-        # rel = rel.order("created DESC")
+        rel = rel.order("created DESC")
         if distance: rel = rel.order("distance ASC")
         if offset or limit: rel = rel.limit(limit, offset=offset)
         return [Bean(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
@@ -322,6 +335,14 @@ class Beansack:
         self.execute(SQL_REFRESH_SENTIMENTS)
         log.debug("Refreshed computed sentiments.")
         # NOTE: clustering needs to be done in smaller batches or else it dies
+        # from tqdm import tqdm
+        # start_count = self.query_one(SQL_COUNT_MISSING_CLUSTERS)
+        # with tqdm(total=start_count, desc="Clustering", unit="beans") as pbar:
+        #     while start_count:
+        #         self.execute(SQL_REFRESH_CLUSTERS)
+        #         current_count = self.query_one(SQL_COUNT_MISSING_CLUSTERS)
+        #         pbar.update(start_count - current_count)
+        #         start_count = current_count
         while self.query_one(SQL_COUNT_MISSING_CLUSTERS):
             self.execute(SQL_REFRESH_CLUSTERS)
         log.debug("Refreshed computed clusters.")
