@@ -310,6 +310,14 @@ class Beansack:
         if limit: rel = rel.limit(limit)
         return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
     
+    def query_publishers(self, conditions: list[str] = None, limit: int = None):        
+        query_expr = "SELECT * FROM warehouse.publishers"
+        if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
+        cursor = self.db.cursor()
+        rel = cursor.query(query_expr)
+        if limit: rel = rel.limit(limit)
+        return [Publisher(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    
     ##### Maintenance methods
     def query(self, query_expr: str, params: list = None) -> list[dict]:
         cursor = self.db.cursor()
