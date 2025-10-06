@@ -259,9 +259,9 @@ class BeanEmbedding(BaseModel):
 
 class BeanGist(BaseModel):
     url: str = Field(min_length=1)
-    gist: str = Field(min_length=10)
-    entities: Optional[list[str]] = None
+    gist: str = Field(min_length=10)    
     regions: Optional[list[str]] = None
+    entities: Optional[list[str]] = None
 
     def to_tuple(self) -> tuple:
         return (self.url, self.gist, self.entities, self.regions)
