@@ -213,12 +213,13 @@ class Beansack:
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
     def update_beans_adhoc(self, updates: list[UpdateOne|UpdateMany]):
-        # create_update = lambda field_values: {
-        #     "$set": {k:v for k,v in field_values.items() if v},
-        #     "$unset": {k:None for k,v in field_values.items() if not v}
-        # }
         if not updates: return 0
-        return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
+        count = 0
+        batch_size = 128
+        for i in range(0, len(updates), batch_size):
+            batch = updates[i:i+batch_size]
+            count += self.beanstore.bulk_write(batch, ordered=False, bypass_document_validation=True).matched_count            
+        return count
 
     def delete_old(self, window: int):
         time_filter = {K_UPDATED: { "$lt": ndays_ago(window) }}
