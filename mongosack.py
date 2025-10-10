@@ -1,6 +1,7 @@
 ############################
 ## BEANSACK DB OPERATIONS ##
 ############################
+from concurrent.futures import ThreadPoolExecutor
 import os
 import logging
 import re
@@ -214,12 +215,14 @@ class Beansack:
 
     def update_beans_adhoc(self, updates: list[UpdateOne|UpdateMany]):
         if not updates: return 0
-        count = 0
         batch_size = 128
-        for i in range(0, len(updates), batch_size):
-            batch = updates[i:i+batch_size]
-            count += self.beanstore.bulk_write(batch, ordered=False, bypass_document_validation=True).matched_count            
-        return count
+        insert = lambda batch: self.beanstore.bulk_write(batch, ordered=False, bypass_document_validation=True).matched_count
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            counts = executor.map(
+                insert,
+                [updates[i:i+batch_size] for i in range(0, len(updates), batch_size)]
+            )        
+        return sum(counts)
 
     def delete_old(self, window: int):
         time_filter = {K_UPDATED: { "$lt": ndays_ago(window) }}
