@@ -202,3 +202,7 @@ FROM(
 ) 
 GROUP BY url
 ORDER BY collected DESC;
+
+CREATE VIEW IF NOT EXISTS trending_beans_view AS
+SELECT * EXCLUDE (ch.url, pb.title_length, pb.summary, pb.summary_length, pb.content, pb.content_length, pb.restricted_content), ch.collected as updated FROM processed_beans_view pb
+INNER JOIN bean_chatters_view ch ON pb.url = ch.url;
