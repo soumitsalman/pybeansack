@@ -134,23 +134,26 @@ class Bean(BaseModel):
     created: Optional[datetime] = None 
     collected: Optional[datetime] = None
 
-    # generated fields
+    # llm fields
     embedding: Optional[list[float]] = None
     gist: Optional[str] = None
-
-    # computed fields
-    cluster_id: Optional[str] = None
-    cluster_size: Optional[int] = Field(default=0)
-    related: Optional[list[str]] = Field(default=None)    
-    categories: Optional[list[str]] = None
     entities: Optional[list[str]] = None
     regions: Optional[list[str]] = None
+
+    # derived fields
+    categories: Optional[list[str]] = None
     sentiments: Optional[list[str]] = None
-    tags: Optional[list[str]|str] = None
+    cluster_id: Optional[str] = None
+    cluster_size: Optional[int] = Field(default=None)
+    related: Optional[list[str]] = Field(default=None)       
     
-    # social media stats
+    # query support fields
+    tags: Optional[list[str]|str] = None
     publisher: Optional[Publisher] = Field(default=None) # this is the source info
     chatter: Optional[Chatter] = Field(default=None) # this is the latest chatter info
+    trend_score: Optional[int] = Field(default=None) # a bean is always similar to itself
+    updated: Optional[datetime] = None
+    distance: Optional[float|int] = None
 
     # chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
     # chatter_source: Optional[str] = Field(default=None) # this is the domain name of the source
@@ -159,13 +162,6 @@ class Bean(BaseModel):
     # comments: Optional[int] = Field(default=0)
     # shares: Optional[int] = Field(default=0)
     
-    # computed fields related to media
-    trend_score: Optional[int] = Field(default=0) # a bean is always similar to itself
-    updated: Optional[datetime] = None
-
-    # query result fields
-    search_score: Optional[float|int] = None
-
     def digest(self) -> str:
         text = ""
         if self.created: text += f"U:{self.created.strftime('%Y-%m-%d')};"
@@ -182,6 +178,22 @@ class Bean(BaseModel):
         exclude_unset = True
         by_alias=True
         json_encoders={datetime: rfc3339}
+        dtype_specs = {            
+            'kind': 'string',
+            'title': 'string',
+            'title_length': 'uint16',
+            'summary': 'string',
+            'summary_length': 'uint16',
+            'content': 'string',
+            'content_length': 'uint16',
+            'author': 'string',
+            'source': 'string',
+            'image_url': 'string',
+            'embedding': 'object',
+            'gist': 'string',
+            'regions': 'object', 
+            'entities': 'object'  
+        }
 
 # class GeneratedBean(Bean):
 #     kind: str = Field(default=OPED)
@@ -333,7 +345,7 @@ class Page(BaseModel):
 
 clean_text = lambda text: text.strip() if text and text.strip() else None
 num_words = lambda text: min(len(text.split()) if text else 0, 1<<32)  # SMALLINT max value
-
+_EXCLUDE_AUTHORS = ["[no-author]", "noreply"]
 def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
     for item in items:
         item.title = clean_text(item.title)
@@ -346,6 +358,6 @@ def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
         item.image_url = clean_text(item.image_url)
         item.created = item.created or now()
         item.collected = item.collected or now()
-        if item.author == "[no-author]": item.author = None
+        if item.author and any(ex for ex in _EXCLUDE_AUTHORS if ex in item.author): item.author = None
         if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
     return items
