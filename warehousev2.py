@@ -242,7 +242,7 @@ class Beansack:
         chatters = list(filter(chatter_filter, chatters))
         if not chatters: return
 
-        df = pd.DataFrame([chatters.model_dump(exclude=["shares"]) for chatters in chatters])        
+        df = pd.DataFrame([chatters.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatters in chatters])        
         fields=', '.join(col for col in df.columns if df[col].notnull().any())
         SQL_INSERT = f"""
         INSERT INTO warehouse.chatters ({fields})
@@ -379,14 +379,20 @@ class Beansack:
             columns=fields
         )
 
-    # def query_bean_chatters(self, collected: datetime, limit: int):        
-    #     query_expr = SQL_LATEST_CHATTERS
-    #     conditions, params = _where(collected=collected)
-    #     if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
-    #     cursor = self.db.cursor()
-    #     rel = cursor.query(query_expr, params=params)
-    #     if limit: rel = rel.limit(limit)
-    #     return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
+        SQL_LATEST_CHATTERS = """
+        SELECT a.* FROM warehouse._internal_chatter_aggregates a
+        JOIN (
+            SELECT url, MAX(refresh_ts) AS max_refresh
+            FROM warehouse._internal_chatter_aggregates
+            WHERE updated >= ?
+            GROUP BY url
+        ) mx ON a.url = mx.url AND a.refresh_ts = mx.max_refresh;
+        """
+        cursor = self.db.cursor()
+        rel = cursor.query(SQL_LATEST_CHATTERS, params=(updated,))
+        if limit: rel = rel.limit(limit)
+        return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
     
     def query_publishers(self, conditions: list[str] = None, limit: int = None):        
         query_expr = "SELECT * FROM warehouse.publishers"

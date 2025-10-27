@@ -68,6 +68,7 @@ class Chatter(BaseModel):
     source: Optional[str] = Field(default=None) # this is the domain name of the source
     forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
     collected: Optional[datetime] = Field(default=None)
+    updated: Optional[datetime] = Field(default=None) # only applies during chatter aggregation
     likes: int = Field(default=0)
     comments: int = Field(default=0)
     shares: int = Field(default=0)
