@@ -73,31 +73,11 @@ SELECT * FROM read_parquet('{factory}/sentiments.parquet');
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
 
-CREATE TABLE IF NOT EXISTS computed_bean_clusters (
+CREATE TABLE IF NOT EXISTS computed_related_beans (
     url VARCHAR NOT NULL,
     related VARCHAR NOT NULL,
     distance FLOAT DEFAULT 0.0
 );
-
-
-CREATE VIEW IF NOT EXISTS missing_clusters_view AS
-SELECT url, embedding FROM beans e
-WHERE NOT EXISTS (
-    SELECT 1 FROM computed_bean_clusters cl 
-    WHERE cl.url = e.url
-);
-
-CREATE VIEW IF NOT EXISTS bean_clusters_view AS
-SELECT 
-    url, 
-    FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id, -- this is the larger cluster url is part of
-    COUNT(*) AS cluster_size -- this is the number of related items
-FROM computed_bean_clusters cl
-INNER JOIN (
-    SELECT related, count(*) AS cluster_size 
-    FROM computed_bean_clusters GROUP BY related
-) clsz ON cl.related = clsz.related
-GROUP BY url;
 
 CREATE VIEW IF NOT EXISTS bean_chatters_view AS
 WITH 
@@ -131,3 +111,13 @@ FROM(
     WHERE fs.collected = ch.collected
 ) 
 GROUP BY url;
+
+CREATE TABLE IF NOT EXISTS compute_bean_chatters (
+    url VARCHAR NOT NULL,  -- Foreign key to Bean.url
+    updated DATE NOT NULL,
+    likes UINT32,
+    comments UINT32,
+    subscribers UINT32,
+    shares UINT32,
+    compute_ts TIMESTAMP NOT NULL
+);

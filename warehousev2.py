@@ -243,7 +243,7 @@ class Beansack:
     ##### Store methods
     def _beans_to_df(self, beans: list[Bean], columns):
         if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
-        else: beans = [bean.model_dump(exclude_none = True, exclude=_EXCLUDE_BEAN_FIELDS) for bean in beans] 
+        else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_BEAN_FIELDS) for bean in beans] 
         
         df = pd.DataFrame(beans)
         fields = columns or [col for col in df.columns if df[col].notnull().any()]
@@ -263,7 +263,7 @@ class Beansack:
         df = self._beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
         # insert the non null columns
         fields=', '.join(df.columns)
-        SQL_INSERT_BEANS = f"""
+        SQL_INSERT = f"""
         INSERT INTO warehouse.beans ({fields})
         SELECT {fields} FROM df
         WHERE NOT EXISTS (
@@ -271,7 +271,7 @@ class Beansack:
             WHERE b.url = df.url
         );
         """
-        return self._execute_df(SQL_INSERT_BEANS, df)
+        return self._execute_df(SQL_INSERT, df)
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return None
@@ -286,32 +286,91 @@ class Beansack:
         WHEN MATCHED THEN UPDATE SET {', '.join(updates)};
         """
         return self._execute_df(SQL_UPDATE, df)    
-    
-    # def update_embeddings(self, beans: list[Bean]):
-    #     if not beans: return None
-    #     df = self._beans_to_df(beans, lambda bean: bean.embedding)
-    #     SQL_UPDATE_EMBEDDINGS = """
-    #     MERGE INTO warehouse.beans
-    #     USING (SELECT url, embedding FROM df) AS pack
-    #     USING (url)
-    #     WHEN MATCHED THEN UPDATE SET embedding = pack.embedding;
-    #     """
-    #     return self._execute_df(SQL_UPDATE_EMBEDDINGS, df)       
-
-    # def update_gists(self, beans: list[BeanGist]):   
-    #     if not beans: return     
-    #     df = self._beans_to_df(beans, lambda bean: bean.gist)
-    #     SQL_UPDATE_GISTS = """
-    #     MERGE INTO warehouse.beans
-    #     USING (SELECT url, gist, regions, entities FROM df) AS pack
-    #     USING (url)
-    #     WHEN MATCHED THEN UPDATE SET gist = pack.gist, regions=pack.regions, entities=pack.entities;
-    #     """
-    #     return self._execute_df(SQL_UPDATE_GISTS, df)
-    
 
     def update_classifications(self):
-        pass
+        SQL_UPDATE_CLASSIFICATION = f"""
+        WITH needs_classification AS (
+            SELECT url, embedding FROM warehouse.beans
+            WHERE categories IS NULL AND embedding IS NOT NULL
+        )
+        MERGE INTO warehouse.beans
+        USING (
+            SELECT url, LIST(category) as categories, LIST(sentiment) as sentiments FROM needs_classification nc
+            LEFT JOIN LATERAL (
+                SELECT category FROM warehouse.fixed_categories
+                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+                LIMIT 3
+            ) ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT sentiment FROM warehouse.fixed_sentiments
+                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+                LIMIT 3
+            ) ON TRUE
+            GROUP BY url
+        ) AS pack
+        USING (url)
+        WHEN MATCHED THEN UPDATE SET categories = pack.categories, sentiments = pack.sentiments;
+        """
+        return self.execute(SQL_UPDATE_CLASSIFICATION)
+    
+    def update_clusters(self):
+        # NOTE: the current timestamp is necessary for both queries
+        # otherwise it will loop for ever
+        SQL_COUNT_MISSING_CLUSTERS = """
+        SELECT count(*) FROM warehouse.beans 
+        WHERE 
+            cluster_id IS NULL 
+            AND embedding IS NOT NULL
+            AND collected >= CURRENT_TIMESTAMP - INTERVAL '28 days';
+        """
+
+        # calculate and update for a batch of 512, otherwise it dies
+        SQL_UPDATE_CLUSTERS = f"""
+        -- first insert into related beans
+        WITH 
+            scope AS (
+                SELECT url, embedding, cluster_id FROM warehouse.beans 
+                WHERE 
+                    collected >= CURRENT_TIMESTAMP - INTERVAL '28 days'
+                    AND embedding IS NOT NULL
+            ),
+            need_relating AS (
+                SELECT url, embedding FROM scope
+                WHERE cluster_id IS NULL                
+            )
+        INSERT INTO warehouse.computed_related_beans        
+        SELECT nr.url as url, s.url as related, abs(array_distance(nr.embedding::FLOAT[{VECTOR_LEN}], s.embedding::FLOAT[{VECTOR_LEN}])) as distance 
+        FROM need_relating nr
+        CROSS JOIN scope s
+        WHERE distance <= {CLUSTER_EPS};
+        
+        -- then update the clusters in beans
+        WITH 
+            need_clustering AS (
+                SELECT * FROM warehouse.computed_related_beans rl
+                WHERE EXISTS (
+                    SELECT 1 FROM warehouse.beans b
+                    WHERE b.cluster_id IS NULL
+                )
+            ),
+            cluster_sizes AS (
+                SELECT related, count(*) AS cluster_size 
+                FROM warehouse.computed_related_beans 
+                GROUP BY related
+            )
+        MERGE INTO warehouse.beans
+        USING (
+            SELECT 
+                url, 
+                FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id,
+                COUNT(*) AS cluster_size
+            FROM need_clustering cl
+            INNER JOIN cluster_sizes clsz ON cl.related = clsz.related
+            GROUP BY url
+        ) AS pack
+        USING (url)
+        WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;"""
+        return self.execute(SQL_UPDATE_CLUSTERS)        
 
     def store_chatters(self, items: list[Chatter]):       
         # there is no primary key here
@@ -364,15 +423,6 @@ class Beansack:
         count = cursor.query(SQL_COUNT_ROWS.format(table=table)).fetchone()[0]
         cursor.close()
         return count
-
-    # def _query_cores(self, query_expr, conditions, offset: int, limit: int) -> list[BeanCore]:
-    #     conditions, _ = _where(exprs=conditions)
-    #     if conditions: query_expr += " WHERE " + " AND ".join(conditions)
-
-    #     cursor = self.db.cursor()
-    #     rel = cursor.query(query_expr)
-    #     if offset or limit: rel = rel.limit(limit, offset=offset)
-    #     return [BeanCore(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
 
     def query_latest_beans(self, 
         kind: str = None, 
@@ -457,9 +507,9 @@ class Beansack:
         return count
 
     @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
-    def execute(self, sql_expr: str, params: list = None):
+    def execute(self, expr: str, params: list = None):
         cursor = self.db.cursor()
-        cursor.execute(sql_expr, params)
+        cursor.execute(expr, params)
         cursor.close()
 
     def recompute(self):       
