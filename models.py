@@ -101,8 +101,8 @@ class Chatter(BaseModel):
 class Publisher(BaseModel):
     source: str = Field(min_length=1) # this is domain name that gets matched with the source field in Bean
     base_url: str = Field(min_length=1)
-    title: Optional[str] = Field(default=None)
-    summary: Optional[str] = Field(default=None)
+    site_name: Optional[str] = Field(default=None, alias="title")
+    description: Optional[str] = Field(default=None, alias="summary")
     favicon: Optional[str] = Field(default=None)
     rss_feed: Optional[str] = Field(default=None)
 
@@ -110,8 +110,8 @@ class Publisher(BaseModel):
         dtype_specs = {
             'source': 'string',
             'base_url': 'string',
-            'title': 'string',
-            'summary': 'string',
+            'site_name': 'string',
+            'description': 'string',
             'favicon': 'string',
             'rss_feed': 'string'
         }
@@ -344,7 +344,7 @@ class Page(BaseModel):
         by_alias=True
 
 clean_text = lambda text: text.strip() if text and text.strip() else None
-num_words = lambda text: min(len(text.split()) if text else 0, 1<<32)  # SMALLINT max value
+num_words = lambda text: min(len(text.split()) if text else 0, 1<<15)  # SMALLINT max value
 _EXCLUDE_AUTHORS = ["[no-author]", "noreply"]
 def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
     for item in items:

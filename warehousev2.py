@@ -58,71 +58,10 @@ RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
 
 
-# SQL_INSERT_PARQUET = "CALL ducklake_add_data_files('warehouse', ?, ?, ignore_extra_columns => true);"
-# SQL_INSERT_DF = "INSERT INTO warehouse.{table} SELECT * FROM df;"
-# SQL_INSERT_CHATTERS_DF = "INSERT INTO warehouse.chatters SELECT * EXCLUDE(shares) FROM df;"
-SQL_INSERT_BEANS = """
-INSERT INTO warehouse.beans ({fields})
-SELECT {fields} FROM df
-WHERE NOT EXISTS (
-    SELECT 1 FROM warehouse.beans b
-    WHERE b.url = df.url
-);
-"""
 
-SQL_COUNT_ROWS = "SELECT count(*) FROM warehouse.{table};"
+# SQL_COUNT_ROWS = "SELECT count(*) FROM warehouse.{table};"
 
 SQL_EXISTS = "SELECT {field} FROM warehouse.{table} WHERE {field} IN ({placeholders})"
-SQL_QUERY_BEANS = "SELECT {select_fields} FROM warehouse.processed_beans_view"
-SQL_SCALAR_SEARCH_BEANS = "SELECT * EXCLUDE(title_length, summary_length, content_length) FROM warehouse.processed_beans_view"
-SQL_VECTOR_SEARCH_BEANS = f"SELECT * EXCLUDE(title_length, summary_length, content_length), array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance FROM warehouse.processed_beans_view"
-SQL_LATEST_CHATTERS = "SELECT * FROM warehouse.bean_chatters_view"
-
-SQL_REFRESH_CATEGORIES = f"""
-INSERT INTO warehouse.computed_bean_categories
-SELECT url, LIST(category) as categories FROM warehouse.missing_categories_view mc
-LEFT JOIN LATERAL (
-    SELECT category FROM warehouse.fixed_categories
-    ORDER BY array_cosine_distance(mc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-    LIMIT 3
-) ON TRUE
-GROUP BY url;
-"""
-SQL_REFRESH_SENTIMENTS = f"""
-INSERT INTO warehouse.computed_bean_sentiments
-SELECT url, LIST(sentiment) as sentiments FROM warehouse.missing_sentiments_view ms
-LEFT JOIN LATERAL (
-    SELECT sentiment FROM warehouse.fixed_sentiments
-    ORDER BY array_cosine_distance(ms.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-    LIMIT 3
-) ON TRUE
-GROUP BY url;
-"""
-# This is an expensive operation. So working in batches of 512
-SQL_REFRESH_CLUSTERS = f"""
-INSERT INTO warehouse.computed_bean_clusters
-WITH 
-    bean_embeddings_query AS (
-        SELECT e.* FROM warehouse.bean_embeddings e
-        INNER JOIN ( 
-           SELECT * FROM warehouse.bean_cores 
-           WHERE collected >= CURRENT_TIMESTAMP - INTERVAL '28 days'
-        ) b ON b.url = e.url 
-    ),
-    missing_clusters_query AS (
-        SELECT * FROM warehouse.missing_clusters_view LIMIT 512
-    ),
-    combined_embeddings AS (
-        SELECT * FROM bean_embeddings_query
-        UNION
-        SELECT * FROM missing_clusters_query
-    )
-SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
-FROM missing_clusters_query mcl
-CROSS JOIN combined_embeddings e
-WHERE distance <= {CLUSTER_EPS};
-"""
-SQL_COUNT_MISSING_CLUSTERS = "SELECT count(*) FROM warehouse.missing_clusters_view;"
 
 SQL_CLEANUP = """
 -- CALL ducklake_merge_adjacent_files('warehouse');
@@ -169,32 +108,28 @@ def _where(
     if conditions: return " WHERE "+ (" AND ".join(conditions)), params
     return None, None
 
+_deduplicate =lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
+
 class Beansack:
     def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
             'enable_http_metadata_cache': True,
             'ducklake_max_retry_count': 100
-        }       
+        }
         
         with open(os.path.join(os.path.dirname(__file__), 'warehousev2.sql'), 'r') as sql_file:
             init_sql = sql_file.read().format(
                 # loading prefixed categories and sentiments
                 factory=os.path.expanduser(factory_dir),
-                catalog_path=catalogdb,
-                data_path=storagedb,
+                catalog_path= f"postgres:{catalogdb}" if catalogdb.startswith("postgresql://") else catalogdb,
+                data_path=os.path.expanduser(storagedb),
             )
 
         self.db = duckdb.connect(config=config) 
         self.execute(init_sql)
         log.debug("Data warehouse initialized.")
-            
-    def deduplicate(self, table: str, field: str, items: list) -> list:
-        if not items: return items
-        ids = [getattr(item, field) for item in items]
-        existing_ids = self._exists(table, field, ids) or []
-        return [item for id, item in zip(ids, items) if id not in existing_ids]
-
+    
     def _exists(self, table: str, field: str, ids: list) -> list[str]:
         if not ids: return
         cursor = self.db.cursor()
@@ -207,41 +142,10 @@ class Beansack:
             params=ids
         )
         return [row[0] for row in rel.fetchall()]
-    
-    # def to_dataframe(self, items: list, dtype_specs=None):
-    #     if not items: return
-    #     df = pd.DataFrame([item.model_dump() for item in items])
-    #     if dtype_specs: df = df.astype(dtype_specs)
-    #     return df    
-    
-    # def _bulk_insert_as_dataframe(self, table: str, items: list, dtype_specs):
-    #     @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
-    #     def _insert_dataframe(df):
-    #         if table == "chatters": expr = SQL_INSERT_CHATTERS_DF
-    #         else: expr = SQL_INSERT_DF.format(table=table)
-    #         cursor = self.db.cursor()
-    #         cursor.execute(expr)
-    #         cursor.close()
-
-    #     if items: _insert_dataframe(self.to_dataframe(items, dtype_specs))
-    #     log.debug(f"inserted", {"source": table, "count": len(items)})
-    #     return items
-
-    # def _bulk_insert_as_parquet(self, table: str, items: list, dtype_specs):
-    #     @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
-    #     def _insert_parquet(df):
-    #         filename = f".beansack/{table}/{int(datetime.now().timestamp())}_{random.randint(1000, 9999)}.parquet"
-    #         df.to_parquet(filename)
-    #         cursor = self.db.cursor()
-    #         cursor.execute(SQL_INSERT_PARQUET, (table, filename,))
-    #         cursor.close()
-
-    #     if items: _insert_parquet(self.to_dataframe(items, dtype_specs))
-    #     log.debug(f"inserted", {"source": table, "count": len(items)})
-    #     return items    
 
     ##### Store methods
     def _beans_to_df(self, beans: list[Bean], columns):
+        beans = _deduplicate(beans, K_URL)
         if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
         else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_BEAN_FIELDS) for bean in beans] 
         
@@ -259,6 +163,7 @@ class Beansack:
 
     def store_beans(self, beans: list[Bean]) -> list[Bean]:                   
         if not beans: return
+       
         bean_filter = lambda bean: bool(bean.title and bean.collected and bean.created and bean.source and bean.kind)
         df = self._beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
         # insert the non null columns
@@ -275,7 +180,7 @@ class Beansack:
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return None
-        
+
         df = self._beans_to_df(beans, list(set(columns+[K_URL])) if columns else None)
         fields = columns or df.columns
         updates = [f"{f} = pack.{f}" for f in fields]
@@ -287,7 +192,7 @@ class Beansack:
         """
         return self._execute_df(SQL_UPDATE, df)    
 
-    def update_classifications(self):
+    def refresh_classifications(self):
         SQL_UPDATE_CLASSIFICATION = f"""
         WITH needs_classification AS (
             SELECT url, embedding FROM warehouse.beans
@@ -313,7 +218,7 @@ class Beansack:
         """
         return self.execute(SQL_UPDATE_CLASSIFICATION)
     
-    def update_clusters(self):
+    def refresh_clusters(self):
         # NOTE: the current timestamp is necessary for both queries
         # otherwise it will loop for ever
         SQL_COUNT_MISSING_CLUSTERS = """
@@ -325,8 +230,8 @@ class Beansack:
         """
 
         # calculate and update for a batch of 512, otherwise it dies
-        SQL_UPDATE_CLUSTERS = f"""
-        -- first insert into related beans
+        # first insert into related beans
+        SQL_INSERT_RELATED = f"""
         WITH 
             scope AS (
                 SELECT url, embedding, cluster_id FROM warehouse.beans 
@@ -338,16 +243,21 @@ class Beansack:
                 SELECT url, embedding FROM scope
                 WHERE cluster_id IS NULL                
             )
-        INSERT INTO warehouse.computed_related_beans        
+        INSERT INTO warehouse._internal_related_beans        
         SELECT nr.url as url, s.url as related, abs(array_distance(nr.embedding::FLOAT[{VECTOR_LEN}], s.embedding::FLOAT[{VECTOR_LEN}])) as distance 
         FROM need_relating nr
         CROSS JOIN scope s
         WHERE distance <= {CLUSTER_EPS};
-        
-        -- then update the clusters in beans
+        """
+        self.execute(SQL_INSERT_RELATED)
+        # then update clusters
+        return self._update_clusters()  
+    
+    def _update_clusters(self):
+        SQL_UPDATE_CLUSTERS = f"""
         WITH 
             need_clustering AS (
-                SELECT * FROM warehouse.computed_related_beans rl
+                SELECT * FROM warehouse._internal_related_beans rl
                 WHERE EXISTS (
                     SELECT 1 FROM warehouse.beans b
                     WHERE b.cluster_id IS NULL
@@ -355,7 +265,7 @@ class Beansack:
             ),
             cluster_sizes AS (
                 SELECT related, count(*) AS cluster_size 
-                FROM warehouse.computed_related_beans 
+                FROM warehouse._internal_related_beans 
                 GROUP BY related
             )
         MERGE INTO warehouse.beans
@@ -370,59 +280,79 @@ class Beansack:
         ) AS pack
         USING (url)
         WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;"""
-        return self.execute(SQL_UPDATE_CLUSTERS)        
+        return self.execute(SQL_UPDATE_CLUSTERS)  
 
-    def store_chatters(self, items: list[Chatter]):       
-        # there is no primary key here
-        items = list(filter(lambda x: x.likes or x.comments or x.subscribers, items))    
-        if not beans: return
-        df = self._beans_to_df(
-            rectify_bean_fields(beans), 
-            lambda bean: bool(bean.title and bean.collected and bean.created and bean.source and bean.kind)
-        )
-        # insert the non null columns
+    def _store_related_beans(self, relations: list[dict]):
+        if not relations: return
+
+        df = pd.DataFrame(relations)
         fields=', '.join(col for col in df.columns if df[col].notnull().any())
-        SQL_INSERT_BEANS = f"""
-        INSERT INTO warehouse.beans ({fields})
+        SQL_INSERT = f"""
+        INSERT INTO warehouse._internal_related_beans ({fields})
         SELECT {fields} FROM df
         WHERE NOT EXISTS (
-            SELECT 1 FROM warehouse.beans b
-            WHERE b.url = df.url
+            SELECT 1 FROM warehouse._internal_related_beans r
+            WHERE r.url = df.url AND r.related = df.related
         );
         """
-        return self._execute_df(SQL_INSERT_BEANS, df)     
-        # return self._bulk_insert_as_dataframe("chatters", items, Chatter.Config.dtype_specs)
+        self._execute_df(SQL_INSERT, df)     
+        return self._update_clusters()
 
-    def store_publishers(self, items: list[Publisher]):      
-        items = list(filter(lambda x: x.source and x.base_url, items))
-        # items = self.deduplicate("publishers", "source", items)
-        if not beans: return
-        df = self._beans_to_df(
-            rectify_bean_fields(beans), 
-            lambda bean: bool(bean.title and bean.collected and bean.created and bean.source and bean.kind)
-        )
-        # insert the non null columns
+    def store_chatters(self, chatters: list[Chatter]):       
+        if not chatters: return
+
+        chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
+        chatters = list(filter(chatter_filter, chatters))
+        if not chatters: return
+
+        df = pd.DataFrame([chatters.model_dump(exclude=["shares"]) for chatters in chatters])        
         fields=', '.join(col for col in df.columns if df[col].notnull().any())
-        SQL_INSERT_BEANS = f"""
-        INSERT INTO warehouse.beans ({fields})
+        SQL_INSERT = f"""
+        INSERT INTO warehouse.chatters ({fields})
+        SELECT {fields} FROM df;
+        """
+        return self._execute_df(SQL_INSERT, df)     
+    
+    def refresh_chatter_aggregates(self):    
+        SQL_INSERT_AGGREGATES = f"""
+        INSERT INTO warehouse._internal_chatter_aggregates        
+        SELECT *, CURRENT_TIMESTAMP as refresh_ts 
+        FROM warehouse._internal_chatter_aggregates_view
+        WHERE updated >= CURRENT_TIMESTAMP - INTERVAL '1 month';
+
+        DELETE FROM warehouse._internal_chatter_aggregates    
+        WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '1 day';
+        """
+        return self.execute(SQL_INSERT_AGGREGATES)  
+
+    def store_publishers(self, publishers: list[Publisher]): 
+        if not publishers: return
+
+        pub_filter = lambda x: bool(x.source and x.base_url)
+        publishers = list(filter(pub_filter, _deduplicate(publishers, K_SOURCE)))
+        if not publishers: return
+        
+        df = pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
+
+        ic(df.sample(n=min(5, len(df))))
+        fields=', '.join(col for col in df.columns if df[col].notnull().any())
+        SQL_INSERT = f"""
+        INSERT INTO warehouse.publishers ({fields})
         SELECT {fields} FROM df
         WHERE NOT EXISTS (
-            SELECT 1 FROM warehouse.beans b
-            WHERE b.url = df.url
+            SELECT 1 FROM warehouse.publishers p
+            WHERE p.source = df.source
         );
         """
-        return self._execute_df(SQL_INSERT_BEANS, df)
-        # return self._bulk_insert_as_dataframe("publishers", items, Publisher.Config.dtype_specs)
+        return self._execute_df(SQL_INSERT, df)
 
     ###### Query methods
     def exists(self, urls: list[str]) -> list[str]:
         return self._exists("bean_", "url", urls)
     
     def count_items(self, table):
-        cursor = self.db.cursor()
-        count = cursor.query(SQL_COUNT_ROWS.format(table=table)).fetchone()[0]
-        cursor.close()
-        return count
+        SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
+        return self.query_one(SQL_COUNT)
 
     def query_latest_beans(self, 
         kind: str = None, 
@@ -453,28 +383,6 @@ class Beansack:
         cursor.close()
 
         return beans
-
-    # def query_contents_with_missing_embeddings(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:        
-    #     query_expr = "SELECT * FROM warehouse.missing_embeddings_view"
-    #     return self._query_cores(query_expr, conditions, 0, limit)
-
-    # def query_contents_with_missing_gists(self, conditions: list[str] = None, limit: int = 0) -> list[BeanCore]:        
-    #     query_expr = "SELECT * FROM warehouse.missing_gists_view"
-    #     return self._query_cores(query_expr, conditions, 0, limit)
-    
-    # def query_processed_beans(self, kind: str = None, created: datetime = None, categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, sources: list[str] = None, embedding: list[float] = None, distance: float = 0, offset: int = 0, limit: int = 0, select: list[str] = None):        
-    #     query_expr = _select("processed_beans_view", select or ["* EXCLUDE(title_length, summary_length, content_length)"], embedding)
-    #     conditions, params = _where(
-    #         kind=kind, created=created, categories=categories, regions=regions, entities=entities, sources=sources, distance=distance)
-    #     if conditions: query_expr += " WHERE " + " AND ".join(conditions)
-    #     if embedding: params = [embedding] + params
-
-    #     cursor = self.db.cursor()
-    #     rel = cursor.query(query_expr, params=params)
-    #     rel = rel.order("created DESC")
-    #     if distance: rel = rel.order("distance ASC")
-    #     if offset or limit: rel = rel.limit(limit, offset=offset)
-    #     return [Bean(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
 
     def query_bean_chatters(self, collected: datetime, limit: int):        
         query_expr = SQL_LATEST_CHATTERS

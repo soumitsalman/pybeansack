@@ -156,8 +156,10 @@ class Beansack:
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
             'enable_http_metadata_cache': True,
-            'ducklake_max_retry_count': 100
-        }        
+            'ducklake_max_retry_count': 100,
+            'max_temp_directory_size': '10GiB',
+            'memory_limit': '15GiB',
+        }
 
         if catalogdb.startswith("postgresql://"): catalogdb = f"postgres:{catalogdb}"
         s3_endpoint, s3_region, s3_access_key_id, s3_secret_access_key = "", "", "", ""
@@ -266,6 +268,17 @@ class Beansack:
     def exists(self, urls: list[str]) -> list[str]:
         return self._exists("bean_cores", "url", urls)
 
+    def count_items(self, table) -> int:
+        query_expr = f"SELECT COUNT(*) FROM warehouse.{table}"
+        return self.query_one(query_expr)
+
+    def get_items(self, table: str, offset: int = 0, limit: int = 0) -> list:
+        query_expr = f"SELECT * FROM warehouse.{table}"
+        cursor = self.db.cursor()
+        rel = cursor.query(query_expr)
+        if limit: rel = rel.limit(limit, offset=offset)
+        return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+
     def _query_cores(self, query_expr, conditions, offset: int, limit: int) -> list[BeanCore]:
         conditions, _ = _create_where_exprs(condition_exprs=conditions)
         if conditions: query_expr += " WHERE " + " AND ".join(conditions)
@@ -319,7 +332,7 @@ class Beansack:
         return [Publisher(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
     
     ##### Maintenance methods
-    def query(self, query_expr: str, params: list = None) -> list[dict]:
+    def query(self, query_expr: str, params = None) -> list[dict]:
         cursor = self.db.cursor()
         rel = cursor.query(query_expr, params=params)
         return [dict(zip(rel.columns, row)) for row in rel.fetchall()]

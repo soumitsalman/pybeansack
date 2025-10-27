@@ -159,7 +159,7 @@ def test_store_sources():
             found.append(Publisher(
                 source=item.get('source'),
                 base_url=item.get('site_base_url'),
-                title=item.get('site_name'),
+                site_name=item.get('site_name'),
                 description=item.get('site_description'),
                 favicon=item.get('site_favicon'),
                 rss_feed=item.get('site_rss_feed')

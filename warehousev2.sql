@@ -73,13 +73,13 @@ SELECT * FROM read_parquet('{factory}/sentiments.parquet');
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
 
-CREATE TABLE IF NOT EXISTS computed_related_beans (
+CREATE TABLE IF NOT EXISTS _internal_related_beans (
     url VARCHAR NOT NULL,
     related VARCHAR NOT NULL,
     distance FLOAT DEFAULT 0.0
 );
 
-CREATE VIEW IF NOT EXISTS bean_chatters_view AS
+CREATE VIEW IF NOT EXISTS _internal_chatter_aggregates_view AS
 WITH 
     max_stats AS (
         SELECT 
@@ -112,12 +112,12 @@ FROM(
 ) 
 GROUP BY url;
 
-CREATE TABLE IF NOT EXISTS compute_bean_chatters (
+CREATE TABLE IF NOT EXISTS _internal_chatter_aggregates (
     url VARCHAR NOT NULL,  -- Foreign key to Bean.url
     updated DATE NOT NULL,
     likes UINT32,
     comments UINT32,
     subscribers UINT32,
     shares UINT32,
-    compute_ts TIMESTAMP NOT NULL
+    refresh_ts TIMESTAMP NOT NULL
 );
