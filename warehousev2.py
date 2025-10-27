@@ -64,9 +64,9 @@ RETRY_DELAY = (1,5)  # seconds
 SQL_EXISTS = "SELECT {field} FROM warehouse.{table} WHERE {field} IN ({placeholders})"
 
 SQL_CLEANUP = """
--- CALL ducklake_merge_adjacent_files('warehouse');
-CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 week');
-CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 week');
+CALL ducklake_merge_adjacent_files('warehouse');
+CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 day');
+CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 day');
 CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
 """
 SQL_CURRENT_SNAPSHOT = "SELECT * FROM warehouse.current_snapshot();"
