@@ -11,72 +11,16 @@ from .models import *
 from .utils import *
 from icecream import ic
 
-# SQL_INSERT_CATEGORIES = """INSERT INTO warehouse.bean_categories
-# SELECT e.url, LIST(m.category) AS categories
-# FROM warehouse.bean_embeddings e 
-# LEFT JOIN LATERAL (
-#     SELECT category FROM warehouse.categories c
-#     ORDER BY array_cosine_distance(e.embedding::FLOAT[384], c.embedding::FLOAT[384]) 
-#     LIMIT 3
-# ) AS m ON TRUE
-# WHERE e.url IN ({urls})
-# GROUP BY e.url;"""
-
-# SQL_INSERT_SENTIMENTS = """INSERT INTO warehouse.bean_sentiments
-# SELECT e.url, LIST(m.sentiment) AS sentiments
-# FROM warehouse.bean_embeddings e
-# LEFT JOIN LATERAL (
-#     SELECT sentiment FROM warehouse.sentiments s
-#     ORDER BY array_cosine_distance(e.embedding::FLOAT[384], s.embedding::FLOAT[384]) 
-#     LIMIT 3
-# ) AS m ON TRUE
-# WHERE e.url IN ({urls})
-# GROUP BY e.url;"""
-
-# SQL_INSERT_CLUSTERS = """INSERT INTO warehouse.bean_clusters
-# SELECT e1.url, m.url as related, m.distance
-# FROM warehouse.bean_embeddings e1
-# LEFT JOIN LATERAL (
-#     SELECT e2.url, array_distance(e1.embedding::FLOAT[384], e2.embedding::FLOAT[384]) as distance
-#     FROM warehouse.bean_embeddings e2
-#     WHERE distance <= 0.43 AND e1.url <> e2.url
-# ) as m ON TRUE
-# WHERE e1.url IN ({urls}) AND m.url IS NOT NULL;"""
-
-# related beans identification option 1 - LEFT JOIN LATERAL
-# INSERT INTO warehouse.computed_bean_clusters
-# SELECT url, related, distance
-# FROM missing_clusters_view mcl
-# LEFT JOIN LATERAL (
-#     SELECT e.url as related, array_distance(mcl.embedding::FLOAT[384], e.embedding::FLOAT[384]) as distance 
-#     FROM bean_embeddings e
-#     WHERE e.url <> mcl.url AND distance <= 0.43
-# ) ON url <> related
-# WHERE related IS NOT NULL;
-
 RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
 
-
-
-# SQL_COUNT_ROWS = "SELECT count(*) FROM warehouse.{table};"
-
-SQL_EXISTS = "SELECT {field} FROM warehouse.{table} WHERE {field} IN ({placeholders})"
-
-SQL_CLEANUP = """
-CALL ducklake_merge_adjacent_files('warehouse');
-CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 day');
-CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 day');
-CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
-"""
-SQL_CURRENT_SNAPSHOT = "SELECT * FROM warehouse.current_snapshot();"
-
-_EXCLUDE_BEAN_FIELDS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
+DIGEST_COLUMNS = [K_URL, K_GIST, K_CATEGORIES, K_SENTIMENTS]
 
 log = logging.getLogger(__name__)
 
 def _select(table: str, columns: list[str] = None, embedding: list[float] = None):
-    fields = columns.copy() or ["*"]
+    if columns: fields = columns.copy()
+    else: fields = ["*"]
     if embedding: fields.append(f"array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance")
     return f"SELECT {', '.join(fields)} FROM warehouse.{table}", [embedding] if embedding else None
 
@@ -132,22 +76,15 @@ class Beansack:
     
     def _exists(self, table: str, field: str, ids: list) -> list[str]:
         if not ids: return
-        cursor = self.db.cursor()
-        rel = cursor.query(
-            SQL_EXISTS.format(
-                table=table, 
-                field=field, 
-                placeholders=','.join('?' for _ in ids)
-            ), 
-            params=ids
-        )
-        return [row[0] for row in rel.fetchall()]
+        SQL_EXISTS = f"SELECT {field} FROM warehouse.{table} WHERE {field} IN ({','.join('?' for _ in ids)})"
+        return self.query(SQL_EXISTS, params=ids)
 
     ##### Store methods
     def _beans_to_df(self, beans: list[Bean], columns):
+        EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
         beans = _deduplicate(beans, K_URL)
         if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
-        else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_BEAN_FIELDS) for bean in beans] 
+        else: beans = [bean.model_dump(exclude_none=True, exclude=EXCLUDE_COLUMNS) for bean in beans] 
         
         df = pd.DataFrame(beans)
         fields = columns or [col for col in df.columns if df[col].notnull().any()]
@@ -333,8 +270,6 @@ class Beansack:
         if not publishers: return
         
         df = pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
-
-        ic(df.sample(n=min(5, len(df))))
         fields=', '.join(col for col in df.columns if df[col].notnull().any())
         SQL_INSERT = f"""
         INSERT INTO warehouse.publishers ({fields})
@@ -348,27 +283,27 @@ class Beansack:
 
     ###### Query methods
     def exists(self, urls: list[str]) -> list[str]:
-        return self._exists("bean_", "url", urls)
+        return self._exists("bean", "url", urls)
     
     def count_items(self, table):
         SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
         return self.query_one(SQL_COUNT)
 
-    def query_latest_beans(self, 
+    def _query_beans(self, 
+        table: str = "beans",
         kind: str = None, 
-        created: datetime = None, collected: datetime = None,
+        created: datetime = None, collected: datetime = None, updated: datetime = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         exprs: list[str] = None,
+        order: str = None,
         limit: int = 0, offset: int = 0, 
-        select: list[str] = None
+        columns: list[str] = None
     ) -> list[Bean]:
-        # create the query expr
-        columns = select + ([K_URL] if K_URL not in select else []) + ([K_CREATED] if K_CREATED not in select else [])     
-        expr, select_params = _select("beans", columns, embedding)
-        where_expr, where_params = _where(kind, created, collected, None, categories, regions, entities, sources, distance, exprs)
+        expr, select_params = _select(table, columns, embedding)
+        where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, sources, distance, exprs)
         if where_expr: expr += where_expr
         params = []
         if select_params: params.extend(select_params)
@@ -376,22 +311,82 @@ class Beansack:
 
         cursor = self.db.cursor()
         rel = cursor.query(expr, params=params)
-        rel = rel.order("created DESC")
+        if order: rel = rel.order(order)
         if distance: rel = rel.order("distance ASC")
         if offset or limit: rel = rel.limit(limit, offset=offset)
         beans = [Bean(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
         cursor.close()
 
         return beans
+    
+    def query_latest_beans(self,
+        kind: str = None, 
+        created: datetime = None, 
+        categories: list[str] = None, 
+        regions: list[str] = None, entities: list[str] = None, 
+        sources: list[str] = None, 
+        embedding: list[float] = None, distance: float = 0, 
+        exprs: list[str] = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Bean]:
+        if columns: fields = list(set(columns + [K_CREATED]))
+        else: fields = None
+        return self._query_beans(
+            table="beans",
+            kind=kind,
+            created=created,
+            categories=categories,
+            regions=regions,
+            entities=entities,
+            sources=sources,
+            embedding=embedding,
+            distance=distance,
+            exprs=exprs,
+            order="created DESC",
+            limit=limit,
+            offset=offset,
+            columns=fields
+        )
+    
+    def query_trending_beans(self,
+        kind: str = None, 
+        updated: datetime = None, 
+        categories: list[str] = None, 
+        regions: list[str] = None, entities: list[str] = None, 
+        sources: list[str] = None, 
+        embedding: list[float] = None, distance: float = 0, 
+        exprs: list[str] = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Bean]:
+        if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
+        else: fields = None
+        return self._query_beans(
+            table="trending_beans_view",
+            kind=kind,
+            updated=updated,
+            categories=categories,
+            regions=regions,
+            entities=entities,
+            sources=sources,
+            embedding=embedding,
+            distance=distance,
+            exprs=exprs,
+            order="updated DESC, comments DESC, likes DESC",
+            limit=limit,
+            offset=offset,
+            columns=fields
+        )
 
-    def query_bean_chatters(self, collected: datetime, limit: int):        
-        query_expr = SQL_LATEST_CHATTERS
-        conditions, params = _where(collected=collected)
-        if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr, params=params)
-        if limit: rel = rel.limit(limit)
-        return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    # def query_bean_chatters(self, collected: datetime, limit: int):        
+    #     query_expr = SQL_LATEST_CHATTERS
+    #     conditions, params = _where(collected=collected)
+    #     if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
+    #     cursor = self.db.cursor()
+    #     rel = cursor.query(query_expr, params=params)
+    #     if limit: rel = rel.limit(limit)
+    #     return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
     
     def query_publishers(self, conditions: list[str] = None, limit: int = None):        
         query_expr = "SELECT * FROM warehouse.publishers"
@@ -421,28 +416,25 @@ class Beansack:
         cursor.close()
 
     def recompute(self):       
-        self.execute(SQL_REFRESH_CATEGORIES)
-        log.debug("Refreshed computed categories.")
-        self.execute(SQL_REFRESH_SENTIMENTS)
-        log.debug("Refreshed computed sentiments.")
-        # NOTE: clustering needs to be done in smaller batches or else it dies
-        # from tqdm import tqdm
-        # start_count = self.query_one(SQL_COUNT_MISSING_CLUSTERS)
-        # with tqdm(total=start_count, desc="Clustering", unit="beans") as pbar:
-        #     while start_count:
-        #         self.execute(SQL_REFRESH_CLUSTERS)
-        #         current_count = self.query_one(SQL_COUNT_MISSING_CLUSTERS)
-        #         pbar.update(start_count - current_count)
-        #         start_count = current_count
-        while self.query_one(SQL_COUNT_MISSING_CLUSTERS):
-            self.execute(SQL_REFRESH_CLUSTERS)
-        log.debug("Refreshed computed clusters.")
+        self.refresh_classifications()
+        log.debug("Refreshed classifications.")
+        self.refresh_clusters()
+        log.debug("Refreshed clusters.")
+        self.refresh_chatter_aggregates()
+        log.debug("Refreshed chatter aggregates.")
 
-    def cleanup(self):     
+    def cleanup(self):
+        SQL_CLEANUP = """
+        CALL ducklake_merge_adjacent_files('warehouse');
+        CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 day');
+        CALL ducklake_cleanup_old_files('warehouse', older_than => now() - INTERVAL '1 day');
+        CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
+        """     
         self.db.execute(SQL_CLEANUP)
         log.debug("Compacted data files.")
 
     def snapshot(self):
+        SQL_CURRENT_SNAPSHOT = "SELECT * FROM warehouse.current_snapshot();"
         return self.query_one(SQL_CURRENT_SNAPSHOT)
     
     def close(self):

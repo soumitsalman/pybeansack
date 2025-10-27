@@ -121,3 +121,14 @@ CREATE TABLE IF NOT EXISTS _internal_chatter_aggregates (
     shares UINT32,
     refresh_ts TIMESTAMP NOT NULL
 );
+
+CREATE VIEW IF NOT EXISTS trending_beans_view AS
+SELECT * EXCLUDE(ch.url) FROM beans b
+INNER JOIN (
+    SELECT a.* FROM _internal_chatter_aggregates a
+    JOIN (
+        SELECT url, MAX(refresh_ts) AS max_refresh
+        FROM _internal_chatter_aggregates
+        GROUP BY url
+    ) mx ON a.url = mx.url AND a.refresh_ts = mx.max_refresh
+) ch ON b.url = ch.url;
