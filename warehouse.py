@@ -439,7 +439,7 @@ class Beansack:
         CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
         CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
         """     
-        self.db.execute(SQL_CLEANUP)
+        self.execute(SQL_CLEANUP)
         log.debug("Compacted data files.")
 
     def snapshot(self):
