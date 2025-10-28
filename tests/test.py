@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from models import *
 from mongosack import Beansack as Mongosack
-from warehouse import Beansack as Beanwarehouse, CLUSTER_EPS, SQL_CLEANUP
+from delete_warehouse import Beansack as Beanwarehouse, CLUSTER_EPS, SQL_CLEANUP
 import argparse
 
 DATA_DIR = os.getenv("DATA_DIR", ".coffeemaker")
