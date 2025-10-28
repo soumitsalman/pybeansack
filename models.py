@@ -102,8 +102,8 @@ class Chatter(BaseModel):
 class Publisher(BaseModel):
     source: str = Field(min_length=1) # this is domain name that gets matched with the source field in Bean
     base_url: str = Field(min_length=1)
-    site_name: Optional[str] = Field(default=None, alias="title")
-    description: Optional[str] = Field(default=None, alias="summary")
+    site_name: Optional[str] = Field(default=None)
+    description: Optional[str] = Field(default=None)
     favicon: Optional[str] = Field(default=None)
     rss_feed: Optional[str] = Field(default=None)
 
