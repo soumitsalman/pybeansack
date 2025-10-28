@@ -2,8 +2,19 @@ INSTALL ducklake;
 LOAD ducklake;
 INSTALL sqlite;
 LOAD sqlite;
+INSTALL httpfs;
+LOAD httpfs;
 INSTALL postgres;
 LOAD postgres;
+
+CREATE OR REPLACE SECRET s3secret (
+    TYPE s3,
+    PROVIDER config,
+    ENDPOINT '{s3_endpoint}',
+    REGION '{s3_region}',
+    KEY_ID '{s3_access_key_id}',
+    SECRET '{s3_secret_access_key}'
+);
 
 ATTACH 'ducklake:{catalog_path}' AS warehouse (DATA_PATH '{data_path}');
 USE warehouse;

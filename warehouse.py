@@ -61,6 +61,11 @@ class Beansack:
             'enable_http_metadata_cache': True,
             'ducklake_max_retry_count': 100
         }
+
+        s3_endpoint = os.getenv('S3_ENDPOINT', '')
+        s3_region = os.getenv('S3_REGION', '')
+        s3_access_key_id = os.getenv('S3_ACCESS_KEY_ID', '')
+        s3_secret_access_key = os.getenv('S3_SECRET_ACCESS_KEY', '')
         
         with open(os.path.join(os.path.dirname(__file__), 'warehouse.sql'), 'r') as sql_file:
             init_sql = sql_file.read().format(
@@ -68,6 +73,11 @@ class Beansack:
                 factory=os.path.expanduser(factory_dir),
                 catalog_path= f"postgres:{catalogdb}" if catalogdb.startswith("postgresql://") else catalogdb,
                 data_path=os.path.expanduser(storagedb),
+                # s3 storage configurations
+                s3_access_key_id=s3_access_key_id,
+                s3_secret_access_key=s3_secret_access_key,
+                s3_endpoint=s3_endpoint,
+                s3_region=s3_region,
             )
 
         self.db = duckdb.connect(config=config) 
