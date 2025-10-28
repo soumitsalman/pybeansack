@@ -250,15 +250,15 @@ class Beansack:
         """
         return self._execute_df(SQL_INSERT, df)     
     
-    def refresh_chatter_aggregates(self):    
+    def refresh_chatter_aggregates(self):  
+        # WHERE updated >= CURRENT_TIMESTAMP - INTERVAL '1 month';  
         SQL_INSERT_AGGREGATES = f"""
         INSERT INTO warehouse._internal_chatter_aggregates        
         SELECT *, CURRENT_TIMESTAMP as refresh_ts 
-        FROM warehouse._internal_chatter_aggregates_view
-        WHERE updated >= CURRENT_TIMESTAMP - INTERVAL '1 month';
+        FROM warehouse._internal_chatter_aggregates_view;        
 
         DELETE FROM warehouse._internal_chatter_aggregates    
-        WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '1 day';
+        WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '1 hour';
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
 
@@ -282,6 +282,12 @@ class Beansack:
         return self._execute_df(SQL_INSERT, df)
 
     ###### Query methods
+    def deduplicate(self, table: str, idkey: str, items: list) -> list:
+        if not items: return items
+        ids = [getattr(item, idkey) for item in items]
+        existing_ids = self._exists(table, idkey, ids) or []
+        return [item for id, item in zip(ids, items) if id not in existing_ids]
+    
     def exists(self, urls: list[str]) -> list[str]:
         return self._exists("bean", "url", urls)
     
