@@ -147,18 +147,22 @@ class Beansack:
         )
         MERGE INTO warehouse.beans
         USING (
-            SELECT url, LIST(category) as categories, LIST(sentiment) as sentiments FROM needs_classification nc
+            SELECT 
+                nc.url,
+                LIST(DISTINCT fc.category) as categories,
+                LIST(DISTINCT fs.sentiment) as sentiments
+            FROM needs_classification nc
             LEFT JOIN LATERAL (
                 SELECT category FROM warehouse.fixed_categories
-                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+                ORDER BY array_cosine_distance(nc.embedding::FLOAT[384], embedding::FLOAT[384])
                 LIMIT 3
-            ) ON TRUE
+            ) fc ON TRUE
             LEFT JOIN LATERAL (
                 SELECT sentiment FROM warehouse.fixed_sentiments
-                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+                ORDER BY array_cosine_distance(nc.embedding::FLOAT[384], embedding::FLOAT[384])
                 LIMIT 3
-            ) ON TRUE
-            GROUP BY url
+            ) fs ON TRUE
+            GROUP BY nc.url
         ) AS pack
         USING (url)
         WHEN MATCHED THEN UPDATE SET categories = pack.categories, sentiments = pack.sentiments;
@@ -186,12 +190,12 @@ class Beansack:
             ),
             needs_relating AS (
                 SELECT s.* FROM scope s
-                INNER JOIN warehouse._internal_related_beans r ON s.url = r.url
+                LEFT JOIN warehouse._internal_related_beans r ON s.url = r.url
                 WHERE r.related IS NULL         
             )
         INSERT INTO warehouse._internal_related_beans        
         SELECT nr.url as url, s.url as related, abs(array_distance(nr.embedding::FLOAT[{VECTOR_LEN}], s.embedding::FLOAT[{VECTOR_LEN}])) as distance 
-        FROM needS_relating nr
+        FROM needs_relating nr
         CROSS JOIN scope s
         WHERE distance <= {CLUSTER_EPS};
         """
