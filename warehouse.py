@@ -186,7 +186,9 @@ class Beansack:
         WITH 
             scope AS (
                 SELECT url, embedding FROM warehouse.beans                 
-                WHERE embedding IS NOT NULL
+                WHERE 
+                    embedding IS NOT NULL
+                    AND collected >= CURRENT_TIMESTAMP - INTERVAL '30 days'
             ),
             needs_relating AS (
                 SELECT s.* FROM scope s
