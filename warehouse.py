@@ -201,7 +201,8 @@ class Beansack:
         CROSS JOIN scope s
         WHERE distance <= {CLUSTER_EPS};
         """
-        return self.execute(SQL_INSERT_RELATED)
+        self.execute(SQL_INSERT_RELATED)
+        self.refresh_clusters()
     
     def refresh_clusters(self):
         SQL_UPDATE_CLUSTERS = f"""
@@ -439,14 +440,11 @@ class Beansack:
         cursor.close()
 
     def recompute(self):    
-        ic(self.refresh_classifications())
-        log.debug("Refreshed classifications.")
-        ic(self.refresh_related_beans())
-        log.debug("Refreshed related beans.")
-        ic(self.refresh_clusters())
-        log.debug("Refreshed clusters.")
-        ic(self.refresh_chatter_aggregates())
-        log.debug("Refreshed chatter aggregates.")
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            executor.submit(self.refresh_classifications)
+            executor.submit(self.refresh_related_beans)
+            executor.submit(self.refresh_chatter_aggregates)
 
     def cleanup(self):
         SQL_CLEANUP = """
