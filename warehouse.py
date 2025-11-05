@@ -194,8 +194,10 @@ class Beansack:
         WITH 
             needs_clustering AS (
                 SELECT rb.* FROM warehouse._internal_related_beans rb
-                INNER JOIN warehouse.beans b ON rb.url = b.url
-                WHERE b.cluster_id IS NULL
+                WHERE EXISTS (
+                    SELECT 1 FROM beans b 
+                    WHERE b.url = rb.url AND cluster_id IS NULL
+                )
             ),
             cluster_sizes AS (
                 SELECT related, count(*) AS cluster_size 
