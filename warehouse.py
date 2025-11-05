@@ -169,17 +169,7 @@ class Beansack:
         """
         return self.execute(SQL_UPDATE_CLASSIFICATION)
     
-    def refresh_related_beans(self):
-        # # NOTE: the current timestamp is necessary for both queries
-        # # otherwise it will loop for ever
-        # SQL_COUNT_MISSING_CLUSTERS = """
-        # SELECT count(*) FROM warehouse.beans 
-        # WHERE 
-        #     cluster_id IS NULL 
-        #     AND embedding IS NOT NULL
-        #     AND collected >= CURRENT_TIMESTAMP - INTERVAL '28 days';
-        # """
-
+    def refresh_clusters(self):
         # calculate and update for a batch of 512, otherwise it dies
         # first insert into related beans
         SQL_INSERT_RELATED = f"""
@@ -200,12 +190,7 @@ class Beansack:
         FROM needs_relating nr
         CROSS JOIN scope s
         WHERE distance <= {CLUSTER_EPS};
-        """
-        self.execute(SQL_INSERT_RELATED)
-        self.refresh_clusters()
-    
-    def refresh_clusters(self):
-        SQL_UPDATE_CLUSTERS = f"""
+
         WITH 
             needs_clustering AS (
                 SELECT rb.* FROM warehouse._internal_related_beans rb
@@ -228,8 +213,36 @@ class Beansack:
             GROUP BY url
         ) AS pack
         USING (url)
-        WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;"""
-        return self.execute(SQL_UPDATE_CLUSTERS)  
+        WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;
+        """
+        return self.execute(SQL_INSERT_RELATED)
+    
+    # def refresh_clusters(self):
+    #     SQL_UPDATE_CLUSTERS = f"""
+    #     WITH 
+    #         needs_clustering AS (
+    #             SELECT rb.* FROM warehouse._internal_related_beans rb
+    #             INNER JOIN warehouse.beans b ON rb.url = b.url
+    #             WHERE b.cluster_id IS NULL
+    #         ),
+    #         cluster_sizes AS (
+    #             SELECT related, count(*) AS cluster_size 
+    #             FROM warehouse._internal_related_beans 
+    #             GROUP BY related
+    #         )
+    #     MERGE INTO warehouse.beans
+    #     USING (
+    #         SELECT 
+    #             url, 
+    #             FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id,
+    #             COUNT(*) AS cluster_size
+    #         FROM needs_clustering cl
+    #         INNER JOIN cluster_sizes clsz ON cl.related = clsz.related
+    #         GROUP BY url
+    #     ) AS pack
+    #     USING (url)
+    #     WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;"""
+    #     return self.execute(SQL_UPDATE_CLUSTERS)  
 
     # def _store_related_beans(self, relations: list[dict]):
     #     if not relations: return
@@ -443,7 +456,7 @@ class Beansack:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=4) as executor:
             executor.submit(self.refresh_classifications)
-            executor.submit(self.refresh_related_beans)
+            executor.submit(self.refresh_clusters)
             executor.submit(self.refresh_chatter_aggregates)
 
     def cleanup(self):
