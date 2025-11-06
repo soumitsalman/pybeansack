@@ -154,12 +154,12 @@ class Beansack:
             FROM needs_classification nc
             LEFT JOIN LATERAL (
                 SELECT category FROM warehouse.fixed_categories
-                ORDER BY array_cosine_distance(nc.embedding::FLOAT[384], embedding::FLOAT[384])
+                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
                 LIMIT 3
             ) fc ON TRUE
             LEFT JOIN LATERAL (
                 SELECT sentiment FROM warehouse.fixed_sentiments
-                ORDER BY array_cosine_distance(nc.embedding::FLOAT[384], embedding::FLOAT[384])
+                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
                 LIMIT 3
             ) fs ON TRUE
             GROUP BY nc.url
@@ -172,7 +172,7 @@ class Beansack:
     def refresh_clusters(self):
         # calculate and update for a batch of 512, otherwise it dies
         # first insert into related beans
-        SQL_INSERT_RELATED = f"""
+        SQL_INSERT_CLUSTER = f"""
         WITH 
             scope AS (
                 SELECT url, embedding FROM warehouse.beans                 
@@ -182,10 +182,10 @@ class Beansack:
             ),
             needs_relating AS (
                 SELECT s.* FROM scope s
-                LEFT JOIN warehouse._internal_related_beans r ON s.url = r.url
+                LEFT JOIN warehouse._materialized_bean_clusters r ON s.url = r.url
                 WHERE r.related IS NULL         
             )
-        INSERT INTO warehouse._internal_related_beans        
+        INSERT INTO warehouse._materialized_bean_clusters        
         SELECT nr.url as url, s.url as related, abs(array_distance(nr.embedding::FLOAT[{VECTOR_LEN}], s.embedding::FLOAT[{VECTOR_LEN}])) as distance 
         FROM needs_relating nr
         CROSS JOIN scope s
@@ -193,31 +193,27 @@ class Beansack:
 
         WITH 
             needs_clustering AS (
-                SELECT rb.* FROM warehouse._internal_related_beans rb
+                SELECT rb.* FROM warehouse._materialized_bean_clusters rb
                 WHERE EXISTS (
-                    SELECT 1 FROM beans b 
-                    WHERE b.url = rb.url AND cluster_id IS NULL
+                    SELECT 1 FROM warehouse._materialized_bean_cluster_stats cb 
+                    WHERE cb.url = rb.url 
                 )
             ),
             cluster_sizes AS (
                 SELECT related, count(*) AS cluster_size 
-                FROM warehouse._internal_related_beans 
+                FROM warehouse._materialized_bean_clusters 
                 GROUP BY related
             )
-        MERGE INTO warehouse.beans
-        USING (
-            SELECT 
-                url, 
-                FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id,
-                COUNT(*) AS cluster_size
-            FROM needs_clustering cl
-            INNER JOIN cluster_sizes clsz ON cl.related = clsz.related
-            GROUP BY url
-        ) AS pack
-        USING (url)
-        WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;
+        INSERT INTO warehouse._materialized_bean_cluster_stats
+        SELECT 
+            url, 
+            FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id,
+            COUNT(*) AS cluster_size
+        FROM needs_clustering cl
+        INNER JOIN cluster_sizes clsz ON cl.related = clsz.related
+        GROUP BY url;
         """
-        return self.execute(SQL_INSERT_RELATED)
+        return self.execute(SQL_INSERT_CLUSTER)
     
     # def refresh_clusters(self):
     #     SQL_UPDATE_CLUSTERS = f"""
@@ -280,11 +276,11 @@ class Beansack:
     def refresh_chatter_aggregates(self):  
         # WHERE updated >= CURRENT_TIMESTAMP - INTERVAL '1 month';  
         SQL_INSERT_AGGREGATES = f"""
-        INSERT INTO warehouse._internal_chatter_aggregates        
+        INSERT INTO warehouse._materialized_chatter_aggregates        
         SELECT *, CURRENT_TIMESTAMP as refresh_ts 
         FROM warehouse._internal_chatter_aggregates_view;        
 
-        DELETE FROM warehouse._internal_chatter_aggregates    
+        DELETE FROM warehouse._materialized_chatter_aggregates    
         WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '1 hour';
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
@@ -414,10 +410,10 @@ class Beansack:
 
     def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
         SQL_LATEST_CHATTERS = """
-        SELECT a.* FROM warehouse._internal_chatter_aggregates a
+        SELECT a.* FROM warehouse._computed_chatter_aggregates a
         JOIN (
             SELECT url, MAX(refresh_ts) AS max_refresh
-            FROM warehouse._internal_chatter_aggregates
+            FROM warehouse._materialized_chatter_aggregates
             WHERE updated >= ?
             GROUP BY url
         ) mx ON a.url = mx.url AND a.refresh_ts = mx.max_refresh;
