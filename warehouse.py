@@ -118,6 +118,8 @@ class Beansack:
         df = self._beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
         # insert the non null columns
         fields=', '.join(df.columns)
+        if not fields: return
+
         SQL_INSERT = f"""
         INSERT INTO warehouse.beans ({fields})
         SELECT {fields} FROM df
