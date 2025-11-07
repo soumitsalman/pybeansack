@@ -142,11 +142,11 @@ CREATE TABLE IF NOT EXISTS _materialized_aggregated_chatters (
 
 CREATE VIEW IF NOT EXISTS trending_beans_view AS
 SELECT * EXCLUDE(ch.url) FROM beans b
-INNER JOIN _materialized_chatter_aggregates ch ON b.url = ch.url;
+INNER JOIN _materialized_aggregated_chatters ch ON b.url = ch.url;
 
 
 CREATE VIEW IF NOT EXISTS aggregated_beans_view AS
 SELECT * EXCLUDE(b.cluster_id, b.cluster_size, cl.url, ch.url, p.source) FROM beans b
 LEFT JOIN _materialized_bean_cluster_stats cl ON b.url = cl.url
-LEFT JOIN _materialized_chatter_aggregates ch ON b.url = ch.url
+LEFT JOIN _materialized_aggregated_chatters ch ON b.url = ch.url
 LEFT JOIN publishers p ON b.source = p.source;

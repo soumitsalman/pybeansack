@@ -459,11 +459,11 @@ class Beansack:
 
     def refresh_aggregated_chatters(self):  
         SQL_INSERT_AGGREGATES = f"""
-        INSERT INTO warehouse._materialized_chatter_aggregates        
+        INSERT INTO warehouse._materialized_aggregated_chatters        
         SELECT *, CURRENT_TIMESTAMP as refresh_ts 
-        FROM warehouse._internal_chatter_aggregates_view;        
+        FROM warehouse._internal_aggregated_chatters_view;        
 
-        DELETE FROM warehouse._materialized_chatter_aggregates    
+        DELETE FROM warehouse._materialized_aggregated_chatters    
         WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '1 hour';
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
