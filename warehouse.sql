@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS beans (
 
     -- CLASSIFICATION FIELDS
     embedding FLOAT[],
+
+    -- TODO: DEPRECATE THESE FIELDS IN FAVOR OF MATERIALIZED VIEWS
     categories VARCHAR[],
     sentiments VARCHAR[],
     cluster_id VARCHAR,
@@ -83,6 +85,13 @@ CREATE TABLE IF NOT EXISTS fixed_sentiments AS
 SELECT * FROM read_parquet('{factory}/sentiments.parquet');
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
+-- THIS IS COMPUTED FROM BEAN EMBEDDINGS BEING COMPARED TO CATEGORIES AND SENTIMENTS
+CREATE TABLE IF NOT EXISTS _materialized_bean_classifications (
+    url VARCHAR NOT NULL,
+    categories VARCHAR[] NOT NULL,
+    sentiments VARCHAR[] NOT NULL
+);
+
 -- THIS IS COMPUTED FROM BEANS EMBEDDINGS BEING COMPARED TO OTHER BEANS EMBEDDINGS
 CREATE TABLE IF NOT EXISTS _materialized_bean_clusters (
     url VARCHAR NOT NULL,
@@ -140,13 +149,23 @@ CREATE TABLE IF NOT EXISTS _materialized_aggregated_chatters (
     refresh_ts TIMESTAMP NOT NULL
 );
 
+DROP VIEW IF EXISTS latest_beans_view;
+CREATE VIEW IF NOT EXISTS latest_beans_view AS
+SELECT * EXCLUDE(b.categories, b.sentiments, c.url) FROM beans b
+LEFT JOIN _materialized_bean_classifications c ON b.url = c.url;
+
+DROP VIEW IF EXISTS trending_beans_view;
 CREATE VIEW IF NOT EXISTS trending_beans_view AS
-SELECT * EXCLUDE(ch.url) FROM beans b
+SELECT * EXCLUDE(b.categories, b.sentiments, c.url, ch.url) FROM beans b
+LEFT JOIN _materialized_bean_classifications c ON b.url = c.url
 INNER JOIN _materialized_aggregated_chatters ch ON b.url = ch.url;
 
-
+DROP VIEW IF EXISTS aggregated_beans_view;
 CREATE VIEW IF NOT EXISTS aggregated_beans_view AS
-SELECT * EXCLUDE(b.cluster_id, b.cluster_size, cl.url, ch.url, p.source) FROM beans b
+SELECT * EXCLUDE(b.categories, b.sentiments, b.cluster_id, b.cluster_size, c.url, cl.url, ch.url, p.source) FROM beans b
+LEFT JOIN _materialized_bean_classifications c ON b.url = c.url
 LEFT JOIN _materialized_bean_cluster_stats cl ON b.url = cl.url
 LEFT JOIN _materialized_aggregated_chatters ch ON b.url = ch.url
-LEFT JOIN publishers p ON b.source = p.source;
+LEFT JOIN (
+    SELECT DISTINCT * FROM publishers
+) p ON b.source = p.source;

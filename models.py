@@ -370,6 +370,9 @@ num_words = lambda text: min(len(text.split()) if text else 0, 1<<15)  # SMALLIN
 _EXCLUDE_AUTHORS = ["[no-author]", "noreply"]
 def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
     for item in items:
+        item.url = clean_text(item.url)
+        item.kind = clean_text(item.kind)
+        item.source = clean_text(item.source)
         item.title = clean_text(item.title)
         item.title_length = num_words(item.title)
         item.summary = clean_text(item.summary)
@@ -382,4 +385,13 @@ def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
         item.collected = item.collected or now()
         if item.author and any(ex for ex in _EXCLUDE_AUTHORS if ex in item.author): item.author = None
         if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
+    return items
+
+def rectify_publisher_fields(items: list[Publisher]) -> list[Publisher]:
+    for item in items:        
+        item.source = clean_text(item.source)
+        item.base_url = clean_text(item.base_url)
+        item.favicon = clean_text(item.favicon)
+        item.rss_feed = clean_text(item.rss_feed)
+        item.description = clean_text(item.description)
     return items

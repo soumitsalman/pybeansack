@@ -55,7 +55,7 @@ def _where(
     if conditions: return " WHERE "+ (" AND ".join(conditions)), params
     return None, None
 
-_deduplicate =lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
+distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
 
 class Beansack:
     def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
@@ -95,7 +95,7 @@ class Beansack:
     ##### Store methods
     def _beans_to_df(self, beans: list[Bean], columns):
         EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
-        beans = _deduplicate(beans, K_URL)
+        beans = distinct(beans, K_URL)
         if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
         else: beans = [bean.model_dump(exclude_none=True, exclude=EXCLUDE_COLUMNS) for bean in beans] 
         
@@ -161,7 +161,9 @@ class Beansack:
         if not publishers: return
 
         pub_filter = lambda x: bool(x.source and x.base_url)
-        publishers = list(filter(pub_filter, _deduplicate(publishers, K_SOURCE)))
+        publishers = rectify_publisher_fields(publishers)        
+        publishers = list(filter(pub_filter, publishers))
+        publishers = distinct(publishers, K_SOURCE)
         if not publishers: return
         
         df = pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
@@ -169,9 +171,8 @@ class Beansack:
         SQL_INSERT = f"""
         INSERT INTO warehouse.publishers ({fields})
         SELECT {fields} FROM df
-        WHERE NOT EXISTS (
-            SELECT 1 FROM warehouse.publishers p
-            WHERE p.source = df.source
+        WHERE source NOT IN (
+            SELECT source FROM warehouse.publishers p
         );
         """
         return self._execute_df(SQL_INSERT, df)
@@ -236,7 +237,7 @@ class Beansack:
         if columns: fields = list(set(columns + [K_CREATED]))
         else: fields = None
         return self._query_beans(
-            table="beans",
+            table="latest_beans_view",
             kind=kind,
             created=created,
             collected=collected,
@@ -355,34 +356,35 @@ class Beansack:
         cursor.close()
 
     def refresh_classifications(self):
-        SQL_UPDATE_CLASSIFICATION = f"""
+        SQL_INSERT_CLASSIFICATION = f"""
         WITH needs_classification AS (
-            SELECT url, embedding FROM warehouse.beans
-            WHERE categories IS NULL AND embedding IS NOT NULL
+            SELECT url, embedding FROM warehouse.beans b
+            WHERE 
+                embedding IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM warehouse._materialized_bean_classifications c
+                    WHERE c.url = b.url
+                )                
         )
-        MERGE INTO warehouse.beans
-        USING (
-            SELECT 
-                nc.url,
-                LIST(DISTINCT fc.category) as categories,
-                LIST(DISTINCT fs.sentiment) as sentiments
-            FROM needs_classification nc
-            LEFT JOIN LATERAL (
-                SELECT category FROM warehouse.fixed_categories
-                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-                LIMIT 3
-            ) fc ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT sentiment FROM warehouse.fixed_sentiments
-                ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-                LIMIT 3
-            ) fs ON TRUE
-            GROUP BY nc.url
-        ) AS pack
-        USING (url)
-        WHEN MATCHED THEN UPDATE SET categories = pack.categories, sentiments = pack.sentiments;
+        INSERT INTO warehouse._materialized_bean_classifications
+        SELECT 
+            nc.url,
+            LIST(DISTINCT fc.category) as categories,
+            LIST(DISTINCT fs.sentiment) as sentiments
+        FROM needs_classification nc
+        LEFT JOIN LATERAL (
+            SELECT category FROM warehouse.fixed_categories
+            ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+            LIMIT 3
+        ) fc ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT sentiment FROM warehouse.fixed_sentiments
+            ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+            LIMIT 3
+        ) fs ON TRUE
+        GROUP BY nc.url
         """
-        return self.execute(SQL_UPDATE_CLASSIFICATION)
+        return self.execute(SQL_INSERT_CLASSIFICATION)
     
     def refresh_clusters(self):
         # calculate and update for a batch of 512, otherwise it dies
