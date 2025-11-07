@@ -15,6 +15,9 @@ RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
 
 DIGEST_COLUMNS = [K_URL, K_GIST, K_CATEGORIES, K_SENTIMENTS]
+ORDER_BY_LATEST = "created DESC"
+ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
+ORDER_BY_DISTANCE = "distance ASC"
 
 log = logging.getLogger(__name__)
 
@@ -139,6 +142,218 @@ class Beansack:
         """
         return self._execute_df(SQL_UPDATE, df)    
 
+    def store_chatters(self, chatters: list[Chatter]):       
+        if not chatters: return
+
+        chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
+        chatters = list(filter(chatter_filter, chatters))
+        if not chatters: return
+
+        df = pd.DataFrame([chatters.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatters in chatters])        
+        fields=', '.join(col for col in df.columns if df[col].notnull().any())
+        SQL_INSERT = f"""
+        INSERT INTO warehouse.chatters ({fields})
+        SELECT {fields} FROM df;
+        """
+        return self._execute_df(SQL_INSERT, df)     
+
+    def store_publishers(self, publishers: list[Publisher]): 
+        if not publishers: return
+
+        pub_filter = lambda x: bool(x.source and x.base_url)
+        publishers = list(filter(pub_filter, _deduplicate(publishers, K_SOURCE)))
+        if not publishers: return
+        
+        df = pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
+        fields=', '.join(col for col in df.columns if df[col].notnull().any())
+        SQL_INSERT = f"""
+        INSERT INTO warehouse.publishers ({fields})
+        SELECT {fields} FROM df
+        WHERE NOT EXISTS (
+            SELECT 1 FROM warehouse.publishers p
+            WHERE p.source = df.source
+        );
+        """
+        return self._execute_df(SQL_INSERT, df)
+
+    ###### Query methods
+    def deduplicate(self, table: str, idkey: str, items: list) -> list:
+        if not items: return items
+        ids = [getattr(item, idkey) for item in items]
+        existing_ids = self._exists(table, idkey, ids) or []
+        return [item for id, item in zip(ids, items) if id not in existing_ids]
+    
+    def exists(self, urls: list[str]) -> list[str]:
+        return self._exists("bean", "url", urls)
+    
+    def count_items(self, table):
+        SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
+        return self.query_one(SQL_COUNT)
+
+    def _query_beans(self, 
+        table: str = "beans",
+        kind: str = None, 
+        created: datetime = None, collected: datetime = None, updated: datetime = None,
+        categories: list[str] = None, 
+        regions: list[str] = None, entities: list[str] = None, 
+        sources: list[str] = None, 
+        embedding: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        order: str = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None,
+        model = Bean
+    ) -> list[Bean]:
+        select_expr, select_params = _select(table, columns, embedding)
+        where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, sources, distance, conditions)
+        if where_expr: select_expr += where_expr
+        params = []
+        if select_params: params.extend(select_params)
+        if where_params: params.extend(where_params)
+
+        cursor = self.db.cursor()
+        rel = cursor.query(select_expr, params=params)
+        if order: rel = rel.order(order)
+        if distance: rel = rel.order(ORDER_BY_DISTANCE)
+        if offset or limit: rel = rel.limit(limit, offset=offset)
+        beans = [model(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+        cursor.close()
+
+        return beans
+    
+    def query_latest_beans(self,
+        kind: str = None, 
+        created: datetime = None, 
+        collected: datetime = None,
+        categories: list[str] = None, 
+        regions: list[str] = None, entities: list[str] = None, 
+        sources: list[str] = None, 
+        embedding: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Bean]:
+        if columns: fields = list(set(columns + [K_CREATED]))
+        else: fields = None
+        return self._query_beans(
+            table="beans",
+            kind=kind,
+            created=created,
+            collected=collected,
+            categories=categories,
+            regions=regions,
+            entities=entities,
+            sources=sources,
+            embedding=embedding,
+            distance=distance,
+            conditions=conditions,
+            order=ORDER_BY_LATEST,
+            limit=limit,
+            offset=offset,
+            columns=fields
+        )
+    
+    def query_trending_beans(self,
+        kind: str = None, 
+        updated: datetime = None, 
+        collected: datetime = None,
+        categories: list[str] = None, 
+        regions: list[str] = None, entities: list[str] = None, 
+        sources: list[str] = None, 
+        embedding: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Bean]:
+        if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
+        else: fields = None
+        return self._query_beans(
+            table="trending_beans_view",
+            kind=kind,
+            updated=updated,
+            collected=collected,
+            categories=categories,
+            regions=regions,
+            entities=entities,
+            sources=sources,
+            embedding=embedding,
+            distance=distance,
+            conditions=conditions,
+            order=ORDER_BY_TRENDING,
+            limit=limit,
+            offset=offset,
+            columns=fields
+        )
+    
+    def query_aggregated_beans(self,
+        kind: str = None, 
+        created: datetime = None, 
+        collected: datetime = None,
+        updated: datetime = None,
+        categories: list[str] = None, 
+        regions: list[str] = None, entities: list[str] = None, 
+        sources: list[str] = None, 
+        embedding: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Bean]:
+        if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
+        else: fields = None
+        return self._query_beans(
+            table="aggregated_beans_view",
+            kind=kind,
+            created=created,
+            collected=collected,
+            updated=updated,
+            categories=categories,
+            regions=regions,
+            entities=entities,
+            sources=sources,
+            embedding=embedding,
+            distance=distance,
+            conditions=conditions,
+            order=ORDER_BY_LATEST,
+            limit=limit,
+            offset=offset,
+            columns=fields,
+            model=AggregatedBean
+        )
+
+    def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
+        SQL_LATEST_CHATTERS = """SELECT * FROM warehouse._materialized_chatter_aggregates WHERE updated >= ?;"""
+        cursor = self.db.cursor()
+        rel = cursor.query(SQL_LATEST_CHATTERS, params=(updated,))
+        if limit: rel = rel.limit(limit)
+        return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    
+    def query_publishers(self, conditions: list[str] = None, limit: int = None):        
+        query_expr = "SELECT * FROM warehouse.publishers"
+        if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
+        cursor = self.db.cursor()
+        rel = cursor.query(query_expr)
+        if limit: rel = rel.limit(limit)
+        return [Publisher(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    
+    ##### Maintenance methods
+    def query(self, query_expr: str, params: list = None) -> list[dict]:
+        cursor = self.db.cursor()
+        rel = cursor.query(query_expr, params=params)
+        return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+    
+    def query_one(self, query_expr: str, params: list = None):
+        cursor = self.db.cursor()
+        rel = cursor.query(query_expr, params=params)
+        count = rel.fetchone()[0]
+        cursor.close()
+        return count
+
+    @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    def execute(self, expr: str, params: list = None):
+        cursor = self.db.cursor()
+        cursor.execute(expr, params)
+        cursor.close()
+
     def refresh_classifications(self):
         SQL_UPDATE_CLASSIFICATION = f"""
         WITH needs_classification AS (
@@ -193,10 +408,10 @@ class Beansack:
 
         WITH 
             needs_clustering AS (
-                SELECT rb.* FROM warehouse._materialized_bean_clusters rb
-                WHERE EXISTS (
-                    SELECT 1 FROM warehouse._materialized_bean_cluster_stats cb 
-                    WHERE cb.url = rb.url 
+                SELECT cl.* FROM warehouse._materialized_bean_clusters cl
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM warehouse._materialized_bean_cluster_stats stats
+                    WHERE stats.url = cl.url 
                 )
             ),
             cluster_sizes AS (
@@ -242,39 +457,7 @@ class Beansack:
     #     WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;"""
     #     return self.execute(SQL_UPDATE_CLUSTERS)  
 
-    # def _store_related_beans(self, relations: list[dict]):
-    #     if not relations: return
-
-    #     df = pd.DataFrame(relations)
-    #     fields=', '.join(col for col in df.columns if df[col].notnull().any())
-    #     SQL_INSERT = f"""
-    #     INSERT INTO warehouse._internal_related_beans ({fields})
-    #     SELECT {fields} FROM df
-    #     WHERE NOT EXISTS (
-    #         SELECT 1 FROM warehouse._internal_related_beans r
-    #         WHERE r.url = df.url AND r.related = df.related
-    #     );
-    #     """
-    #     self._execute_df(SQL_INSERT, df)     
-        # return self._update_clusters()
-
-    def store_chatters(self, chatters: list[Chatter]):       
-        if not chatters: return
-
-        chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
-        chatters = list(filter(chatter_filter, chatters))
-        if not chatters: return
-
-        df = pd.DataFrame([chatters.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatters in chatters])        
-        fields=', '.join(col for col in df.columns if df[col].notnull().any())
-        SQL_INSERT = f"""
-        INSERT INTO warehouse.chatters ({fields})
-        SELECT {fields} FROM df;
-        """
-        return self._execute_df(SQL_INSERT, df)     
-    
-    def refresh_chatter_aggregates(self):  
-        # WHERE updated >= CURRENT_TIMESTAMP - INTERVAL '1 month';  
+    def refresh_aggregated_chatters(self):  
         SQL_INSERT_AGGREGATES = f"""
         INSERT INTO warehouse._materialized_chatter_aggregates        
         SELECT *, CURRENT_TIMESTAMP as refresh_ts 
@@ -285,177 +468,12 @@ class Beansack:
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
 
-    def store_publishers(self, publishers: list[Publisher]): 
-        if not publishers: return
-
-        pub_filter = lambda x: bool(x.source and x.base_url)
-        publishers = list(filter(pub_filter, _deduplicate(publishers, K_SOURCE)))
-        if not publishers: return
-        
-        df = pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
-        fields=', '.join(col for col in df.columns if df[col].notnull().any())
-        SQL_INSERT = f"""
-        INSERT INTO warehouse.publishers ({fields})
-        SELECT {fields} FROM df
-        WHERE NOT EXISTS (
-            SELECT 1 FROM warehouse.publishers p
-            WHERE p.source = df.source
-        );
-        """
-        return self._execute_df(SQL_INSERT, df)
-
-    ###### Query methods
-    def deduplicate(self, table: str, idkey: str, items: list) -> list:
-        if not items: return items
-        ids = [getattr(item, idkey) for item in items]
-        existing_ids = self._exists(table, idkey, ids) or []
-        return [item for id, item in zip(ids, items) if id not in existing_ids]
-    
-    def exists(self, urls: list[str]) -> list[str]:
-        return self._exists("bean", "url", urls)
-    
-    def count_items(self, table):
-        SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
-        return self.query_one(SQL_COUNT)
-
-    def _query_beans(self, 
-        table: str = "beans",
-        kind: str = None, 
-        created: datetime = None, collected: datetime = None, updated: datetime = None,
-        categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
-        sources: list[str] = None, 
-        embedding: list[float] = None, distance: float = 0, 
-        exprs: list[str] = None,
-        order: str = None,
-        limit: int = 0, offset: int = 0, 
-        columns: list[str] = None
-    ) -> list[Bean]:
-        expr, select_params = _select(table, columns, embedding)
-        where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, sources, distance, exprs)
-        if where_expr: expr += where_expr
-        params = []
-        if select_params: params.extend(select_params)
-        if where_params: params.extend(where_params)
-
-        cursor = self.db.cursor()
-        rel = cursor.query(expr, params=params)
-        if order: rel = rel.order(order)
-        if distance: rel = rel.order("distance ASC")
-        if offset or limit: rel = rel.limit(limit, offset=offset)
-        beans = [Bean(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
-        cursor.close()
-
-        return beans
-    
-    def query_latest_beans(self,
-        kind: str = None, 
-        created: datetime = None, 
-        categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
-        sources: list[str] = None, 
-        embedding: list[float] = None, distance: float = 0, 
-        exprs: list[str] = None,
-        limit: int = 0, offset: int = 0, 
-        columns: list[str] = None
-    ) -> list[Bean]:
-        if columns: fields = list(set(columns + [K_CREATED]))
-        else: fields = None
-        return self._query_beans(
-            table="beans",
-            kind=kind,
-            created=created,
-            categories=categories,
-            regions=regions,
-            entities=entities,
-            sources=sources,
-            embedding=embedding,
-            distance=distance,
-            exprs=exprs,
-            order="created DESC",
-            limit=limit,
-            offset=offset,
-            columns=fields
-        )
-    
-    def query_trending_beans(self,
-        kind: str = None, 
-        updated: datetime = None, 
-        categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
-        sources: list[str] = None, 
-        embedding: list[float] = None, distance: float = 0, 
-        exprs: list[str] = None,
-        limit: int = 0, offset: int = 0, 
-        columns: list[str] = None
-    ) -> list[Bean]:
-        if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
-        else: fields = None
-        return self._query_beans(
-            table="trending_beans_view",
-            kind=kind,
-            updated=updated,
-            categories=categories,
-            regions=regions,
-            entities=entities,
-            sources=sources,
-            embedding=embedding,
-            distance=distance,
-            exprs=exprs,
-            order="updated DESC, comments DESC, likes DESC",
-            limit=limit,
-            offset=offset,
-            columns=fields
-        )
-
-    def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
-        SQL_LATEST_CHATTERS = """
-        SELECT a.* FROM warehouse._computed_chatter_aggregates a
-        JOIN (
-            SELECT url, MAX(refresh_ts) AS max_refresh
-            FROM warehouse._materialized_chatter_aggregates
-            WHERE updated >= ?
-            GROUP BY url
-        ) mx ON a.url = mx.url AND a.refresh_ts = mx.max_refresh;
-        """
-        cursor = self.db.cursor()
-        rel = cursor.query(SQL_LATEST_CHATTERS, params=(updated,))
-        if limit: rel = rel.limit(limit)
-        return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
-    
-    def query_publishers(self, conditions: list[str] = None, limit: int = None):        
-        query_expr = "SELECT * FROM warehouse.publishers"
-        if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr)
-        if limit: rel = rel.limit(limit)
-        return [Publisher(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
-    
-    ##### Maintenance methods
-    def query(self, query_expr: str, params: list = None) -> list[dict]:
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr, params=params)
-        return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
-    
-    def query_one(self, query_expr: str, params: list = None):
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr, params=params)
-        count = rel.fetchone()[0]
-        cursor.close()
-        return count
-
-    @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
-    def execute(self, expr: str, params: list = None):
-        cursor = self.db.cursor()
-        cursor.execute(expr, params)
-        cursor.close()
-
-    def recompute(self):    
+    def refresh_materialized_tables(self):    
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=4) as executor:
             executor.submit(self.refresh_classifications)
             executor.submit(self.refresh_clusters)
-            executor.submit(self.refresh_chatter_aggregates)
+            executor.submit(self.refresh_aggregated_chatters)
 
     def cleanup(self):
         SQL_CLEANUP = """
@@ -475,9 +493,5 @@ class Beansack:
         if not self.db: return        
         self.db.close()        
         log.debug("Database connection closed.")
-
-    # TODO: backup catalog somewhere
-    def backup(self):
-        raise NotImplementedError("Backup not implemented")
 
  

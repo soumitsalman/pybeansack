@@ -31,6 +31,7 @@ K_ENTITIES = "entities"
 K_UPDATED = "updated"
 K_COLLECTED = "collected"
 K_CLUSTER_ID = "cluster_id"
+K_CLUSTER_SIZE = "cluster_size"
 K_HIGHLIGHTS = "highlights"
 K_IMAGEURL = "image_url"
 K_CREATED = "created"
@@ -59,6 +60,7 @@ TITLE_LENGTH = "title_length"
 K_BASE_URL = "base_url"
 K_RSS_FEED = "rss_feed"
 K_FAVICON = "favicon"
+K_SITE_NAME = "site_name"
 
 SYSTEM = "__SYSTEM__"
 
@@ -119,7 +121,7 @@ class Publisher(BaseModel):
 
 class Bean(BaseModel):
     # collected / scraped fields
-    id: str = Field(default=None, alias="_id")
+    id: Optional[str] = Field(default=None, alias="_id")
     url: str    
     kind: Optional[str] = None
     source: Optional[str] = None
@@ -144,16 +146,16 @@ class Bean(BaseModel):
     # derived fields
     categories: Optional[list[str]] = None
     sentiments: Optional[list[str]] = None
-    cluster_id: Optional[str] = None
-    cluster_size: Optional[int] = Field(default=None)
-    related: Optional[list[str]] = Field(default=None)       
+    # cluster_id: Optional[str] = None
+    # cluster_size: Optional[int] = Field(default=None)
+    # related: Optional[list[str]] = Field(default=None)       
     
     # query support fields
-    tags: Optional[list[str]|str] = None
-    publisher: Optional[Publisher] = Field(default=None) # this is the source info
-    chatter: Optional[Chatter] = Field(default=None) # this is the latest chatter info
-    trend_score: Optional[int] = Field(default=None) # a bean is always similar to itself
-    updated: Optional[datetime] = None
+    # tags: Optional[list[str]|str] = None
+    # publisher: Optional[Publisher] = Field(default=None) # this is the source info
+    # chatter: Optional[Chatter] = Field(default=None) # this is the latest chatter info
+    # trend_score: Optional[int] = Field(default=None) 
+    # updated: Optional[datetime] = None
     distance: Optional[float|int] = None
 
     # chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
@@ -196,13 +198,32 @@ class Bean(BaseModel):
             'entities': 'object'  
         }
 
-# class GeneratedBean(Bean):
-#     kind: str = Field(default=OPED)
-#     topic: Optional[str] = None
-#     intro: Optional[str|list[str]] = None
-#     highlights: Optional[list[str]] = None
-#     insights: Optional[list[str]] = None
-#     predictions: Optional[list[str]] = None
+class AggregatedBean(Bean, Chatter, Publisher): 
+    # adding aggregated bean specific field
+    tags: Optional[list[str]|str] = Field(default=None)
+    cluster_id: Optional[str] = Field(default=None)
+    cluster_size: Optional[int] = Field(default=None)
+    related: Optional[list[str]] = Field(default=None)
+    trend_score: Optional[int] = Field(default=None) 
+
+    # modifying publisher fields for rendering
+    source: Optional[str] = Field(default=None) # this is domain name that gets matched with the source field in Bean
+    base_url: Optional[str] = Field(default=None)
+
+    # modifying chatters fields for rendering
+    likes: Optional[int] = Field(default=None)
+    comments: Optional[int] = Field(default=None)
+    shares: Optional[int] = Field(default=None)
+    subscribers: Optional[int] = Field(default=None)
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
+        json_encoders={datetime: rfc3339}
+       
 
 class BeanCore(BaseModel):
     # core fields

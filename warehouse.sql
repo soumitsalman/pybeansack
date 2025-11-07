@@ -84,7 +84,6 @@ SELECT * FROM read_parquet('{factory}/sentiments.parquet');
 
 -- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
 -- THIS IS COMPUTED FROM BEANS EMBEDDINGS BEING COMPARED TO OTHER BEANS EMBEDDINGS
-
 CREATE TABLE IF NOT EXISTS _materialized_bean_clusters (
     url VARCHAR NOT NULL,
     related VARCHAR NOT NULL,
@@ -98,7 +97,7 @@ CREATE TABLE IF NOT EXISTS _materialized_bean_cluster_stats (
     cluster_size UINT32 NOT NULL
 );
 
-CREATE VIEW IF NOT EXISTS _internal_chatter_aggregates_view AS
+CREATE VIEW IF NOT EXISTS _internal_aggregated_chatters_view AS
 WITH 
     max_stats AS (
         SELECT 
@@ -131,7 +130,7 @@ FROM(
 ) 
 GROUP BY url;
 
-CREATE TABLE IF NOT EXISTS _materialized_chatter_aggregates (
+CREATE TABLE IF NOT EXISTS _materialized_aggregated_chatters (
     url VARCHAR NOT NULL,  -- Foreign key to Bean.url
     updated DATE NOT NULL,
     likes UINT32,
@@ -143,11 +142,11 @@ CREATE TABLE IF NOT EXISTS _materialized_chatter_aggregates (
 
 CREATE VIEW IF NOT EXISTS trending_beans_view AS
 SELECT * EXCLUDE(ch.url) FROM beans b
-INNER JOIN (
-    SELECT a.* FROM _materialized_chatter_aggregates a
-    JOIN (
-        SELECT url, MAX(refresh_ts) AS max_refresh
-        FROM _materialized_chatter_aggregates
-        GROUP BY url
-    ) mx ON a.url = mx.url AND a.refresh_ts = mx.max_refresh
-) ch ON b.url = ch.url;
+INNER JOIN _materialized_chatter_aggregates ch ON b.url = ch.url;
+
+
+CREATE VIEW IF NOT EXISTS aggregated_beans_view AS
+SELECT * EXCLUDE(b.cluster_id, b.cluster_size, cl.url, ch.url, p.source) FROM beans b
+LEFT JOIN _materialized_bean_cluster_stats cl ON b.url = cl.url
+LEFT JOIN _materialized_chatter_aggregates ch ON b.url = ch.url
+LEFT JOIN publishers p ON b.source = p.source;
