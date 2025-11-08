@@ -141,16 +141,13 @@ CREATE TABLE IF NOT EXISTS _materialized_aggregated_chatters (
     refresh_ts TIMESTAMP NOT NULL
 );
 
-DROP VIEW IF EXISTS latest_beans_view;
 CREATE VIEW IF NOT EXISTS latest_beans_view AS
 SELECT * FROM beans b;
 
-DROP VIEW IF EXISTS trending_beans_view;
 CREATE VIEW IF NOT EXISTS trending_beans_view AS
 SELECT * EXCLUDE(ch.url) FROM beans b
 INNER JOIN _materialized_aggregated_chatters ch ON b.url = ch.url;
 
-DROP VIEW IF EXISTS aggregated_beans_view;
 CREATE VIEW IF NOT EXISTS aggregated_beans_view AS
 SELECT * EXCLUDE(b.cluster_id, b.cluster_size, cl.url, ch.url, p.source) FROM beans b
 LEFT JOIN _materialized_bean_cluster_stats cl ON b.url = cl.url
