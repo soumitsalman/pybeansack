@@ -350,7 +350,7 @@ class Beansack:
         )
 
     def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
-        SQL_LATEST_CHATTERS = """SELECT * FROM warehouse._materialized_chatter_aggregates WHERE updated >= ?;"""
+        SQL_LATEST_CHATTERS = """SELECT * FROM warehouse._materialized_aggregated_chatters WHERE updated >= ?;"""
         cursor = self.db.cursor()
         rel = cursor.query(SQL_LATEST_CHATTERS, params=(updated,))
         if limit: rel = rel.limit(limit)
