@@ -55,6 +55,30 @@ def _where(
     if conditions: return " WHERE "+ (" AND ".join(conditions)), params
     return None, None
 
+_EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
+
+##### Store methods
+def _beans_to_df(beans: list[Bean], columns):
+    if not beans: return
+
+    beans = distinct(beans, K_URL)
+    if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
+    else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_COLUMNS) for bean in beans] 
+    
+    df = pd.DataFrame(beans)
+    fields = columns or [col for col in df.columns if df[col].notnull().any()]
+    dtype_specs = {field:mapping for field, mapping in Bean.Config.dtype_specs.items() if field in [fields]}
+    return df.astype(dtype_specs)
+
+def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True):
+    if not publishers: return
+    publishers = rectify_publisher_fields(publishers)        
+    publishers = list(filter(filter_func, publishers))
+    publishers = distinct(publishers, K_SOURCE)
+    if not publishers: return
+    
+    return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
+
 distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
 
 class Beansack:
@@ -92,18 +116,6 @@ class Beansack:
         SQL_EXISTS = f"SELECT {field} FROM warehouse.{table} WHERE {field} IN ({','.join('?' for _ in ids)})"
         return self.query(SQL_EXISTS, params=ids)
 
-    ##### Store methods
-    def _beans_to_df(self, beans: list[Bean], columns):
-        EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
-        beans = distinct(beans, K_URL)
-        if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
-        else: beans = [bean.model_dump(exclude_none=True, exclude=EXCLUDE_COLUMNS) for bean in beans] 
-        
-        df = pd.DataFrame(beans)
-        fields = columns or [col for col in df.columns if df[col].notnull().any()]
-        dtype_specs = {field:mapping for field, mapping in Bean.Config.dtype_specs.items() if field in [fields]}
-        return df.astype(dtype_specs)
-
     @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def _execute_df(self, sql, df):
         cursor = self.db.cursor()
@@ -115,9 +127,8 @@ class Beansack:
         if not beans: return
        
         bean_filter = lambda bean: bool(bean.title and bean.collected and bean.created and bean.source and bean.kind)
-        df = self._beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
-        # insert the non null columns
-        fields=', '.join(df.columns)
+        df = _beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
+        fields=', '.join(df.columns.to_list())
         if not fields: return
 
         SQL_INSERT = f"""
@@ -133,9 +144,13 @@ class Beansack:
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return None
 
-        df = self._beans_to_df(beans, list(set(columns+[K_URL])) if columns else None)
-        fields = columns or df.columns
+        df = _beans_to_df(beans, list(set(columns+[K_URL])) if columns else None)
+        fields = columns or df.columns.to_list()
+        if K_URL in fields: fields.remove(K_URL)
+        if not fields: return
+
         updates = [f"{f} = pack.{f}" for f in fields]
+
         SQL_UPDATE = f"""
         MERGE INTO warehouse.beans
         USING (SELECT url, {', '.join(fields)} FROM df) AS pack
@@ -160,16 +175,11 @@ class Beansack:
         return self._execute_df(SQL_INSERT, df)     
 
     def store_publishers(self, publishers: list[Publisher]): 
-        if not publishers: return
+        df = _publishers_to_df(publishers, lambda x: bool(x.source and x.base_url))
+        if df is None: return
+        fields=', '.join(df.columns.to_list())
+        if not fields: return
 
-        pub_filter = lambda x: bool(x.source and x.base_url)
-        publishers = rectify_publisher_fields(publishers)        
-        publishers = list(filter(pub_filter, publishers))
-        publishers = distinct(publishers, K_SOURCE)
-        if not publishers: return
-        
-        df = pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
-        fields=', '.join(col for col in df.columns if df[col].notnull().any())
         SQL_INSERT = f"""
         INSERT INTO warehouse.publishers ({fields})
         SELECT {fields} FROM df
@@ -178,6 +188,22 @@ class Beansack:
         );
         """
         return self._execute_df(SQL_INSERT, df)
+
+    def update_publishers(self, publishers: list[Publisher]):
+        df = _publishers_to_df(publishers)
+        if df is None: return
+        fields = df.columns.to_list()
+        fields.remove(K_SOURCE)
+        if not fields: return
+        
+        updates = [f"{f} = pack.{f}" for f in fields]
+        SQL_UPDATE = f"""
+        MERGE INTO warehouse.publishers
+        USING (SELECT source, {', '.join(fields)} FROM df) AS pack
+        USING (source)
+        WHEN MATCHED THEN UPDATE SET {', '.join(updates)};
+        """
+        return self._execute_df(SQL_UPDATE, df)    
 
     ###### Query methods
     def deduplicate(self, table: str, idkey: str, items: list) -> list:
