@@ -527,7 +527,7 @@ class Beansack:
         FROM warehouse._internal_aggregated_chatters_view;        
 
         DELETE FROM warehouse._materialized_aggregated_chatters    
-        WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '1 hour';
+        WHERE refresh_ts < CURRENT_TIMESTAMP - INTERVAL '30 minutes';
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
 
