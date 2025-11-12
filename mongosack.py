@@ -37,6 +37,9 @@ BY_SEARCH_SCORE = {K_SEARCH_SCORE: -1}
 VALUE_EXISTS = { "$exists": True, "$ne": None}
 CLEANUP_WINDOW = 7
 
+class _Bean(Bean):
+    id: Optional[str] = Field(default=None, alias="_id")
+
 field_value = lambda items: {"$in": items} if isinstance(items, list) else items
 lower_case = lambda items: {"$in": [item.lower() for item in items if item]} if isinstance(items, list) else items.lower()
 case_insensitive = lambda items: {"$in": [re.compile(item, re.IGNORECASE) for item in items]} if isinstance(items, list) else re.compile(items, re.IGNORECASE)
@@ -174,10 +177,8 @@ class Beansack:
     ###################
     ## BEANS STORING ##
     ###################
-    def _fix_bean_ids(self, beans: list[Bean]) -> list[Bean]:
-        for bean in beans:
-            if not bean.id: bean.id = bean.url
-        return beans
+    def _fix_bean_ids(self, beans: list[Bean]) -> list[_Bean]:
+        return [_Bean(id=bean.url, **bean.model_dump(exclude_none=True)) for bean in beans]        
 
     def store_beans(self, beans: list[Bean]) -> int:   
         # beans = self.not_exists(beans)

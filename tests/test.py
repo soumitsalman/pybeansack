@@ -1,34 +1,37 @@
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from icecream import ic
-import os
-import sys
-import logging
-from dotenv import load_dotenv
 
-load_dotenv()
+# Import from package using relative imports
+from .. import mongosack, lancesack, warehouse
+from ..models import *
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import argparse
+import numpy as np
+import random
+from datetime import datetime
+from faker import Faker
+from slugify import slugify
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-from models import *
-from mongosack import Beansack as Mongosack
-from delete_warehouse import Beansack as Beanwarehouse, CLUSTER_EPS, SQL_CLEANUP
-import argparse
+faker = Faker()
 
 DATA_DIR = os.getenv("DATA_DIR", ".coffeemaker")
 BATCH_SIZE = 128
 LOG_MSG_FOUND = "[%s] offset %d, Found %d"
 LOG_MSG_STORED = "[%s] offset %d, Found %d, Stored %d"
 
-get_test_beansack = lambda dbname="test": Mongosack(
+get_test_beansack = lambda dbname="test": mongosack.Beansack(
     os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), dbname
 )
 
-get_test_warehouse = lambda: Beanwarehouse()
+get_test_warehouse = lambda: warehouse.Beansack()
 
 def _run_test_func(test_func, total=1000):
     # with ThreadPoolExecutor(max_workers=8) as executor:
@@ -643,7 +646,7 @@ def test_random_query():
     # Initialize warehouse
     warehouse = get_test_warehouse()
 
-    warehouse.execute(SQL_CLEANUP)
+    # warehouse.execute(SQL_CLEANUP)  # SQL_CLEANUP is local to warehouse.cleanup()
 #     query_expr = f"""
 #     SELECT mcl.url as url, e.url as related, array_distance(mcl.embedding::FLOAT[{VECTOR_LEN}], e.embedding::FLOAT[{VECTOR_LEN}]) as distance 
 # FROM warehouse.missing_clusters_view mcl
@@ -723,27 +726,99 @@ def test_random_query():
     logger.info("Random query test completed")
 
 
-parser = argparse.ArgumentParser(description="Run warehouse tests")
-parser.add_argument('--cores', action='store_true', help='Run store cores test')
-parser.add_argument('--embeddings', action='store_true', help='Run store embeddings test')
-parser.add_argument('--gists', action='store_true', help='Run store gists test')
-parser.add_argument('--chatters', action='store_true', help='Run store chatters test')
-parser.add_argument('--sources', action='store_true', help='Run store sources test')
-parser.add_argument('--maintenance', action='store_true', help='Run maintenance test')
-parser.add_argument('--unprocessed', action='store_true', help='Run unprocessed beans query test')
-parser.add_argument('--processed', action='store_true', help='Run processed beans query test')
-parser.add_argument('--setup', action='store_true', help='Run register test')
-parser.add_argument('--random', action='store_true', help='Run random query test')
+def generate_fake_beans():
+    generate = lambda: Bean(
+        url=faker.url(),
+        kind=faker.random_element(elements=("news", "blog")),
+        source=faker.domain_name(),
+        title=faker.sentence(nb_words=6),
+        summary=faker.paragraph(nb_sentences=5),
+        content=faker.paragraph(nb_sentences=10),
+        image_url=faker.image_url(),
+        author=faker.name(),
+        created=faker.date_time_this_year(),
+        collected=faker.date_time_this_month(),
+        embedding=np.random.random(VECTOR_LEN).tolist(),
+        gist=faker.text(max_nb_chars=200),
+        categories=[faker.word() for _ in range(3)],
+        sentiments=[faker.word() for _ in range(3)],
+        entities=[faker.name() for _ in range(3)],
+        regions=[faker.country(), faker.city()]
+    )
+    return [generate() for _ in range(random.randrange(10, 30))]
 
-if __name__ == "__main__":
-    args = parser.parse_args()
-    if args.cores: test_store_cores()
-    if args.embeddings: test_store_embeddings()
-    if args.gists: test_store_gists()
-    if args.chatters: test_store_chatters()
-    if args.sources: test_store_sources()
-    if args.maintenance: test_maintenance()
-    if args.unprocessed: test_unprocessed_beans()
-    if args.processed: test_processed_beans()
-    if args.setup: test_setup()
-    if args.random: test_random_query()
+def generate_fake_publishers():
+    generate = lambda: Publisher(
+        source=faker.domain_name(),
+        base_url=faker.url(),
+        site_name=faker.company(),
+        description=faker.sentence(nb_words=10),
+        favicon=faker.image_url(),
+        rss_feed=faker.url()
+    )
+    return [generate() for _ in range(random.randrange(5, 15))]
+
+def generate_fake_chatters():
+    generate = lambda: Chatter(
+        chatter_url=faker.url(),
+        url=faker.url(),
+        source=faker.domain_name(),
+        forum=faker.random_element(elements=("r/technology", "r/programming", "HackerNews", "Lobsters")),
+        collected=faker.date_time_this_month(),
+        updated=faker.date_time_this_month(),
+        likes=faker.random_int(min=0, max=1000),
+        comments=faker.random_int(min=0, max=500),
+        subscribers=faker.random_int(min=0, max=10000)
+    )
+    return [generate() for _ in range(random.randrange(10, 30))]
+
+def generate_fake_mugs():
+    generate = lambda: Mug(
+        id=slugify(faker.sentence(nb_words=3)),
+        title=faker.sentence(nb_words=6),
+        content=faker.paragraph(nb_sentences=8),
+        embedding=np.random.random(VECTOR_LEN).tolist(),
+        created=faker.date_time_this_year(),
+        updated=faker.date_time_this_month(),
+        sips=[slugify(faker.sentence(nb_words=2)) for _ in range(random.randrange(2, 6))],
+        highlights=[faker.sentence(nb_words=5) for _ in range(random.randrange(1, 4))],
+        tags=[faker.word() for _ in range(random.randrange(2, 5))]
+    )
+    return [generate() for _ in range(random.randrange(5, 15))]
+
+def generate_fake_sips():
+    generate = lambda: Sip(
+        id=slugify(faker.sentence(nb_words=3)),
+        title=faker.sentence(nb_words=5),
+        content=faker.paragraph(nb_sentences=6),
+        embedding=np.random.random(VECTOR_LEN).tolist(),
+        created=faker.date_time_this_year(),
+        updated=faker.date_time_this_month(),
+        mug=slugify(faker.sentence(nb_words=2)),
+        related=[slugify(faker.sentence(nb_words=3)) for _ in range(random.randrange(0, 3))],
+        beans=[faker.url() for _ in range(random.randrange(1, 5))]
+    )
+    return [generate() for _ in range(random.randrange(10, 30))]
+
+def test_lancesack():
+    db = lancesack.Beansack(f"{os.getenv('TEST_STORAGE')}/{datetime.now().strftime('%Y-%m-%d')}-lancedb/v2")
+    
+    ic(db.allbeans.count_rows())
+    ic(db.store_beans(generate_fake_beans()))
+    ic(db.allbeans.count_rows())
+
+    ic(db.allpublishers.count_rows())
+    ic(db.store_publishers(generate_fake_publishers()))
+    ic(db.allpublishers.count_rows())   
+
+    ic(db.allchatters.count_rows())
+    ic(db.store_chatters(generate_fake_chatters()))
+    ic(db.allchatters.count_rows())
+
+    ic(db.allmugs.count_rows())
+    ic(db.store_mugs(generate_fake_mugs()))
+    ic(db.allmugs.count_rows())
+
+    ic(db.allsips.count_rows())
+    ic(db.store_sips(generate_fake_sips()))
+    ic(db.allsips.count_rows())

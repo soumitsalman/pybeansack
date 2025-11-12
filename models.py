@@ -1,3 +1,4 @@
+from functools import cached_property
 from rfc3339 import rfc3339
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
@@ -119,52 +120,31 @@ class Publisher(BaseModel):
             'rss_feed': 'string'
         }
 
-class Bean(BaseModel):
-    # collected / scraped fields
-    id: Optional[str] = Field(default=None, alias="_id")
+class Bean(BaseModel):    
     url: str    
-    kind: Optional[str] = None
-    source: Optional[str] = None
-    title: Optional[str] = None
-    title_length: Optional[int] = None
-    summary: Optional[str] = None
-    summary_length: Optional[int] = None
-    content: Optional[str] = None
-    content_length: Optional[int] = None
-    restricted_content: Optional[bool] = None
-    image_url: Optional[str] = None
-    author: Optional[str] = None    
-    created: Optional[datetime] = None 
-    collected: Optional[datetime] = None
+    kind: Optional[str] = Field(default=None)
+    source: Optional[str] = Field(default=None)
+    title: Optional[str] = Field(default=None)
+    title_length: Optional[int] = Field(default=None)
+    summary: Optional[str] = Field(default=None)
+    summary_length: Optional[int] = Field(default=None)
+    content: Optional[str] = Field(default=None)
+    content_length: Optional[int] = Field(default=None)
+    restricted_content: Optional[bool] = Field(default=None)
+    image_url: Optional[str] = Field(default=None)
+    author: Optional[str] = Field(default=None)
+    created: Optional[datetime] = Field(default=None)
+    collected: Optional[datetime] = Field(default=None)
 
     # llm fields
-    embedding: Optional[list[float]] = None
-    gist: Optional[str] = None
-    entities: Optional[list[str]] = None
-    regions: Optional[list[str]] = None
-
-    # derived fields
-    categories: Optional[list[str]] = None
-    sentiments: Optional[list[str]] = None
-    # cluster_id: Optional[str] = None
-    # cluster_size: Optional[int] = Field(default=None)
-    # related: Optional[list[str]] = Field(default=None)       
+    embedding: Optional[list[float]] = Field(default=None)
+    gist: Optional[str] = Field(default=None)
+    entities: Optional[list[str]] = Field(default=None)
+    regions: Optional[list[str]] = Field(default=None)
+    categories: Optional[list[str]] = Field(default=None)
+    sentiments: Optional[list[str]] = Field(default=None)
     
-    # query support fields
-    # tags: Optional[list[str]|str] = None
-    # publisher: Optional[Publisher] = Field(default=None) # this is the source info
-    # chatter: Optional[Chatter] = Field(default=None) # this is the latest chatter info
-    # trend_score: Optional[int] = Field(default=None) 
-    # updated: Optional[datetime] = None
-    distance: Optional[float|int] = None
-
-    # chatter_url: Optional[str] = Field(default=None) # this is the url of the social media post that contains the Bean url
-    # chatter_source: Optional[str] = Field(default=None) # this is the domain name of the source
-    # forum: Optional[str] = Field(default=None) # this is the
-    # likes: Optional[int] = Field(default=0)
-    # comments: Optional[int] = Field(default=0)
-    # shares: Optional[int] = Field(default=0)
-    
+    @cached_property
     def digest(self) -> str:
         text = ""
         if self.created: text += f"U:{self.created.strftime('%Y-%m-%d')};"
@@ -198,6 +178,32 @@ class Bean(BaseModel):
             'entities': 'object'  
         }
 
+class _CupboardBase(BaseModel):
+    id: str = Field(...)
+    title: Optional[str] = Field(None, description="This is the title")
+    content: Optional[str] = Field(None, description="This is the content")
+    embedding: Optional[list[float]] = Field(None, description="This is the embedding vector of title+content")
+    created: Optional[datetime] = Field(None, description="This is the created timestamp")
+    updated: Optional[datetime] = Field(None, description="This is the updated timestamp")
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
+        json_encoders={datetime: rfc3339}
+
+class Sip(_CupboardBase):
+    mug: Optional[str] = Field(None, description="This is the slug to the parent mug")
+    related: Optional[list[str]] = Field(None, description="These are the slugs to related past sips")
+    beans: Optional[list[str]] = Field(None, description="These are the urls to the beans")
+
+class Mug(_CupboardBase):
+    sips: Optional[list[str]] = Field(None, description="These are the slugs to the sips/sections")
+    highlights: Optional[list[str]] = Field(None, description="These are the highlights")   
+    tags: Optional[list[str]] = Field(None, description="These are the tags")
+
 class AggregatedBean(Bean, Chatter, Publisher): 
     # adding aggregated bean specific field
     tags: Optional[list[str]|str] = Field(default=None)
@@ -215,6 +221,9 @@ class AggregatedBean(Bean, Chatter, Publisher):
     comments: Optional[int] = Field(default=None)
     shares: Optional[int] = Field(default=None)
     subscribers: Optional[int] = Field(default=None)
+
+    # query support fields    
+    distance: Optional[float|int] = None
 
     class Config:
         populate_by_name = True
