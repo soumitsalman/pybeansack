@@ -416,36 +416,36 @@ class Beansack:
         cursor.execute(expr, params)
         cursor.close()
 
-    # def refresh_classifications(self):
-    #     SQL_INSERT_CLASSIFICATION = f"""
-    #     WITH needs_classification AS (
-    #         SELECT url, embedding FROM warehouse.beans b
-    #         WHERE 
-    #             embedding IS NOT NULL
-    #             AND NOT EXISTS (
-    #                 SELECT 1 FROM warehouse._materialized_bean_classifications c
-    #                 WHERE c.url = b.url
-    #             )                
-    #     )
-    #     INSERT INTO warehouse._materialized_bean_classifications
-    #     SELECT 
-    #         nc.url,
-    #         LIST(DISTINCT fc.category) as categories,
-    #         LIST(DISTINCT fs.sentiment) as sentiments
-    #     FROM needs_classification nc
-    #     LEFT JOIN LATERAL (
-    #         SELECT category FROM warehouse.fixed_categories
-    #         ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-    #         LIMIT 3
-    #     ) fc ON TRUE
-    #     LEFT JOIN LATERAL (
-    #         SELECT sentiment FROM warehouse.fixed_sentiments
-    #         ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
-    #         LIMIT 3
-    #     ) fs ON TRUE
-    #     GROUP BY nc.url
-    #     """
-    #     return self.execute(SQL_INSERT_CLASSIFICATION)
+    def refresh_classifications(self):
+        SQL_INSERT_CLASSIFICATION = f"""
+        WITH needs_classification AS (
+            SELECT url, embedding FROM warehouse.beans b
+            WHERE 
+                embedding IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM warehouse._materialized_bean_classifications c
+                    WHERE c.url = b.url
+                )                
+        )
+        INSERT INTO warehouse._materialized_bean_classifications
+        SELECT 
+            nc.url,
+            LIST(DISTINCT fc.category) as categories,
+            LIST(DISTINCT fs.sentiment) as sentiments
+        FROM needs_classification nc
+        LEFT JOIN LATERAL (
+            SELECT category FROM warehouse.fixed_categories
+            ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+            LIMIT 3
+        ) fc ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT sentiment FROM warehouse.fixed_sentiments
+            ORDER BY array_cosine_distance(nc.embedding::FLOAT[{VECTOR_LEN}], embedding::FLOAT[{VECTOR_LEN}])
+            LIMIT 3
+        ) fs ON TRUE
+        GROUP BY nc.url
+        """
+        return self.execute(SQL_INSERT_CLASSIFICATION)
     
     def refresh_clusters(self):
         # calculate and update for a batch of 512, otherwise it dies
