@@ -248,7 +248,7 @@ class Beansack:
     def exists(self, urls: list[str]) -> list[str]:
         return self._exists("bean", "url", urls)
     
-    def count_items(self, table):
+    def count_rows(self, table):
         SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
         return self.query_one(SQL_COUNT)
 
