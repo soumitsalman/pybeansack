@@ -141,7 +141,8 @@ class Beansack:
         """
         return self._execute_df(SQL_INSERT, df)
     
-    def update_bean_embeddings(self, beans: list[Bean]):
+    # this is a special function that updates embeddings, associated classifications and clustering
+    def update_embeddings(self, beans: list[Bean]):
         if not beans: return None
 
         df = _beans_to_df(beans, [K_URL, K_EMBEDDING])
@@ -172,7 +173,8 @@ class Beansack:
         USING (url)
         WHEN MATCHED THEN UPDATE SET embedding = pack.embedding, categories = pack.categories, sentiments = pack.sentiments;
         """
-        return self._execute_df(SQL_UPDATE, df)
+        self._execute_df(SQL_UPDATE, df)
+        return self.refresh_clusters()
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return None
