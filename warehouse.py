@@ -79,8 +79,6 @@ def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True)
     
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
 
-distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
-
 class Beansack:
     def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
         config = {
@@ -126,7 +124,6 @@ class Beansack:
     def store_beans(self, beans: list[Bean]) -> list[Bean]:                   
         if not beans: return
        
-        bean_filter = lambda bean: bool(bean.title and bean.collected and bean.created and bean.source and bean.kind)
         df = _beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
         fields=', '.join(df.columns.to_list())
         if not fields: return
@@ -197,11 +194,10 @@ class Beansack:
     def store_chatters(self, chatters: list[Chatter]):       
         if not chatters: return
 
-        chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
         chatters = list(filter(chatter_filter, chatters))
         if not chatters: return
 
-        df = pd.DataFrame([chatters.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatters in chatters])        
+        df = pd.DataFrame([chatter.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatter in chatters])        
         fields=', '.join(col for col in df.columns if df[col].notnull().any())
         SQL_INSERT = f"""
         INSERT INTO warehouse.chatters ({fields})
@@ -210,7 +206,7 @@ class Beansack:
         return self._execute_df(SQL_INSERT, df)     
 
     def store_publishers(self, publishers: list[Publisher]): 
-        df = _publishers_to_df(publishers, lambda x: bool(x.source and x.base_url))
+        df = _publishers_to_df(publishers, publisher_filter)
         if df is None: return
         fields=', '.join(df.columns.to_list())
         if not fields: return

@@ -374,6 +374,13 @@ class Page(BaseModel):
         arbitrary_types_allowed=False
         by_alias=True
 
+distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
+non_null_fields = lambda items: list(set().union(*[list(item.keys()) for item in items]))
+
+bean_filter = lambda x: bool(x.title and x.collected and x.created and x.source and x.kind)
+chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
+publisher_filter = lambda x: bool(x.source and x.base_url)
+
 clean_text = lambda text: text.strip() if text and text.strip() else None
 num_words = lambda text: min(len(text.split()) if text else 0, 1<<15)  # SMALLINT max value
 _EXCLUDE_AUTHORS = ["[no-author]", "noreply"]
@@ -403,4 +410,12 @@ def rectify_publisher_fields(items: list[Publisher]) -> list[Publisher]:
         item.favicon = clean_text(item.favicon)
         item.rss_feed = clean_text(item.rss_feed)
         item.description = clean_text(item.description)
+    return items
+
+def rectify_chatter_fields(items: list[Chatter]) -> list[Chatter]:
+    for item in items:        
+        item.chatter_url = clean_text(item.chatter_url)
+        item.url = clean_text(item.url)
+        item.forum = clean_text(item.forum)
+        item.source = clean_text(item.source)
     return items
