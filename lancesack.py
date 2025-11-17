@@ -99,18 +99,14 @@ class Beansack:
         else:
             updates = [bean.model_dump(exclude_none=True) for bean in beans]
             fields = non_null_fields(updates)
-        
+
+        get_field_values = lambda field: [update.get(field) for update in updates]
         result = self.allbeans.merge_insert("url") \
             .when_matched_update_all() \
             .execute(
                 pa.table(
-                    data=ic({
-                        field: [update.get(field) for update in updates] \
-                            for field in fields
-                    }),
-                    schema=ic(pa.schema(
-                        list(map(self.allbeans.schema.field, fields))
-                    ))
+                    data={field: get_field_values(field) for field in fields},
+                    schema=pa.schema(list(map(self.allbeans.schema.field, fields)))
                 )
             )
         return result.num_updated_rows
