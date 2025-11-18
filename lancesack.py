@@ -23,43 +23,9 @@ class _Sip(Sip, LanceModel):
 class _Mug(Mug, LanceModel):    
     embedding: Vector(VECTOR_LEN, nullable=True) = Field(None, description="This is the embedding vector of title+content")
 
-def _connect(storage_path: str):
-    storage_options = None
-    if storage_path.startswith("s3://"):
-        storage_options = {
-            "access_key_id": os.getenv("S3_ACCESS_KEY_ID"),
-            "secret_access_key": os.getenv("S3_SECRET_ACCESS_KEY"),
-            "endpoint": os.getenv("S3_ENDPOINT"),
-            "region": os.getenv("S3_REGION"),
-            "timeout": "60s"
-        }
-    return lancedb.connect(
-        uri=storage_path, 
-        read_consistency_interval = timedelta(hours=1),
-        storage_options=storage_options
-    )
-
-def establish_db(storage_path: str, factory_dir: str):
-    db = _connect(storage_path)
-
-    db.create_table("beans", schema=_Bean, exist_ok=True)
-    db.create_table("publishers", schema=_Publisher, exist_ok=True)
-    db.create_table("chatters", schema=_Chatter, exist_ok=True)
-    db.create_table("mugs", schema=_Mug, exist_ok=True)
-    db.create_table("sips", schema=_Sip, exist_ok=True)
-    db.create_table(
-        "fixed_categories", 
-        pd.read_parquet(f"{factory_dir}/categories.parquet"),
-        mode="overwrite"
-    )
-    db.create_table(
-        "fixed_sentiments", 
-        pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
-        mode="overwrite"
-    )
-    # TODO: put indexes on url, source and embedding (vector)
-
-    return db
+class _Cluster(LanceModel):
+    url: str
+    related: list[str]
 
 class Beansack: 
     db: lancedb.DBConnection
@@ -68,9 +34,56 @@ class Beansack:
     allbeans: lancedb.Table
     allpublishers: lancedb.Table
     allchatters: lancedb.Table
+    allclusters: lancedb.Table
+
+    @classmethod
+    def _connect(cls, storage_path: str):
+        storage_options = None
+        if storage_path.startswith("s3://"):
+            storage_options = {
+                "access_key_id": os.getenv("S3_ACCESS_KEY_ID"),
+                "secret_access_key": os.getenv("S3_SECRET_ACCESS_KEY"),
+                "endpoint": os.getenv("S3_ENDPOINT"),
+                "region": os.getenv("S3_REGION"),
+                "timeout": "60s"
+            }
+        return lancedb.connect(
+            uri=storage_path, 
+            read_consistency_interval = timedelta(hours=1),
+            storage_options=storage_options
+        )
+    
+    @classmethod
+    def create_db(cls, storage_path: str, factory_dir: str):
+        db = cls._connect(storage_path)
+        db.create_table("beans", schema=_Bean, exist_ok=True)
+        db.create_table("publishers", schema=_Publisher, exist_ok=True)
+        db.create_table("chatters", schema=_Chatter, exist_ok=True)
+        db.create_table("mugs", schema=_Mug, exist_ok=True)
+        db.create_table("sips", schema=_Sip, exist_ok=True)
+        db.create_table(
+            "fixed_categories", 
+            pd.read_parquet(f"{factory_dir}/categories.parquet"),
+            mode="overwrite"
+        )
+        db.create_table(
+            "fixed_sentiments", 
+            pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
+            mode="overwrite"
+        )
+        db.create_table(
+            "fixed_sentiments", 
+            pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
+            mode="overwrite"
+        )
+        db.create_table("clusters", schema = _Cluster, exist_ok=True)
+
+        # TODO: put indexes on url, source and embedding (vector)
+
+        return cls(storage_path)
 
     def __init__(self, storage_path: str):
-        self.db = _connect(storage_path)
+        self.db = self._connect(storage_path)
         self.allbeans = self.db.open_table("beans")        
         self.allpublishers = self.db.open_table("publishers")
         self.allchatters = self.db.open_table("chatters")
@@ -78,6 +91,7 @@ class Beansack:
         self.allsips = self.db.open_table("sips")
         self.fixed_categories = self.db.open_table("fixed_categories")
         self.fixed_sentiments = self.db.open_table("fixed_sentiments")
+        self.allclusters = self.db.open_table("clusters")
 
     def store_beans(self, beans: list[Bean]):
         if not beans: return 0
@@ -101,11 +115,12 @@ class Beansack:
             fields = non_null_fields(updates)
 
         get_field_values = lambda field: [update.get(field) for update in updates]
+        updates = { field: get_field_values(field) for field in fields }
         result = self.allbeans.merge_insert("url") \
             .when_matched_update_all() \
             .execute(
                 pa.table(
-                    data={field: get_field_values(field) for field in fields},
+                    data=updates,
                     schema=pa.schema(list(map(self.allbeans.schema.field, fields)))
                 )
             )
@@ -116,11 +131,14 @@ class Beansack:
     def update_embeddings(self, beans: list[Bean]):
         if not beans: return 0
 
+        urls = [bean.url for bean in beans]
         vecs = [bean.embedding for bean in beans]
+
+        # inserting along with classification
         categories = self.fixed_categories.search(vecs).distance_type("cosine").limit(3).select(["category"]).to_pandas()
         sentiments = self.fixed_sentiments.search(vecs).distance_type("cosine").limit(3).select(["sentiment"]).to_pandas()
         updates = {
-            K_URL: [bean.url for bean in beans],
+            K_URL: urls,
             K_EMBEDDING: vecs,
             K_CATEGORIES: categories.groupby('query_index')['category'].apply(list).sort_index().tolist(),
             K_SENTIMENTS: sentiments.groupby('query_index')['sentiment'].apply(list).sort_index().tolist()
@@ -130,16 +148,19 @@ class Beansack:
             .execute(
                 pa.table(
                     data=updates,
-                    schema=pa.schema(
-                        list(map(self.allbeans.schema.field, [K_URL, K_EMBEDDING, K_CATEGORIES, K_SENTIMENTS]))
-                    )
+                    schema=pa.schema(list(map(self.allbeans.schema.field, [K_URL, K_EMBEDDING, K_CATEGORIES, K_SENTIMENTS])))
                 )
             )
-        embs_updated = result.num_updated_rows
-        # TODO: update clusters
-        self.allbeans.search(vecs).distance_type("l2").distance_range(upper_bound=CLUSTER_EPS).select(["url"]).to_list()
-        # --- IGNORE ---
-        return embs_updated
+
+        # compute clusters with existing items
+        clusters = self.allbeans.search(vecs).distance_type("l2").distance_range(upper_bound=CLUSTER_EPS).select(["url", "_distance"]).to_pandas()
+        cl_res = self.allclusters.add([
+            _Cluster(url=url, related=related) for url, related
+                in zip(urls, clusters.groupby('query_index')['url'].apply(list).sort_index().tolist())
+        ])        
+        ic(cl_res)
+
+        return result.num_updated_rows
 
     def store_publishers(self, publishers: list[Publisher]):
         if not publishers: return 0
