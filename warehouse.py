@@ -490,33 +490,6 @@ class Beansack:
         GROUP BY url;
         """
         return self.execute(SQL_INSERT_CLUSTER)
-    
-    # def refresh_clusters(self):
-    #     SQL_UPDATE_CLUSTERS = f"""
-    #     WITH 
-    #         needs_clustering AS (
-    #             SELECT rb.* FROM warehouse._internal_related_beans rb
-    #             INNER JOIN warehouse.beans b ON rb.url = b.url
-    #             WHERE b.cluster_id IS NULL
-    #         ),
-    #         cluster_sizes AS (
-    #             SELECT related, count(*) AS cluster_size 
-    #             FROM warehouse._internal_related_beans 
-    #             GROUP BY related
-    #         )
-    #     MERGE INTO warehouse.beans
-    #     USING (
-    #         SELECT 
-    #             url, 
-    #             FIRST(cl.related ORDER BY cluster_size DESC) AS cluster_id,
-    #             COUNT(*) AS cluster_size
-    #         FROM needs_clustering cl
-    #         INNER JOIN cluster_sizes clsz ON cl.related = clsz.related
-    #         GROUP BY url
-    #     ) AS pack
-    #     USING (url)
-    #     WHEN MATCHED THEN UPDATE SET cluster_id = pack.cluster_id, cluster_size = pack.cluster_size;"""
-    #     return self.execute(SQL_UPDATE_CLUSTERS)  
 
     def refresh_aggregated_chatters(self):  
         SQL_INSERT_AGGREGATES = f"""
@@ -529,10 +502,10 @@ class Beansack:
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
 
-    def refresh_materialized_tables(self):    
+    def refresh(self):    
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=4) as executor:
-            # executor.submit(self.refresh_classifications)
+            executor.submit(self.refresh_classifications)
             executor.submit(self.refresh_clusters)
             executor.submit(self.refresh_aggregated_chatters)
 
