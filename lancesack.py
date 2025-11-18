@@ -1,3 +1,4 @@
+from cmath import log
 import os
 from pydantic import Field
 import lancedb
@@ -7,7 +8,10 @@ from datetime import datetime, timedelta
 import pyarrow as pa
 import pandas as pd
 from .models import *
+import logging
 from icecream import ic
+
+log = logging.getLogger(__name__)
 
 NOT_SUPPORTED = NotImplementedError("Querying trend data is not yet supported")
 
@@ -67,6 +71,7 @@ ORDER_BY_LATEST = _ScalarReranker(column="created", desc=True)
 
 class Beansack: 
     db: lancedb.DBConnection
+    tables: dict[str, lancedb.Table]
     allmugs: lancedb.Table
     allsips: lancedb.Table
     allbeans: lancedb.Table
@@ -122,14 +127,15 @@ class Beansack:
 
     def __init__(self, storage_path: str):
         self.db = self._connect(storage_path)
-        self.allbeans = self.db.open_table("beans")        
-        self.allpublishers = self.db.open_table("publishers")
-        self.allchatters = self.db.open_table("chatters")
-        self.allmugs = self.db.open_table("mugs")
-        self.allsips = self.db.open_table("sips")
-        self.fixed_categories = self.db.open_table("fixed_categories")
-        self.fixed_sentiments = self.db.open_table("fixed_sentiments")
-        self.allclusters = self.db.open_table("clusters")
+        self.tables = {}
+        self.tables["beans"] = self.allbeans = self.db.open_table("beans")        
+        self.tables["publishers"] = self.allpublishers = self.db.open_table("publishers")
+        self.tables["chatters"] = self.allchatters = self.db.open_table("chatters")
+        self.tables["mugs"] = self.allmugs = self.db.open_table("mugs")
+        self.tables["sips"] = self.allsips = self.db.open_table("sips")
+        self.tables["fixed_categories"] = self.fixed_categories = self.db.open_table("fixed_categories")
+        self.tables["fixed_sentiments"] = self.fixed_sentiments = self.db.open_table("fixed_sentiments")
+        self.tables["clusters"] = self.allclusters = self.db.open_table("clusters")
 
     # INGESTION functions
     def store_beans(self, beans: list[Bean]):
@@ -154,12 +160,11 @@ class Beansack:
             fields = non_null_fields(updates)
 
         get_field_values = lambda field: [update.get(field) for update in updates]
-        updates = { field: get_field_values(field) for field in fields }
         result = self.allbeans.merge_insert("url") \
             .when_matched_update_all() \
             .execute(
                 pa.table(
-                    data=updates,
+                    data={ field: get_field_values(field) for field in fields },
                     schema=pa.schema(list(map(self.allbeans.schema.field, fields)))
                 )
             )
@@ -179,7 +184,7 @@ class Beansack:
         updates = {
             K_URL: urls,
             K_EMBEDDING: vecs,
-            K_CATEGORIES: ic(categories).groupby('query_index')['category'].apply(list).sort_index().tolist(),
+            K_CATEGORIES: categories.groupby('query_index')['category'].apply(list).sort_index().tolist(),
             K_SENTIMENTS: sentiments.groupby('query_index')['sentiment'].apply(list).sort_index().tolist()
         } 
         result = self.allbeans.merge_insert("url") \
@@ -256,6 +261,16 @@ class Beansack:
         return result.num_inserted_rows
 
     # QUERY functions
+    def deduplicate(self, table: str, idkey: str, items: list) -> list:
+        if not items: return items        
+        ids = [getattr(item, idkey) for item in items]
+        existing_ids = self.tables[table].search().where(f"{idkey} IN ({list_expr(ids)})").select([idkey]).to_list()
+        existing_ids = [item[idkey] for item in existing_ids]
+        return list(filter(lambda item: getattr(item, idkey) not in existing_ids, items))
+
+    def count_rows(self, table):
+        return self.tables[table].count_rows()
+
     def _query_beans(self,
         kind: str = None, 
         created: datetime = None, collected: datetime = None, updated: datetime = None,
@@ -368,6 +383,19 @@ class Beansack:
         if conditions: query = query.where(_where(conditions=conditions))
         if limit: query = query.limit(limit)
         return query.to_pydantic(_Publisher)
+    
+    # MAINTENANCE functions
+    def refresh_aggregated_chatters(self):
+        log.info("refreshing aggregated chatters - not yet implemented")
+        pass
+
+    def refresh(self):
+        log.info("refreshing index - not yet implement")
+        pass
+
+    def close(self):
+        del self.db
+        del self.tables
 
 list_expr = lambda items: ", ".join(f"'{item}'" for item in items)
 date_expr = lambda date_val: f"date '{date_val.strftime('%Y-%m-%d')}'"

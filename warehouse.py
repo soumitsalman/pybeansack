@@ -96,7 +96,7 @@ class Beansack:
             init_sql = sql_file.read().format(
                 # loading prefixed categories and sentiments
                 factory=os.path.expanduser(factory_dir),
-                catalog_path= f"postgres:{catalogdb}" if catalogdb.startswith("postgresql://") else catalogdb,
+                catalog_path=catalogdb,
                 data_path=os.path.expanduser(storagedb),
                 # s3 storage configurations
                 s3_access_key_id=s3_access_key_id,

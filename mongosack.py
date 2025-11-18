@@ -178,25 +178,33 @@ class Beansack:
     ## BEANS STORING ##
     ###################
     def _fix_bean_ids(self, beans: list[Bean]) -> list[_Bean]:
-        return [_Bean(id=bean.url, **bean.model_dump(exclude_none=True)) for bean in beans]        
-
-    def store_beans(self, beans: list[Bean]) -> int:   
-        # beans = self.not_exists(beans)
-        if not beans: return 0
-        beans = self._fix_bean_ids(beans)
-        beans = rectify_bean_fields(beans)
-        try: return len(self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in beans], ordered=False).inserted_ids)
-        except BulkWriteError as e: return e.details['nInserted']
-        # return inserted_ids or 0
-
-    # TODO: split out function for adding embeddings and gists. code commented out below
-    # TODO: add function for recompute (for clusters, categories, sentiments and trendscore)
-    # TODO: add a deduplicate function
-    # TODO: add a recompute and cleanup function
+        return [_Bean(id=bean.url, **bean.model_dump(exclude_none=True)) for bean in beans]   
 
     def exists(self, beans: list[Bean]):
         if not beans: return beans
         return [item[K_URL] for item in self.beanstore.find({K_URL: {"$in": [bean.url for bean in beans]}}, {K_URL: 1})]
+
+    def deduplicate(self, table: str, idkey: str, items: list) -> list:
+        if not items: return items        
+        ids = [getattr(item, idkey) for item in items]
+        existing_ids = self.db[table].find({idkey: {"$in": ids}}, {idkey: 1}, projection={idkey: 1})
+        existing_ids = [item[idkey] for item in existing_ids]
+        return list(filter(lambda item: getattr(item, idkey) not in existing_ids, items))
+
+    def count_rows(self, table):
+        return self.db[table].count_documents({})     
+
+    def store_beans(self, beans: list[Bean]) -> int:   
+        if not beans: return 0
+        beans = rectify_bean_fields(beans)
+        beans = list(filter(bean_filter, beans))
+        beans = distinct(beans, K_URL)
+        try: return len(self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in self._fix_bean_ids(beans)], ordered=False).inserted_ids)
+        except BulkWriteError as e: return e.details['nInserted']
+
+    # TODO: split out function for adding embeddings and gists. code commented out below
+    # TODO: add function for recompute (for clusters, categories, sentiments and trendscore)
+    # TODO: add a recompute and cleanup function
                 
     def store_chatters(self, chatters: list[Chatter]):
         if not chatters: return chatters
@@ -711,6 +719,9 @@ class Beansack:
         log.debug("cleaned up", extra={"source": "beans", "num_items": count})
         count = self.db.chatterstore.delete_many({K_COLLECTED: {"$lt": ndays_ago(CLEANUP_WINDOW)}}).deleted_count
         log.debug("cleaned up", extra={"source": "chatters", "num_items": count})
+
+    def close(self):
+        self.db.client.close()
 
 
 ## local utilities for pymongo
