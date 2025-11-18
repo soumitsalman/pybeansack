@@ -14,7 +14,6 @@ from icecream import ic
 RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
 
-DIGEST_COLUMNS = [K_URL, K_GIST, K_CATEGORIES, K_SENTIMENTS]
 ORDER_BY_LATEST = "created DESC"
 ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
 ORDER_BY_DISTANCE = "distance ASC"

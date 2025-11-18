@@ -65,6 +65,9 @@ K_SITE_NAME = "site_name"
 
 SYSTEM = "__SYSTEM__"
 
+DIGEST_COLUMNS = [K_URL, K_CREATED, K_GIST, K_CATEGORIES, K_SENTIMENTS]
+CONTENT_COLUMNS = [K_URL, K_CREATED, K_SOURCE, K_TITLE, K_CONTENT]
+
 class Chatter(BaseModel):
     chatter_url: Optional[str] = Field(default=None, min_length=1) # this is the url of the social media post that contains the Bean url
     url: str = Field(min_length=1) # this the url from Bean
