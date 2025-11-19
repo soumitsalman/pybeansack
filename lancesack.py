@@ -99,17 +99,17 @@ class Beansack:
     @classmethod
     def create_db(cls, storage_path: str, factory_dir: str):
         db = cls._connect(storage_path)
-        db.create_table("beans", schema=_Bean, exist_ok=True)
-        db.create_table("publishers", schema=_Publisher, exist_ok=True)
-        db.create_table("chatters", schema=_Chatter, exist_ok=True)
-        db.create_table("mugs", schema=_Mug, exist_ok=True)
-        db.create_table("sips", schema=_Sip, exist_ok=True)
-        db.create_table(
+        beans = db.create_table("beans", schema=_Bean, exist_ok=True)
+        publishers = db.create_table("publishers", schema=_Publisher, exist_ok=True)
+        chatters = db.create_table("chatters", schema=_Chatter, exist_ok=True)
+        mugs = db.create_table("mugs", schema=_Mug, exist_ok=True)
+        sip = db.create_table("sips", schema=_Sip, exist_ok=True)
+        categories = db.create_table(
             "fixed_categories", 
             pd.read_parquet(f"{factory_dir}/categories.parquet"),
             mode="overwrite"
         )
-        db.create_table(
+        sentiments = db.create_table(
             "fixed_sentiments", 
             pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
             mode="overwrite"
@@ -119,9 +119,20 @@ class Beansack:
             pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
             mode="overwrite"
         )
-        db.create_table("clusters", schema = _Cluster, exist_ok=True)
+        clusters = db.create_table("clusters", schema = _Cluster, exist_ok=True)
+
+        beans.create_scalar_index(K_URL, index_type="BTREE")
+        beans.create_scalar_index(K_KIND, index_type="BITMAP")
+        beans.create_scalar_index(K_CREATED, index_type="BTREE")
+        # beans.create_scalar_index(K_CATEGORIES, index_type="LABEL_LIST")
+        # beans.create_scalar_index(K_REGIONS, index_type="LABEL_LIST")
+        # beans.create_scalar_index(K_ENTITIES, index_type="LABEL_LIST")
+        publishers.create_scalar_index(K_SOURCE, index_type="BTREE")
+        chatters.create_scalar_index(K_URL, index_type="BTREE")
+        clusters.create_scalar_index(K_URL, index_type="BTREE")
 
         # TODO: put indexes on url, source and embedding (vector)
+        
 
         return cls(storage_path)
 
@@ -179,8 +190,8 @@ class Beansack:
         vecs = [bean.embedding for bean in beans]
 
         # inserting along with classification
-        categories = self.fixed_categories.search(query=vecs, query_type="vector", vector_column_name=K_EMBEDDING).distance_type("cosine").limit(2).select(["category"]).to_pandas()
-        sentiments = self.fixed_sentiments.search(query=vecs, query_type="vector", vector_column_name=K_EMBEDDING).distance_type("cosine").limit(2).select(["sentiment"]).to_pandas()
+        categories = self.fixed_categories.search(query=vecs, query_type="vector", vector_column_name=K_EMBEDDING).distance_type("cosine").limit(2).select(["category", "_distance"]).to_pandas()
+        sentiments = self.fixed_sentiments.search(query=vecs, query_type="vector", vector_column_name=K_EMBEDDING).distance_type("cosine").limit(2).select(["sentiment", "_distance"]).to_pandas()
         updates = {
             K_URL: urls,
             K_EMBEDDING: vecs,
@@ -288,10 +299,10 @@ class Beansack:
         if where_expr: query = query.where(where_expr)
         if embedding: query = query.distance_type("cosine")
         if distance: query = query.distance_range(upper_bound = distance)
-        if order: query = query.rerank(order, query_string="default")
+        if order and embedding: query = query.rerank(order, query_string="default")
         if limit: query = query.limit(limit)
         if offset: query = query.offset(offset)
-        if columns: query = query.select(columns)
+        if columns: query = query.select(columns+(["_distance"] if embedding else []))
         return query.to_pydantic(_Bean)
     
     def query_latest_beans(self,
@@ -317,7 +328,7 @@ class Beansack:
             embedding=embedding,
             distance=distance,
             conditions=conditions,
-            order=ORDER_BY_LATEST if embedding else None,
+            order=ORDER_BY_LATEST,
             limit=limit,
             offset=offset,
             columns=columns
@@ -361,7 +372,7 @@ class Beansack:
             embedding=embedding,
             distance=distance,
             conditions=conditions,
-            order=ORDER_BY_LATEST if embedding else None,
+            order=ORDER_BY_LATEST,
             limit=limit,
             offset=offset
         )
@@ -390,8 +401,7 @@ class Beansack:
         pass
 
     def refresh(self):
-        log.info("refreshing index - not yet implement")
-        pass
+        [table.optimize() for table in self.tables.values()]
 
     def close(self):
         del self.db
