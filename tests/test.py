@@ -822,3 +822,37 @@ def test_lancesack():
     ic(db.allsips.count_rows())
     ic(db.store_sips(generate_fake_sips()))
     ic(db.allsips.count_rows())
+
+def test_pgsack():
+    from .. import pgsack
+    db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'))
+    
+    ic(db.count_rows(BEANS))
+    ic(db.store_beans(generate_fake_beans()))
+    ic(db.count_rows(BEANS))
+
+    beans = generate_fake_beans()
+    beans[0].url = "https://wilson.biz/"
+    beans[1].url = "http://clark-evans.com/"
+    beans[2].url = "https://www.murphy.biz/"
+    ic(len(beans), len(db.deduplicate(BEANS, beans)))
+
+    ic(db.count_rows(PUBLISHERS))
+    ic(db.store_publishers(generate_fake_publishers()))
+    ic(db.count_rows(PUBLISHERS))
+
+    ic(db.count_rows(CHATTERS))
+    # ic(db.store_chatters(generate_fake_chatters()))
+    chatters = generate_fake_chatters()
+    chatters[0].chatter_url = "http://williams.com/"
+    chatters[1].chatter_url = "http://morrow.com/"
+    ic(len(chatters), db.store_chatters(chatters))
+    ic(db.count_rows(CHATTERS))
+
+    # ic(db.allmugs.count_rows())
+    # ic(db.store_mugs(generate_fake_mugs()))
+    # ic(db.allmugs.count_rows())
+
+    # ic(db.allsips.count_rows())
+    # ic(db.store_sips(generate_fake_sips()))
+    # ic(db.allsips.count_rows())

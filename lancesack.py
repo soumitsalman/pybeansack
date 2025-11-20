@@ -15,6 +15,11 @@ log = logging.getLogger(__name__)
 
 NOT_SUPPORTED = NotImplementedError("Querying trend data is not yet supported")
 
+_PRIMARY_KEYS = {
+    BEANS: K_URL,
+    PUBLISHERS: K_SOURCE
+}
+
 class _Bean(Bean, LanceModel):
     embedding: Vector(VECTOR_LEN, nullable=True) = Field(None)
 
@@ -79,63 +84,8 @@ class Beansack:
     allchatters: lancedb.Table
     allclusters: lancedb.Table
 
-    @classmethod
-    def _connect(cls, storage_path: str):
-        storage_options = None
-        if storage_path.startswith("s3://"):
-            storage_options = {
-                "access_key_id": os.getenv("S3_ACCESS_KEY_ID"),
-                "secret_access_key": os.getenv("S3_SECRET_ACCESS_KEY"),
-                "endpoint": os.getenv("S3_ENDPOINT"),
-                "region": os.getenv("S3_REGION"),
-                "timeout": "60s"
-            }
-        return lancedb.connect(
-            uri=storage_path, 
-            read_consistency_interval = timedelta(hours=1),
-            storage_options=storage_options
-        )
-    
-    @classmethod
-    def create_db(cls, storage_path: str, factory_dir: str):
-        db = cls._connect(storage_path)
-        beans = db.create_table("beans", schema=_Bean, exist_ok=True)
-        publishers = db.create_table("publishers", schema=_Publisher, exist_ok=True)
-        chatters = db.create_table("chatters", schema=_Chatter, exist_ok=True)
-        mugs = db.create_table("mugs", schema=_Mug, exist_ok=True)
-        sip = db.create_table("sips", schema=_Sip, exist_ok=True)
-        categories = db.create_table(
-            "fixed_categories", 
-            pd.read_parquet(f"{factory_dir}/categories.parquet"),
-            mode="overwrite"
-        )
-        sentiments = db.create_table(
-            "fixed_sentiments", 
-            pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
-            mode="overwrite"
-        )
-        db.create_table(
-            "fixed_sentiments", 
-            pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
-            mode="overwrite"
-        )
-        clusters = db.create_table("clusters", schema = _Cluster, exist_ok=True)
-
-        beans.create_scalar_index(K_URL, index_type="BTREE")
-        beans.create_scalar_index(K_KIND, index_type="BITMAP")
-        beans.create_scalar_index(K_CREATED, index_type="BTREE")
-        beans.create_index(vector_column_name=K_EMBEDDING, metric="cosine", index_type="IVF_HNSW_SQ")
-        beans.create_scalar_index(K_CATEGORIES, index_type="LABEL_LIST")
-        beans.create_scalar_index(K_REGIONS, index_type="LABEL_LIST")
-        beans.create_scalar_index(K_ENTITIES, index_type="LABEL_LIST")
-        publishers.create_scalar_index(K_SOURCE, index_type="BTREE")
-        chatters.create_scalar_index(K_URL, index_type="BTREE")
-        clusters.create_scalar_index(K_URL, index_type="BTREE")
-
-        return cls(storage_path)
-
     def __init__(self, storage_path: str):
-        self.db = self._connect(storage_path)
+        self.db = _connect(storage_path)
         self.tables = {}
         self.tables["beans"] = self.allbeans = self.db.open_table("beans")        
         self.tables["publishers"] = self.allpublishers = self.db.open_table("publishers")
@@ -150,8 +100,7 @@ class Beansack:
     def store_beans(self, beans: list[Bean]):
         if not beans: return 0
 
-        to_store = rectify_bean_fields(beans)
-        to_store = list(filter(bean_filter, to_store))
+        to_store = prepare_beans_for_store(beans)
         to_store = distinct(to_store, "url")        
         result = self.allbeans.merge_insert("url") \
             .when_not_matched_insert_all() \
@@ -217,8 +166,7 @@ class Beansack:
     def store_publishers(self, publishers: list[Publisher]):
         if not publishers: return 0
 
-        to_store = rectify_publisher_fields(publishers)        
-        to_store = list(filter(publisher_filter, to_store))
+        to_store = prepare_publishers_for_store(publishers)  
         to_store = distinct(to_store, K_SOURCE)
         result = self.allpublishers.merge_insert(K_SOURCE) \
             .when_not_matched_insert_all() \
@@ -228,7 +176,6 @@ class Beansack:
     def update_publishers(self, publishers: list[Publisher]):
         if not publishers: return 0
 
-        updates = rectify_publisher_fields(publishers)  
         updates = [publisher.model_dump(exclude_none=True, exclude=[K_BASE_URL]) for publisher in publishers]
         fields = non_null_fields(updates)
 
@@ -246,8 +193,7 @@ class Beansack:
     def store_chatters(self, chatters: list[Chatter]):
         if not chatters: return 0
 
-        to_store = rectify_chatter_fields(chatters)
-        to_store = list(filter(chatter_filter, to_store))
+        to_store = prepare_chatters_for_store(chatters)
         self.allchatters.add([_Chatter(**chatter.model_dump(exclude_none=True, exclude=[K_SHARES, K_UPDATED])) for chatter in to_store])
         return len(to_store)
 
@@ -270,8 +216,9 @@ class Beansack:
         return result.num_inserted_rows
 
     # QUERY functions
-    def deduplicate(self, table: str, idkey: str, items: list) -> list:
-        if not items: return items        
+    def deduplicate(self, table: str, items: list) -> list:
+        if not items: return items    
+        idkey = _PRIMARY_KEYS[table]    
         ids = [getattr(item, idkey) for item in items]
         existing_ids = self.tables[table].search().where(f"{idkey} IN ({list_expr(ids)})").select([idkey]).to_list()
         existing_ids = [item[idkey] for item in existing_ids]
@@ -405,8 +352,63 @@ class Beansack:
         del self.db
         del self.tables
 
+
+def create_db(storage_path: str, factory_dir: str):
+    db = _connect(storage_path)
+    beans = db.create_table("beans", schema=_Bean, exist_ok=True)
+    publishers = db.create_table("publishers", schema=_Publisher, exist_ok=True)
+    chatters = db.create_table("chatters", schema=_Chatter, exist_ok=True)
+    mugs = db.create_table("mugs", schema=_Mug, exist_ok=True)
+    sip = db.create_table("sips", schema=_Sip, exist_ok=True)
+    categories = db.create_table(
+        "fixed_categories", 
+        pd.read_parquet(f"{factory_dir}/categories.parquet"),
+        mode="overwrite"
+    )
+    sentiments = db.create_table(
+        "fixed_sentiments", 
+        pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
+        mode="overwrite"
+    )
+    db.create_table(
+        "fixed_sentiments", 
+        pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
+        mode="overwrite"
+    )
+    clusters = db.create_table("clusters", schema = _Cluster, exist_ok=True)
+
+    beans.create_scalar_index(K_URL, index_type="BTREE")
+    beans.create_scalar_index(K_KIND, index_type="BITMAP")
+    beans.create_scalar_index(K_CREATED, index_type="BTREE")
+    beans.create_index(vector_column_name=K_EMBEDDING, metric="cosine", index_type="IVF_HNSW_SQ")
+    beans.create_scalar_index(K_CATEGORIES, index_type="LABEL_LIST")
+    beans.create_scalar_index(K_REGIONS, index_type="LABEL_LIST")
+    beans.create_scalar_index(K_ENTITIES, index_type="LABEL_LIST")
+    publishers.create_scalar_index(K_SOURCE, index_type="BTREE")
+    chatters.create_scalar_index(K_URL, index_type="BTREE")
+    clusters.create_scalar_index(K_URL, index_type="BTREE")
+
+    return Beansack(storage_path)
+
+def _connect(storage_path: str):
+    storage_options = None
+    if storage_path.startswith("s3://"):
+        storage_options = {
+            "access_key_id": os.getenv("S3_ACCESS_KEY_ID"),
+            "secret_access_key": os.getenv("S3_SECRET_ACCESS_KEY"),
+            "endpoint": os.getenv("S3_ENDPOINT"),
+            "region": os.getenv("S3_REGION"),
+            "timeout": "60s"
+        }
+    return lancedb.connect(
+        uri=storage_path, 
+        read_consistency_interval = timedelta(hours=1),
+        storage_options=storage_options
+    )
+
 list_expr = lambda items: ", ".join(f"'{item}'" for item in items)
 date_expr = lambda date_val: f"date '{date_val.strftime('%Y-%m-%d')}'"
+
 def _where(
     urls: list[str] = None,
     kind: str = None,

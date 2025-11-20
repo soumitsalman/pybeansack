@@ -4,7 +4,6 @@ pymongo
 pandas
 duckdb
 lancedb
-sqlmodel
 rfc3339
 retry
 icecream
@@ -12,3 +11,7 @@ python-dotenv
 s3fs
 faker
 python-slugify
+tantivy
+pgvector
+psycopg2-binary
+sqlmodel

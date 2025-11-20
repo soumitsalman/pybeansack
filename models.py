@@ -5,6 +5,12 @@ from typing import Optional
 from datetime import datetime
 from .utils import *
 
+BEANS = "beans"
+PUBLISHERS = "publishers"
+CHATTERS = "chatters"
+MUGS = "mugs"
+SIPS = "sips"
+
 # CHANNEL = "social media group/forum"
 POST = "post"
 JOB = "job"
@@ -234,111 +240,89 @@ class AggregatedBean(Bean, Chatter, Publisher):
         exclude_none = True
         exclude_unset = True
         by_alias=True
-        json_encoders={datetime: rfc3339}
-       
+        json_encoders={datetime: rfc3339}       
 
-class BeanCore(BaseModel):
-    # core fields
-    url: str = Field(min_length=1)
-    kind: Optional[str] = Field(default=None)
-    title: str
-    title_length: Optional[int] = Field(default=0, ge=0)
-    summary: Optional[str] = Field(default=None)
-    summary_length: Optional[int] = Field(default=0, ge=0)
-    content: Optional[str] = Field(default=None)
-    content_length: Optional[int] = Field(default=0, ge=0)
-    restricted_content: Optional[bool] = Field(default=False)
-    author: Optional[str] = Field(default=None)
-    source: Optional[str] = Field(default=None)
-    image_url: Optional[str] = Field(default=None)
-    created: Optional[datetime] = Field(default=None)
-    collected: Optional[datetime] = Field(default=None)
+# class BeanCore(BaseModel):
+#     # core fields
+#     url: str = Field(min_length=1)
+#     kind: Optional[str] = Field(default=None)
+#     title: str
+#     title_length: Optional[int] = Field(default=0, ge=0)
+#     summary: Optional[str] = Field(default=None)
+#     summary_length: Optional[int] = Field(default=0, ge=0)
+#     content: Optional[str] = Field(default=None)
+#     content_length: Optional[int] = Field(default=0, ge=0)
+#     restricted_content: Optional[bool] = Field(default=False)
+#     author: Optional[str] = Field(default=None)
+#     source: Optional[str] = Field(default=None)
+#     image_url: Optional[str] = Field(default=None)
+#     created: Optional[datetime] = Field(default=None)
+#     collected: Optional[datetime] = Field(default=None)
 
-    # def to_tuple(self) -> tuple:
-    #     return (
-    #         self.url,
-    #         self.kind,
-    #         self.title,
-    #         self.title_length,
-    #         self.summary,
-    #         self.summary_length,
-    #         self.content,
-    #         self.content_length,
-    #         self.restricted_content,
-    #         self.author,
-    #         self.source,
-    #         self.image_url,
-    #         self.created,
-    #         self.collected
-    #     )
-    
-    # def to_list(self) -> list:
-    #     return list(self.to_tuple())
+#     class Config:
+#         json_encoders={datetime: rfc3339}
+#         dtype_specs = {            
+#             'kind': 'string',
+#             'title': 'string',
+#             'title_length': 'uint16',
+#             'summary': 'string',
+#             'summary_length': 'uint16',
+#             'content': 'string',
+#             'content_length': 'uint16',
+#             'author': 'string',
+#             'source': 'string',
+#             'image_url': 'string'
+#         }
 
-    class Config:
-        json_encoders={datetime: rfc3339}
-        dtype_specs = {            
-            'kind': 'string',
-            'title': 'string',
-            'title_length': 'uint16',
-            'summary': 'string',
-            'summary_length': 'uint16',
-            'content': 'string',
-            'content_length': 'uint16',
-            'author': 'string',
-            'source': 'string',
-            'image_url': 'string'
-        }
+# class BeanEmbedding(BaseModel):
+#     url: str = Field(min_length=1)
+#     embedding: list = Field(min_length=VECTOR_LEN, max_length=VECTOR_LEN)
 
-class BeanEmbedding(BaseModel):
-    url: str = Field(min_length=1)
-    embedding: list = Field(min_length=VECTOR_LEN, max_length=VECTOR_LEN)
+#     def to_tuple(self) -> tuple:
+#         return (self.url, self.embedding)
 
-    def to_tuple(self) -> tuple:
-        return (self.url, self.embedding)
+#     class Config:
+#         dtype_specs = {
+#             'url': 'string',
+#             'embedding': 'object',
+#         }
 
-    class Config:
-        dtype_specs = {
-            'url': 'string',
-            'embedding': 'object',
-        }
+# class BeanGist(BaseModel):
+#     url: str = Field(min_length=1)
+#     gist: str = Field(min_length=10)    
+#     regions: Optional[list[str]] = None
+#     entities: Optional[list[str]] = None
 
-class BeanGist(BaseModel):
-    url: str = Field(min_length=1)
-    gist: str = Field(min_length=10)    
-    regions: Optional[list[str]] = None
-    entities: Optional[list[str]] = None
+#     def to_tuple(self) -> tuple:
+#         return (self.url, self.gist, self.entities, self.regions)
 
-    def to_tuple(self) -> tuple:
-        return (self.url, self.gist, self.entities, self.regions)
+#     class Config:
+#         dtype_specs = {
+#             'url': 'string',
+#             'gist': 'string',
+#             'regions': 'object',  # For list[str]
+#             'entities': 'object'  # For list[str]
+#         }
 
-    class Config:
-        dtype_specs = {
-            'url': 'string',
-            'gist': 'string',
-            'regions': 'object',  # For list[str]
-            'entities': 'object'  # For list[str]
-        }
+# # TODO: DEPRECATE THIS
+# class ChatterAnalysis(BaseModel):
+#     url: str
+#     likes: Optional[int] = 0
+#     comments: Optional[int] = 0
+#     shares: Optional[int] = 0
+#     shared_in: Optional[list[str]] = Field(default=None)
+#     collected: Optional[datetime] = None
+#     likes_change: Optional[int] = 0
+#     comments_change: Optional[int] = 0
+#     shares_change: Optional[int] = 0
+#     shared_in_change: Optional[list[str]] = Field(default=None)
+#     trend_score: Optional[int] = 0
 
-# TODO: DEPRECATE THIS
-class ChatterAnalysis(BaseModel):
-    url: str
-    likes: Optional[int] = 0
-    comments: Optional[int] = 0
-    shares: Optional[int] = 0
-    shared_in: Optional[list[str]] = Field(default=None)
-    collected: Optional[datetime] = None
-    likes_change: Optional[int] = 0
-    comments_change: Optional[int] = 0
-    shares_change: Optional[int] = 0
-    shared_in_change: Optional[list[str]] = Field(default=None)
-    trend_score: Optional[int] = 0
-
-    class Config:
-        arbitrary_types_allowed=True
-        exclude_none = True
-        exclude_unset = True
-        exclude_defaults = True
+#     class Config:
+#         arbitrary_types_allowed=True
+#         exclude_none = True
+#         exclude_unset = True
+#         exclude_defaults = True
     
 class User(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")  
@@ -386,8 +370,9 @@ publisher_filter = lambda x: bool(x.source and x.base_url)
 
 clean_text = lambda text: text.strip() if text and text.strip() else None
 num_words = lambda text: min(len(text.split()) if text else 0, 1<<15)  # SMALLINT max value
+
 _EXCLUDE_AUTHORS = ["[no-author]", "noreply"]
-def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
+def prepare_beans_for_store(items: list[Bean]) -> list[Bean]:
     for item in items:
         item.url = clean_text(item.url)
         item.kind = clean_text(item.kind)
@@ -404,21 +389,21 @@ def rectify_bean_fields(items: list[Bean|BeanCore]) -> list[Bean|BeanCore]:
         item.collected = item.collected or now()
         if item.author and any(ex for ex in _EXCLUDE_AUTHORS if ex in item.author): item.author = None
         if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
-    return items
+    return list(filter(bean_filter, items))
 
-def rectify_publisher_fields(items: list[Publisher]) -> list[Publisher]:
+def prepare_publishers_for_store(items: list[Publisher]) -> list[Publisher]:
     for item in items:        
         item.source = clean_text(item.source)
         item.base_url = clean_text(item.base_url)
         item.favicon = clean_text(item.favicon)
         item.rss_feed = clean_text(item.rss_feed)
         item.description = clean_text(item.description)
-    return items
+    return list(filter(publisher_filter, items))
 
-def rectify_chatter_fields(items: list[Chatter]) -> list[Chatter]:
+def prepare_chatters_for_store(items: list[Chatter]) -> list[Chatter]:
     for item in items:        
         item.chatter_url = clean_text(item.chatter_url)
         item.url = clean_text(item.url)
         item.forum = clean_text(item.forum)
         item.source = clean_text(item.source)
-    return items
+    return list(filter(chatter_filter, items))
