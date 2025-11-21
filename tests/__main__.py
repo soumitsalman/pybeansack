@@ -26,6 +26,7 @@ if __name__ == "__main__":
     parser.add_argument('--setup', action='store_true', help='Run register test')
     parser.add_argument('--random', action='store_true', help='Run random query test')
     parser.add_argument('--lancedb', action='store_true', help='Run lancesack test')
+    parser.add_argument('--pgsack', action='store_true', help='Run lancesack test')
     
     args = parser.parse_args()
     if args.cores: test_store_cores()
@@ -39,3 +40,4 @@ if __name__ == "__main__":
     if args.setup: test_setup()
     if args.random: test_random_query()
     if args.lancedb: test_lancesack()
+    if args.pgsack: test_pgsack()
