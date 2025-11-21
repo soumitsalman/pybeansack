@@ -825,7 +825,7 @@ def test_lancesack():
 
 def test_pgsack():
     from .. import pgsack
-    db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'))
+    db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'), os.getenv('FACTORY_DIR'))
     
     ic(db.count_rows(BEANS))
     ic(db.store_beans(generate_fake_beans()))

@@ -1,5 +1,7 @@
 import os
 import logging
+from pathlib import Path
+import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, VARCHAR
@@ -58,6 +60,8 @@ class Beansack:
         stmt = insert(_Bean).values([bean.model_dump() for bean in to_store]).on_conflict_do_nothing(index_elements=[K_URL])
         return self._execute(stmt).rowcount
     
+
+    
     def store_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
         if not publishers: return 0
@@ -106,10 +110,19 @@ class Beansack:
     def close(self):
         self.db.dispose()
         
-def create_db(conn_str: str) -> Beansack:
+def create_db(conn_str: str, factory_dir: str) -> Beansack:
     """Create the new tables, views, indexes etc."""
     db = Beansack(conn_str)  # Just to ensure the DB is reachable
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(vector_len = VECTOR_LEN)
     db._execute(text(init_sql))
+
+    factory_path = Path(factory_dir) 
+    to_list = lambda x: x.tolist() if hasattr(x, 'tolist') else x
+    categories = pd.read_parquet(factory_path / "categories.parquet")
+    categories[K_EMBEDDING] = categories[K_EMBEDDING].apply(to_list)
+    categories.to_sql("fixed_categories", con=db.db, if_exists="replace", index=False, dtype={"category": VARCHAR, K_EMBEDDING: VECTOR(VECTOR_LEN)})
+    sentiments = pd.read_parquet(factory_path / "sentiments.parquet")
+    sentiments[K_EMBEDDING] = sentiments[K_EMBEDDING].apply(to_list)
+    sentiments.to_sql("fixed_sentiments", con=db.db, if_exists="replace", index=False, dtype={"sentiment": VARCHAR, K_EMBEDDING: VECTOR(VECTOR_LEN)})
     return db
