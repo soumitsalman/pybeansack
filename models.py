@@ -362,7 +362,7 @@ class Page(BaseModel):
         by_alias=True
 
 distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
-non_null_fields = lambda items: list(set().union(*[list(item.keys()) for item in items]))
+non_null_fields = lambda items: list(set().union(*[[k for k, v in item.items() if v] for item in items]))
 
 bean_filter = lambda x: bool(x.title and x.collected and x.created and x.source and x.kind)
 chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))

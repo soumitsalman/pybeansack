@@ -747,16 +747,28 @@ def generate_fake_beans():
     )
     return [generate() for _ in range(random.randrange(10, 30))]
 
-def generate_fake_publishers():
-    generate = lambda: Publisher(
-        source=faker.domain_name(),
-        base_url=faker.url(),
-        site_name=faker.company(),
-        description=faker.sentence(nb_words=10),
-        favicon=faker.image_url(),
-        rss_feed=faker.url()
+def generate_fake_digests(urls = None):
+    generate = lambda url: Bean(
+        url=url or faker.url(),        
+        source=faker.domain_name(),        
+        gist="[UPDATED]" + faker.text(max_nb_chars=200),        
+        entities=["[UPDATED]" + faker.name() for _ in range(3)],
+        regions=["[UPDATED]" + faker.country(), "[UPDATED]" + faker.city()]
     )
-    return [generate() for _ in range(random.randrange(5, 15))]
+    if urls: return [generate(url) for url in urls]
+    return [generate(None) for _ in range(random.randrange(3, 30))]
+
+def generate_fake_publishers(sources = None, update = False):
+    generate = lambda source: Publisher(
+        source=source or faker.domain_name(),
+        base_url=faker.url(),
+        site_name=("[UPDATED]" if update else "")+faker.company() if random.random() > 0.5 else None,
+        description=("[UPDATED]" if update else "")+faker.sentence(nb_words=10) if random.random() > 0.5 else None,
+        favicon=("[UPDATED]" if update else "")+faker.image_url() if random.random() > 0.5 else None,
+        rss_feed=("[UPDATED]" if update else "")+faker.url() if random.random() > 0.5 else None
+    )
+    if sources: return [generate(source) for source in sources]
+    return [generate(None) for _ in range(random.randrange(5, 15))]
 
 def generate_fake_chatters():
     generate = lambda: Chatter(
@@ -827,31 +839,46 @@ def test_pgsack():
     from .. import pgsack
     db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'), os.getenv('FACTORY_DIR'))
     
-    ic(db.count_rows(BEANS))
-    ic(db.store_beans(generate_fake_beans()))
-    ic(db.count_rows(BEANS))
+    if False:
+        ic(db.count_rows(BEANS))
+        ic(db.store_beans(generate_fake_beans()))
+        ic(db.count_rows(BEANS))
 
-    beans = generate_fake_beans()
-    beans[0].url = "https://wilson.biz/"
-    beans[1].url = "http://clark-evans.com/"
-    beans[2].url = "https://www.murphy.biz/"
-    ic(len(beans), len(db.deduplicate(BEANS, beans)))
+    if False:
+        beans = generate_fake_beans()
+        beans[0].url = "https://wilson.biz/"
+        beans[1].url = "http://clark-evans.com/"
+        beans[2].url = "https://www.murphy.biz/"
+        ic(len(beans), len(db.deduplicate(BEANS, beans)))
 
-    ic(db.count_rows(PUBLISHERS))
-    ic(db.store_publishers(generate_fake_publishers()))
-    ic(db.count_rows(PUBLISHERS))
+    if False:
+        ic(db.count_rows(PUBLISHERS))
+        ic(db.store_publishers(ic(generate_fake_publishers())))
+        ic(db.count_rows(PUBLISHERS))
 
-    ic(db.count_rows(CHATTERS))
-    # ic(db.store_chatters(generate_fake_chatters()))
-    chatters = generate_fake_chatters()
-    chatters[0].chatter_url = "http://williams.com/"
-    chatters[1].chatter_url = "http://morrow.com/"
-    ic(len(chatters), db.store_chatters(chatters))
-    ic(db.count_rows(CHATTERS))
+    if False:
+        ic(db.count_rows(CHATTERS))
+        chatters = generate_fake_chatters()
+        chatters[0].chatter_url = "http://williams.com/"
+        chatters[1].chatter_url = "http://morrow.com/"
+        ic(len(chatters), db.store_chatters(chatters))
+        ic(db.count_rows(CHATTERS))
 
-    # ic(db.allmugs.count_rows())
-    # ic(db.store_mugs(generate_fake_mugs()))
-    # ic(db.allmugs.count_rows())
+    if False:
+        beans = ic(db.query_latest_beans(limit=5, columns=[K_URL]))
+        urls = [bean.url for bean in beans]
+        beans = generate_fake_digests(urls)
+        ic(db.update_beans(beans, columns=[K_GIST, K_ENTITIES, K_REGIONS]))
+        ic(db._query_beans(table = BEANS, urls=urls))
+
+    if True:
+        publishers = ic(db.query_publishers(limit=5))
+        sources = [pub.source for pub in publishers]
+        print("+++++++++")
+        ic(db.update_publishers(ic(generate_fake_publishers(sources, update=True))))
+        print("+++++++++")
+        ic(db.query_publishers(sources=sources))
+
 
     # ic(db.allsips.count_rows())
     # ic(db.store_sips(generate_fake_sips()))

@@ -14,6 +14,7 @@ from icecream import ic
 log = logging.getLogger(__name__)
 
 NOT_SUPPORTED = NotImplementedError("Querying trend data is not yet supported")
+VECTOR_TYPE = Vector(VECTOR_LEN, nullable=True)
 
 _PRIMARY_KEYS = {
     BEANS: K_URL,
@@ -21,7 +22,7 @@ _PRIMARY_KEYS = {
 }
 
 class _Bean(Bean, LanceModel):
-    embedding: Vector(VECTOR_LEN, nullable=True) = Field(None)
+    embedding: VECTOR_TYPE = Field(None)
 
 class _Publisher(Publisher, LanceModel):
     pass
@@ -30,10 +31,10 @@ class _Chatter(Chatter, LanceModel):
     pass
 
 class _Sip(Sip, LanceModel):    
-    embedding: Vector(VECTOR_LEN, nullable=True) = Field(None, description="This is the embedding vector of title+content")
+    embedding: VECTOR_TYPE = Field(None, description="This is the embedding vector of title+content")
     
 class _Mug(Mug, LanceModel):    
-    embedding: Vector(VECTOR_LEN, nullable=True) = Field(None, description="This is the embedding vector of title+content")
+    embedding: VECTOR_TYPE = Field(None, description="This is the embedding vector of title+content")
 
 class _Cluster(LanceModel):
     url: str
