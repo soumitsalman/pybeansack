@@ -14,4 +14,4 @@ python-slugify
 tantivy
 pgvector
 psycopg2-binary
-sqlmodel
+onlymaps

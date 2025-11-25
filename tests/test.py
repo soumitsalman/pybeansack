@@ -845,12 +845,12 @@ def test_lancesack():
     ic(db.allsips.count_rows())
 
 def test_pgsack():
-    from .. import pgsack
-    db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'), os.getenv('FACTORY_DIR'))
+    from .. import pgsack_v2
+    db = pgsack_v2.create_db(os.getenv('PG_CONNECTION_STRING'), os.getenv('FACTORY_DIR'))
     
     if True:
         ic(db.count_rows(BEANS))
-        ic(db.store_beans(generate_fake_beans(ai_fields=False, limit=512)))
+        ic(db.store_beans(generate_fake_beans(ai_fields=True)))
         ic(db.count_rows(BEANS))
 
     if True:
