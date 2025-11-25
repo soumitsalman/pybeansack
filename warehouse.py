@@ -169,8 +169,8 @@ class Beansack:
         USING (url)
         WHEN MATCHED THEN UPDATE SET embedding = pack.embedding, categories = pack.categories, sentiments = pack.sentiments;
         """
-        self._execute_df(SQL_UPDATE, df)
-        return self.refresh_clusters()
+        return self._execute_df(SQL_UPDATE, df)
+        # return self.refresh_clusters()
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return None
