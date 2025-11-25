@@ -215,7 +215,7 @@ class Mug(_CupboardBase):
 
 class AggregatedBean(Bean, Chatter, Publisher): 
     # adding aggregated bean specific field
-    tags: Optional[list[str]|str] = Field(default=None)
+    # tags: Optional[list[str]] = Field(default=None)
     cluster_id: Optional[str] = Field(default=None)
     cluster_size: Optional[int] = Field(default=None)
     related: Optional[list[str]] = Field(default=None)
@@ -232,7 +232,7 @@ class AggregatedBean(Bean, Chatter, Publisher):
     subscribers: Optional[int] = Field(default=None)
 
     # query support fields    
-    distance: Optional[float|int] = None
+    distance: Optional[float] = None
 
     class Config:
         populate_by_name = True

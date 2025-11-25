@@ -488,7 +488,7 @@ class Beansack:
         ]    
         return [item for item in self.beanstore.aggregate(pipeline)]
         
-    def get_latest_chatters(self, urls: str|list[str] = None) -> list[Chatter]:
+    def query_aggregated_chatters(self, urls: str|list[str] = None) -> list[Chatter]:
         """Retrieves the latest social media status from different mediums."""
         current_pipeline = self._chatters_pipeline(urls)
         current_chatters = {item[K_ID]: Chatter(**item) for item in self.chatterstore.aggregate(current_pipeline)}

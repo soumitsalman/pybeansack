@@ -726,7 +726,7 @@ def test_random_query():
     logger.info("Random query test completed")
 
 
-def generate_fake_beans():
+def generate_fake_beans(ai_fields = True, limit = 30):
     generate = lambda: Bean(
         url=faker.url(),
         kind=faker.random_element(elements=("news", "blog")),
@@ -738,14 +738,23 @@ def generate_fake_beans():
         author=faker.name(),
         created=faker.date_time_this_year(),
         collected=faker.date_time_this_month(),
-        embedding=np.random.random(VECTOR_LEN).tolist(),
-        gist=faker.text(max_nb_chars=200),
-        categories=[faker.word() for _ in range(3)],
-        sentiments=[faker.word() for _ in range(3)],
-        entities=[faker.name() for _ in range(3)],
-        regions=[faker.country(), faker.city()]
+        # ai fields
+        embedding=np.random.random(VECTOR_LEN).tolist() if ai_fields else None,
+        gist=faker.text(max_nb_chars=200) if ai_fields else None,
+        categories=[faker.word() for _ in range(3)] if ai_fields else None,
+        sentiments=[faker.word() for _ in range(3)] if ai_fields else None,
+        entities=[faker.name() for _ in range(3)] if ai_fields else None,
+        regions=[faker.country(), faker.city()] if ai_fields else None
     )
-    return [generate() for _ in range(random.randrange(10, 30))]
+    return [generate() for _ in range(random.randrange(10, limit))]
+
+def generate_fake_embeddings(urls = None):
+    generate = lambda url: Bean(
+        url=url or faker.url(),        
+        embedding=np.random.random(VECTOR_LEN).tolist()
+    )
+    if urls: return [generate(url) for url in urls]
+    return [generate(None) for _ in range(random.randrange(3, 30))]
 
 def generate_fake_digests(urls = None):
     generate = lambda url: Bean(
@@ -816,7 +825,7 @@ def test_lancesack():
     db = lancesack.Beansack(f"{os.getenv('TEST_STORAGE')}/{datetime.now().strftime('%Y-%m-%d')}-lancedb/v2")
     
     ic(db.allbeans.count_rows())
-    ic(db.store_beans(generate_fake_beans()))
+    ic(db.store_beans(generate_fake_beans(ai_fields=False)))
     ic(db.allbeans.count_rows())
 
     ic(db.allpublishers.count_rows())
@@ -839,24 +848,24 @@ def test_pgsack():
     from .. import pgsack
     db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'), os.getenv('FACTORY_DIR'))
     
-    if False:
+    if True:
         ic(db.count_rows(BEANS))
-        ic(db.store_beans(generate_fake_beans()))
+        ic(db.store_beans(generate_fake_beans(ai_fields=False, limit=512)))
         ic(db.count_rows(BEANS))
 
-    if False:
+    if True:
         beans = generate_fake_beans()
         beans[0].url = "https://wilson.biz/"
         beans[1].url = "http://clark-evans.com/"
         beans[2].url = "https://www.murphy.biz/"
         ic(len(beans), len(db.deduplicate(BEANS, beans)))
 
-    if False:
+    if True:
         ic(db.count_rows(PUBLISHERS))
         ic(db.store_publishers(ic(generate_fake_publishers())))
         ic(db.count_rows(PUBLISHERS))
 
-    if False:
+    if True:
         ic(db.count_rows(CHATTERS))
         chatters = generate_fake_chatters()
         chatters[0].chatter_url = "http://williams.com/"
@@ -864,15 +873,16 @@ def test_pgsack():
         ic(len(chatters), db.store_chatters(chatters))
         ic(db.count_rows(CHATTERS))
 
-    if False:
-        beans = ic(db.query_latest_beans(limit=5, columns=[K_URL]))
+    if True:
+        beans = ic(db.query_latest_beans(limit=5, columns=[K_URL, K_ENTITIES, K_REGIONS]))
         urls = [bean.url for bean in beans]
-        beans = generate_fake_digests(urls)
-        ic(db.update_beans(beans, columns=[K_GIST, K_ENTITIES, K_REGIONS]))
-        ic(db._query_beans(table = BEANS, urls=urls))
+        print("+++++++++")
+        ic(db.update_beans(generate_fake_digests(urls), columns=[K_GIST, K_ENTITIES, K_REGIONS]))
+        print("+++++++++")
+        ic(db._query_beans(table=BEANS, urls=urls, columns=[K_URL, K_ENTITIES, K_REGIONS]))
 
     if True:
-        publishers = ic(db.query_publishers(limit=5))
+        publishers = db.query_publishers(limit=5)
         sources = [pub.source for pub in publishers]
         print("+++++++++")
         ic(db.update_publishers(ic(generate_fake_publishers(sources, update=True))))
@@ -880,6 +890,17 @@ def test_pgsack():
         ic(db.query_publishers(sources=sources))
 
 
-    # ic(db.allsips.count_rows())
-    # ic(db.store_sips(generate_fake_sips()))
-    # ic(db.allsips.count_rows())
+    if True:
+        beans = ic(db.query_latest_beans(conditions = ["embedding IS NULL"], columns=[K_URL, K_CATEGORIES, K_SENTIMENTS]))
+        urls = [bean.url for bean in beans]
+        print("+++++++++")
+        ic(db.update_embeddings(generate_fake_embeddings(urls)))
+        print("+++++++++")
+        ic(db._query_beans(table=BEANS, urls=urls, columns=[K_URL, K_CATEGORIES, K_SENTIMENTS]))
+
+    if True:
+        ic(db.refresh())
+
+    if True:
+        ic(db.query_latest_beans(categories=['Algorithm and Computation', 'Human Biology and Physiology'], columns=[K_URL, K_TITLE, K_CATEGORIES]))
+        ic(db.query_aggregated_beans(categories=['Algorithm and Computation', 'Human Biology and Physiology'], columns=[K_URL, K_TITLE, K_CATEGORIES, K_LIKES, K_COMMENTS, K_CLUSTER_SIZE, K_CLUSTER_ID]))

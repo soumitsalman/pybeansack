@@ -299,7 +299,7 @@ class Beansack:
         ) for chatter in local_conn.sql(query).fetchall()]
 
     # TODO: switch to chatters and deprcate chatter analysis
-    def get_latest_chatters(self, last_ndays: int, urls: list[str] = None) -> list[Chatter]:
+    def query_aggregated_chatters(self, last_ndays: int, urls: list[str] = None) -> list[Chatter]:
         local_conn = self.db.cursor()
         total = local_conn.query(SQL_TOTAL_CHATTERS)
         ndays_ago = local_conn.query(sql_total_chatters_ndays_ago(last_ndays))
