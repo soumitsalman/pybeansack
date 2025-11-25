@@ -1,87 +1,26 @@
 import os
 import logging
 from pathlib import Path
+from typing import Any
 import pandas as pd
-
-from sqlalchemy import update, select, text
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, VARCHAR
-from pgvector.sqlalchemy import VECTOR
-from sqlalchemy.engine import Engine
-from sqlmodel import create_engine
-from sqlmodel import Session, SQLModel, Field as SQLField
+import psycopg2
+from psycopg2.extras import execute_values, execute_batch
+from pgvector.psycopg2 import register_vector
 
 from .models import *
 from .utils import *
 from icecream import ic
 
-MAX_CLASSIFICATIONS = 2
-
-# TODO: remove sql alchemy and sqlmodel
-
-class _Bean(Bean, SQLModel, table=True):
-    __tablename__ = "beans"
-    url: str = SQLField(primary_key=True)    
-    embedding: Optional[list[float]] = SQLField(default=None, sa_type=VECTOR(VECTOR_LEN), nullable=True)
-    entities: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    regions: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    categories: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    sentiments: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)        
-
-class _Publisher(Publisher, SQLModel, table=True):
-    __tablename__ = "publishers"
-    source: str = SQLField(primary_key=True)       
-
-class _Chatter(Chatter, SQLModel, table=True):
-    __tablename__ = "chatters"
-    # NOTE: chatter is not a primary key. this is done to avoid SQLModel bug
-    chatter_url: str = SQLField(primary_key=True)
-    updated: datetime = SQLField(exclude=True)
-    shares: int = SQLField(exclude=True)
-
-class _AggregatedChatter(Chatter, SQLModel, table=True):
-    __tablename__ = "_materialized_chatter_aggregates"
-    url: str = SQLField(primary_key=True)
-    chatter_url: Optional[str] = SQLField(exclude=True)
-    collected: Optional[datetime] = SQLField(exclude=True) 
-
-class _TrendingBean(Bean, Chatter, SQLModel, table=True):
-    __tablename__ = "trending_beans_view"
-    __table_args__ = {'extend_existing': True}
-    url: str = SQLField(primary_key=True)    
-    embedding: Optional[list[float]] = SQLField(default=None, sa_type=VECTOR(VECTOR_LEN), nullable=True)
-    entities: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    regions: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    categories: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    sentiments: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)        
-    chatter_url: Optional[str] = SQLField(exclude=True)
-
-class _AggregatedBean(AggregatedBean, SQLModel, table=True):
-    __tablename__ = "aggregated_beans_view"
-    __table_args__ = {'extend_existing': True}
-    url: str = SQLField(primary_key=True)    
-    embedding: Optional[list[float]] = SQLField(default=None, sa_type=VECTOR(VECTOR_LEN), nullable=True)
-    entities: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    regions: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    categories: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    sentiments: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)        
-    related: Optional[list[str]] = SQLField(default=None, sa_type=ARRAY(VARCHAR), nullable=True)
-    chatter_url: Optional[str] = SQLField(exclude=True) 
-    # tags: Optional[list[str]] = SQLField(exclude=True)   
-
-_TABLES = {
-    BEANS: _Bean,
-    PUBLISHERS: _Publisher,
-    CHATTERS: _Chatter,
-    "_materialized_chatter_aggregates": _AggregatedChatter,
-    "aggregated_beans_view": _AggregatedBean,
-    "trending_beans_view": _TrendingBean   
+_TYPES = {
+    BEANS: Bean,
+    PUBLISHERS: Publisher,
+    CHATTERS: Chatter,
+    "_materialized_chatter_aggregates": AggregatedBean,
+    "aggregated_beans_view": AggregatedBean,
+    "trending_beans_view": AggregatedBean   
 }
+
 _PRIMARY_KEYS = {
-    BEANS: _Bean.url,
-    PUBLISHERS: _Publisher.source
-}
-_PRIMARY_KEY_NAMES = {
     "beans": K_URL,
     "publishers": K_SOURCE
 }
@@ -118,77 +57,128 @@ REFRESH MATERIALIZED VIEW _materialized_clusters;
 REFRESH MATERIALIZED VIEW _materialized_cluster_aggregates;
 """
 
+_PAGE_SIZE = 4096
+
+log = logging.getLogger(__name__)
+
 class Beansack:
-    db: Engine
+    db: psycopg2.extensions.connection
 
     def __init__(self, conn_str: str):
         """Initialize the Beansack with a PostgreSQL connection string."""
-        self.db = create_engine(conn_str)
+        self.db = psycopg2.connect(conn_str)
+        register_vector(self.db, globally=True, arrays=True)
     
     # STORE METHODS
 
+    def deduplicate(self, table: str, items: list) -> list:
+        if not items: return items
+        get_id = lambda item: getattr(item, _PRIMARY_KEYS[table])
+        ids = [get_id(item) for item in items]
+        if table == BEANS: existing_ids = {bean.url for bean in self._fetch_all(table, urls=ids)}
+        elif table == PUBLISHERS: existing_ids = {pub.source for pub in self._fetch_all(table, sources=ids)}
+        else: raise ValueError(f"Deduplication not supported for table: {table}")
+        return list(filter(lambda item: get_id(item) not in existing_ids, items))
+
+    def _store(self, table: str, items: list[dict | BaseModel], override: bool = False) -> int:
+        if not items: return 0
+
+        if isinstance(items[0], BaseModel): data = [item.model_dump() for item in items]
+        elif isinstance(items[0], dict): data = items
+        else: raise ValueError("Items must be a list of dicts or BaseModel instances.")
+
+        columns = non_null_fields(data)
+        if not columns: return 0
+
+        fields = ', '.join(columns)
+        placeholders = ', '.join([f'%({c})s' for c in columns])
+        on_conflict = f"ON CONFLICT ({_PRIMARY_KEYS[table]}) DO NOTHING" if table in _PRIMARY_KEYS else ""
+        sql = f"INSERT INTO {table} ({fields}) VALUES %s {on_conflict};"
+
+        with self.db.cursor() as cursor:
+            if override: cursor.execute(f"TRUNCATE TABLE {table};")
+            execute_values(cursor, sql, data, template=f"({placeholders})")
+            count = cursor.rowcount
+        self.db.commit()
+        log.debug("stored", extra={"source": table, "num_items": count})
+        return count
+
     def store_beans(self, beans: list[Bean]):
         """Store a list of Beans in the database."""
-        if not beans: return 0
-        to_store = prepare_beans_for_store(beans)
-        stmt = insert(_Bean).values([bean.model_dump() for bean in to_store]).on_conflict_do_nothing(index_elements=[K_URL])
-        return self._execute(stmt).rowcount
+        return self._store(BEANS, prepare_beans_for_store(beans))
+    
+    def store_publishers(self, publishers: list[Publisher]):
+        """Store a list of Publishers in the database."""
+        return self._store(PUBLISHERS, prepare_publishers_for_store(publishers))
+    
+    def store_chatters(self, chatters: list[Chatter]):
+        """Store a list of Chatters in the database."""
+        return self._store(CHATTERS, prepare_chatters_for_store(chatters))
+    
+    def _update(self, table: str, items: list, columns: list[str] = None):
+        if not items: return 0
+
+        pk = _PRIMARY_KEYS[table]
+        if columns: data = [bean.model_dump(include=set(columns) | ({pk} if pk else {})) for bean in items]
+        else: data = [bean.model_dump() for bean in items]
+        
+        fields = ', '.join([f"{col} = %({col})s" for col in data[0].keys() if col != pk])
+        sql = f"UPDATE {table} SET {fields} WHERE {pk} = %({pk})s;"
+        with self.db.cursor() as cursor:
+            execute_batch(cursor, sql, data, page_size=_PAGE_SIZE)
+            count = cursor.rowcount
+        self.db.commit()
+        log.debug("updated", extra={"source": table, "num_items": count})
+        return count
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         """Partially update a list of Beans in the database."""
         if not beans: return 0
-        updates = distinct(beans, K_URL)     
-        updates = [bean.model_dump(include=set(columns) | {K_URL}) if columns else bean.model_dump() for bean in updates]
-        return self._execute(update(_Bean), updates)
+        return self._update(BEANS, distinct(beans, K_URL), columns)
     
     def update_embeddings(self, beans: list[Bean]):
         """Update embeddings for a list of Beans and the computed categories + sentiments during the process."""
         if not beans: return 0
-        updates = distinct(beans, K_URL)
-        updates = [bean.model_dump(include=[K_URL, K_EMBEDDING]) for bean in updates]
-        with Session(self.db) as session:
-            session.exec(update(_Bean), params=updates)
-            count = session.exec(text(UPDATE_CLASSIFICATIONS)).rowcount
-            session.commit()
+        data = distinct(beans, K_URL)
+        data = [(bean.url, bean.embedding) for bean in data if bean.embedding and len(bean.embedding) == VECTOR_LEN]
+        sql = """
+        WITH 
+            data(url, embedding) AS (VALUES %s),
+            updates AS (
+                SELECT 
+                d.url,
+                d.embedding,
+                ARRAY(
+                    SELECT fc.category FROM fixed_categories fc
+                    ORDER BY d.embedding <=> fc.embedding LIMIT 2
+                )  as categories,
+                ARRAY(
+                    SELECT fs.sentiment FROM fixed_sentiments fs
+                    ORDER BY d.embedding <=> fs.embedding LIMIT 2
+                )  as sentiments
+                FROM data d
+            )
+        UPDATE beans b
+        SET
+            embedding = u.embedding,
+            categories = u.categories,
+            sentiments = u.sentiments
+        FROM updates u
+        WHERE b.url = u.url;
+        """
+        with self.db.cursor() as cursor:
+            execute_values(cursor, sql, data, template=f"(%s, %s::vector({VECTOR_LEN}))", page_size=_PAGE_SIZE)
+            count = cursor.rowcount
+        self.db.commit()
         return count
-    
-    def store_publishers(self, publishers: list[Publisher]):
-        """Store a list of Publishers in the database."""
-        if not publishers: return 0
-        to_store = prepare_publishers_for_store(publishers)
-        stmt = insert(_Publisher).values([publisher.model_dump() for publisher in to_store]).on_conflict_do_nothing(index_elements=[K_SOURCE])
-        return self._execute(stmt).rowcount
     
     def update_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
         if not publishers: return 0
-        updates = distinct(publishers, K_SOURCE)
-        updates = [publisher.model_dump(exclude=[K_BASE_URL]) for publisher in updates]        
-        return self._execute(update(_Publisher), updates)
-    
-    def store_chatters(self, chatters: list[Chatter]):
-        """Store a list of Chatters in the database."""
-        if not chatters: return 0
-        to_store = prepare_chatters_for_store(chatters)
-        stmt = insert(_Chatter).values([chatter.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatter in to_store])
-        return self._execute(stmt).rowcount
-    
-    def deduplicate(self, table: str, items: list) -> list:
-        if not items: return items
-        get_id = lambda item: getattr(item, _PRIMARY_KEY_NAMES[table])
-        existing_ids = ic(self._exists(table, [get_id(item) for item in items]) or [])
-        return list(filter(lambda item: get_id(item) not in existing_ids, items))
+        return self._update(PUBLISHERS, distinct(publishers, K_SOURCE))       
 
-    def _exists(self, table_name: str, ids: list) -> list:
-        if not ids: return
-        stmt = select(_PRIMARY_KEYS[table_name]).where(_PRIMARY_KEYS[table_name].in_(ids))
-        with Session(self.db) as session:
-            result = session.scalars(stmt).all()
-        return result
-    
-    # QUERY METHODS
-    def _query_beans(self,
-        table: str = BEANS,
+    def _fetch_all(self, 
+        table: str,
         urls: list[str] = None,
         kind: str = None, 
         created: datetime = None, collected: datetime = None, updated: datetime = None,
@@ -200,11 +190,10 @@ class Beansack:
         order: str = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ):
-        model = _TABLES[table]
-        if columns: stmt = select(*[getattr(model, col) for col in columns])
-        else: stmt = select(model)
-        where_clauses = _where(model, 
+    ):        
+        fields = ", ".join(columns) if columns else  "*"
+        sql = f"SELECT {fields} FROM {table} "
+        where_exprs, params = _where( 
             urls=urls,
             kind=kind,
             created=created,
@@ -218,18 +207,27 @@ class Beansack:
             distance=distance,
             conditions=conditions
         )
-        if where_clauses: stmt = stmt.where(*where_clauses)
-        if order: stmt = stmt.order_by(text(order))
-        if offset: stmt = stmt.offset(offset)
-        if limit: stmt = stmt.limit(limit)
-        with Session(self.db) as session:
-            results = session.exec(stmt).all()
-            if columns:
-                if len(columns) == 1: results = [model(**{columns[0]: row}) for row in results]
-                else: results = [model(**dict(zip(columns, row))) for row in results]
-            beans = [Bean.model_validate(row) for row in results]
-        return beans
+        if where_exprs: sql += f"{where_exprs} "
+        
+        # TODO: add order by distance if embedding is provide and no distance is given
+        if order: sql += f"ORDER BY {order} "
+        if limit: 
+            sql += "LIMIT %(limit)s "
+            params['limit'] = limit
+        if offset: 
+            sql += "OFFSET %(offset)s "
+            params['offset'] = offset
+        
+        with self.db.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            cols = [desc[0] for desc in cursor.description]
+            items = [dict(zip(cols, row)) for row in rows]
 
+        if table in _TYPES: items = [_TYPES[table](**item) for item in items]
+        log.debug("queried", extra={"source": table, "num_items": len(items)})
+        return items
+    
     def query_latest_beans(self,
         kind: str = None, 
         created: datetime = None, collected: datetime = None,
@@ -241,7 +239,7 @@ class Beansack:
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ):
-        return self._query_beans(
+        return self._fetch_all(
             table=BEANS, 
             urls=None,
             kind=kind,
@@ -271,7 +269,7 @@ class Beansack:
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ):
-        return self._query_beans(
+        return self._fetch_all(
             table="trending_beans_view", 
             urls=None,
             kind=kind,
@@ -302,7 +300,7 @@ class Beansack:
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ) -> list[Bean]:
-        return self._query_beans(
+        return self._fetch_all(
             table="aggregated_beans_view",
             kind=kind,
             created=created,
@@ -321,64 +319,68 @@ class Beansack:
             columns=columns
         )
 
-    def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
-        raise NotImplementedError("PostgreSQL implementation of query_aggregated_chatters is not yet available.")
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):        
+        return self._fetch_all(
+            table="_materialized_chatter_aggregates",
+            urls=urls,
+            updated=updated,            
+            order=ORDER_BY_TRENDING,
+            limit=limit,
+            offset=offset
+        )
 
     def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0):
-        stmt = select(_Publisher)
-        where_clauses = _where(_Publisher, sources=sources, conditions=conditions)
-        if where_clauses: stmt = stmt.where(*where_clauses)
-        if limit: stmt = stmt.limit(limit)
-        with Session(self.db) as session:
-            results = ic(session.exec(stmt).all())
-            pubs = [Publisher.model_validate(row) for row in results]
-        return pubs
+        return self._fetch_all(
+            table=PUBLISHERS,
+            sources=sources,
+            conditions=conditions,
+            limit=limit
+        )
 
     def count_rows(self, table: str) -> int:
         SQL_COUNT = f"SELECT count(*) FROM {table};"
-        with Session(self.db) as session:
-            count = session.scalar(text(SQL_COUNT))
-        return count
+        with self.db.cursor() as cursor:
+            cursor.execute(SQL_COUNT)
+            result = cursor.fetchone()
+            return result[0]
     
     # MAINTENANCE METHODS
-    def refresh_classifications(self):        
-        return self._execute(text(UPDATE_CLASSIFICATIONS)).rowcount
+    def execute(self, sql: str):
+        """Execute arbitrary SQL commands."""
+        with self.db.cursor() as cursor:
+            cursor.execute(sql)
+        self.db.commit()
+
+    def _refresh_classifications(self):        
+        self.execute(UPDATE_CLASSIFICATIONS)
         
     def refresh(self):
-        with Session(self.db) as session:
-            result = ic(session.exec(text(UPDATE_CLASSIFICATIONS)).rowcount)
-            result = session.exec(text(REFRESH_VIEWS))
-            session.commit()
-        return result        
-
-    def _execute(self, stmt, params = None):
-        with Session(self.db) as session:
-            result = session.exec(stmt, params=params)
-            session.commit()
-        return result
+        self.execute(REFRESH_VIEWS)
     
     def close(self):
-        self.db.dispose()
+        self.db.close()
         
 def create_db(conn_str: str, factory_dir: str) -> Beansack:
     """Create the new tables, views, indexes etc."""
     db = Beansack(conn_str)  # Just to ensure the DB is reachable
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(vector_len = VECTOR_LEN, cluster_eps=CLUSTER_EPS)
-    db._execute(text(init_sql))
+    db.execute(init_sql)
 
     factory_path = Path(factory_dir) 
-    to_list = lambda x: x.tolist() if hasattr(x, 'tolist') else x
-    categories = pd.read_parquet(factory_path / "categories.parquet")
-    categories[K_EMBEDDING] = categories[K_EMBEDDING].apply(to_list)
-    categories.to_sql("fixed_categories", con=db.db, if_exists="replace", index=False, dtype={"category": VARCHAR, K_EMBEDDING: VECTOR(VECTOR_LEN)})
-    sentiments = pd.read_parquet(factory_path / "sentiments.parquet")
-    sentiments[K_EMBEDDING] = sentiments[K_EMBEDDING].apply(to_list)
-    sentiments.to_sql("fixed_sentiments", con=db.db, if_exists="replace", index=False, dtype={"sentiment": VARCHAR, K_EMBEDDING: VECTOR(VECTOR_LEN)})
+    _store_parquet(db, factory_path / "categories.parquet", "fixed_categories", True)
+    _store_parquet(db, factory_path / "sentiments.parquet", "fixed_sentiments", True)
     return db
 
+def _store_parquet(db, file_path: Path, table_name: str, override: bool = False):
+    """Load a parquet file into a database table, converting embedding columns to lists."""
+    df = pd.read_parquet(file_path)    
+    # Convert embedding column to list if it exists
+    if K_EMBEDDING in df.columns: 
+        df[K_EMBEDDING] = df[K_EMBEDDING].apply(lambda x: x.tolist() if hasattr(x, 'tolist') else x)
+    return db._store(table_name, df.to_dict('records'), override=override)
+
 def _where(
-    model,
     urls: list[str] = None,
     kind: str = None, 
     created: datetime = None, collected: datetime = None, updated: datetime = None,
@@ -387,18 +389,41 @@ def _where(
     embedding: list[float] = None, distance: float = 0, 
     conditions: list[str] = None,
 ):
-    where_clauses = []
-    if urls: where_clauses.append(model.url.in_(urls))
-    if kind: where_clauses.append(model.kind == kind)
-    if created: where_clauses.append(model.created >= created)
-    if collected: where_clauses.append(model.collected >= collected)
-    if updated: where_clauses.append(model.updated >= updated)
+    exprs = []
+    params = {}
+    if urls: 
+        exprs.append("url = ANY(%(urls)s)")
+        params['urls'] = urls
+    if kind: 
+        exprs.append("kind = %(kind)s")
+        params['kind'] = kind
+    if created: 
+        exprs.append("created >= %(created)s")
+        params['created'] = created
+    if collected: 
+        exprs.append("collected >= %(collected)s")
+        params['collected'] = collected
+    if updated: 
+        exprs.append("updated >= %(updated)s")
+        params['updated'] = updated
     # array overlap operator: &&
-    if categories: where_clauses.append(model.categories.op("&&")(categories))
-    if regions: where_clauses.append(model.regions.op("&&")(regions))
-    if entities: where_clauses.append(model.entities.op("&&")(entities))
-    if sources: where_clauses.append(model.source.in_(sources))
+    if categories: 
+        exprs.append("categories && %(categories)s::varchar[]")
+        params['categories'] = categories
+    if regions: 
+        exprs.append("regions && %(regions)s::varchar[]")
+        params['regions'] = regions
+    if entities: 
+        exprs.append("entities && %(entities)s::varchar[]")
+        params['entities'] = entities
+    if sources: 
+        exprs.append("source = ANY(%(sources)s)")
+        params['sources'] = sources
     # cosine distance operator: <=>
-    if embedding and distance: where_clauses.append(model.embedding.cosine_distance(embedding) <= distance)
-    if conditions: where_clauses.extend(map(text, conditions))
-    return where_clauses
+    if embedding and distance: 
+        exprs.append("(embedding <=> %(embedding)s::vector) <= %(distance)s")
+        params['embedding'] = embedding
+        params['distance'] = distance
+    if conditions: exprs.extend(conditions)
+    if exprs: return ("WHERE " + " AND ".join(exprs), {k: v for k, v in params.items() if v})
+    else: return ("", {})
