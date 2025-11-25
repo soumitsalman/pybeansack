@@ -18,6 +18,11 @@ ORDER_BY_LATEST = "created DESC"
 ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
 ORDER_BY_DISTANCE = "distance ASC"
 
+_PRIMARY_KEYS = {
+    BEANS: K_URL,
+    PUBLISHERS: K_SOURCE
+}
+
 log = logging.getLogger(__name__)
 
 def _select(table: str, columns: list[str] = None, embedding: list[float] = None):
@@ -71,11 +76,9 @@ def _beans_to_df(beans: list[Bean], columns):
 
 def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True):
     if not publishers: return
-    publishers = rectify_publisher_fields(publishers)        
-    publishers = list(filter(filter_func, publishers))
+    publishers = prepare_publishers_for_store(publishers)        
     publishers = distinct(publishers, K_SOURCE)
-    if not publishers: return
-    
+    if not publishers: return    
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
 
 class Beansack:
@@ -123,7 +126,7 @@ class Beansack:
     def store_beans(self, beans: list[Bean]) -> list[Bean]:                   
         if not beans: return
        
-        df = _beans_to_df(list(filter(bean_filter, rectify_bean_fields(beans))), None)
+        df = _beans_to_df(prepare_beans_for_store(beans), None)
         fields=', '.join(df.columns.to_list())
         if not fields: return
 
@@ -193,10 +196,7 @@ class Beansack:
     def store_chatters(self, chatters: list[Chatter]):       
         if not chatters: return
 
-        chatters = list(filter(chatter_filter, chatters))
-        if not chatters: return
-
-        df = pd.DataFrame([chatter.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatter in chatters])        
+        df = pd.DataFrame([chatter.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatter in prepare_chatters_for_store(chatters)])        
         fields=', '.join(col for col in df.columns if df[col].notnull().any())
         SQL_INSERT = f"""
         INSERT INTO warehouse.chatters ({fields})
@@ -236,8 +236,9 @@ class Beansack:
         return self._execute_df(SQL_UPDATE, df)    
 
     ###### Query methods
-    def deduplicate(self, table: str, idkey: str, items: list) -> list:
+    def deduplicate(self, table: str, items: list) -> list:
         if not items: return items
+        idkey = _PRIMARY_KEYS[table]
         ids = [getattr(item, idkey) for item in items]
         existing_ids = self._exists(table, idkey, ids) or []
         return [item for id, item in zip(ids, items) if id not in existing_ids]

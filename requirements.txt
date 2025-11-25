@@ -4,10 +4,13 @@ pymongo
 pandas
 duckdb
 lancedb
-sqlmodel
 boto3
 rfc3339
 retry
 icecream
 s3fs
 tantivy
+pgvector
+psycopg2-binary
+onlymaps[psycopg2]
+onlymaps

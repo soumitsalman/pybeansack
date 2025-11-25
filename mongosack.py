@@ -147,6 +147,11 @@ def _beans_text_search_pipeline(text: str, filter: dict, group_by: str|list[str]
     if count: pipeline.append({"$count": "total_count"})    
     return pipeline
 
+_PRIMARY_KEYS = {
+    BEANS: K_URL,
+    PUBLISHERS: K_SOURCE
+}
+
 class Beansack:
     db: Database
     beanstore: Collection
@@ -184,20 +189,23 @@ class Beansack:
         if not beans: return beans
         return [item[K_URL] for item in self.beanstore.find({K_URL: {"$in": [bean.url for bean in beans]}}, {K_URL: 1})]
 
-    def deduplicate(self, table: str, idkey: str, items: list) -> list:
-        if not items: return items        
-        ids = [getattr(item, idkey) for item in items]
-        existing_ids = self.db[table].find({idkey: {"$in": ids}}, {idkey: 1}, projection={idkey: 1})
+    def deduplicate(self, table: str, items: list) -> list:
+        if not items: return items 
+        idkey = _PRIMARY_KEYS[table]    
+        get_id = lambda item: getattr(item, idkey)   
+        existing_ids = self.db[table].find(
+            filter={idkey: {"$in": [get_id(item) for item in items]}}, 
+            projection={idkey: 1}
+        )
         existing_ids = [item[idkey] for item in existing_ids]
-        return list(filter(lambda item: getattr(item, idkey) not in existing_ids, items))
+        return list(filter(lambda item: get_id(item) not in existing_ids, items))
 
     def count_rows(self, table):
         return self.db[table].count_documents({})     
 
     def store_beans(self, beans: list[Bean]) -> int:   
         if not beans: return 0
-        beans = rectify_bean_fields(beans)
-        beans = list(filter(bean_filter, beans))
+        beans = prepare_beans_for_store(beans)
         beans = distinct(beans, K_URL)
         try: return len(self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in self._fix_bean_ids(beans)], ordered=False).inserted_ids)
         except BulkWriteError as e: return e.details['nInserted']
@@ -208,6 +216,7 @@ class Beansack:
                 
     def store_chatters(self, chatters: list[Chatter]):
         if not chatters: return chatters
+        chatters = prepare_chatters_for_store(chatters)
         res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True, exclude_defaults=True) for item in chatters])
         return len(res.inserted_ids or [])
 
@@ -479,17 +488,17 @@ class Beansack:
         ]    
         return [item for item in self.beanstore.aggregate(pipeline)]
         
-    def get_latest_chatters(self, urls: str|list[str] = None) -> list[ChatterAnalysis]:
+    def query_aggregated_chatters(self, urls: str|list[str] = None) -> list[Chatter]:
         """Retrieves the latest social media status from different mediums."""
         current_pipeline = self._chatters_pipeline(urls)
-        current_chatters = {item[K_ID]: ChatterAnalysis(**item) for item in self.chatterstore.aggregate(current_pipeline)}
+        current_chatters = {item[K_ID]: Chatter(**item) for item in self.chatterstore.aggregate(current_pipeline)}
         yesterdays_pipeline = self._chatters_pipeline(urls, 1)
-        yesterdays_chatters = {item[K_ID]: ChatterAnalysis(**item) for item in self.chatterstore.aggregate(yesterdays_pipeline)}
-        for url, current in current_chatters.items():
-            yesterday = yesterdays_chatters.get(url, ChatterAnalysis(url=url))
-            current.likes_change = current.likes - yesterday.likes
-            current.comments_change = current.comments - yesterday.comments
-            current.shares_change = current.shares - yesterday.shares
+        yesterdays_chatters = {item[K_ID]: Chatter(**item) for item in self.chatterstore.aggregate(yesterdays_pipeline)}
+        # for url, current in current_chatters.items():
+        #     yesterday = yesterdays_chatters.get(url, Chatter(url=url))
+            # current.likes_change = current.likes - yesterday.likes
+            # current.comments_change = current.comments - yesterday.comments
+            # current.shares_change = current.shares - yesterday.shares
         return list(current_chatters.values())
 
     # BUG: if rss feed readers/sites have comments and for those, shares are double counted
