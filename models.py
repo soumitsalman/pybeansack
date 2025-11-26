@@ -80,10 +80,8 @@ class Chatter(BaseModel):
     source: Optional[str] = Field(default=None) # this is the domain name of the source
     forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
     collected: Optional[datetime] = Field(default=None)
-    # updated: Optional[datetime] = Field(default=None) # only applies during chatter aggregation
     likes: int = Field(default=0)
     comments: int = Field(default=0)
-    # shares: int = Field(default=0)
     subscribers: int = Field(default=0)
 
     def to_tuple(self) -> tuple:
@@ -107,7 +105,6 @@ class Chatter(BaseModel):
             'forum': 'string',
             'likes': 'uint32',
             'comments': 'uint32',
-            'shares': 'uint32',
             'subscribers': 'uint32'
         }
 
@@ -187,7 +184,7 @@ class Bean(BaseModel):
             'entities': 'object'  
         }
 
-class _CupboardBase(BaseModel):
+class _CupboardItem(BaseModel):
     id: str = Field(...)
     title: Optional[str] = Field(None, description="This is the title")
     content: Optional[str] = Field(None, description="This is the content")
@@ -203,12 +200,12 @@ class _CupboardBase(BaseModel):
         by_alias=True
         json_encoders={datetime: rfc3339}
 
-class Sip(_CupboardBase):
+class Sip(_CupboardItem):
     mug: Optional[str] = Field(None, description="This is the slug to the parent mug")
     related: Optional[list[str]] = Field(None, description="These are the slugs to related past sips")
     beans: Optional[list[str]] = Field(None, description="These are the urls to the beans")
 
-class Mug(_CupboardBase):
+class Mug(_CupboardItem):
     sips: Optional[list[str]] = Field(None, description="These are the slugs to the sips/sections")
     highlights: Optional[list[str]] = Field(None, description="These are the highlights")   
     tags: Optional[list[str]] = Field(None, description="These are the tags")

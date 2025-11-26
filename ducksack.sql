@@ -1,30 +1,40 @@
-CREATE TABLE IF NOT EXISTS bean_cores (
-    url VARCHAR NOT NULL,
+
+CREATE TABLE IF NOT EXISTS beans (
+    -- CORE FIELDS
+    url VARCHAR NOT NULL PRIMARY KEY,
     kind VARCHAR NOT NULL,
-    title VARCHAR,
-    title_length UINT16,
+    title VARCHAR NOT NULL,
+    title_length UINT16,    
+    author VARCHAR,
+    source VARCHAR NOT NULL,  
+    image_url VARCHAR,
+    created TIMESTAMP NOT NULL,
+    collected TIMESTAMP NOT NULL,
+
+    -- TEXT HEAVY FIELDS
     summary TEXT,
     summary_length UINT16,
     content TEXT,
     content_length UINT16,
-    restricted_content BOOLEAN,  -- 0 for False, 1 for True
-    author VARCHAR,
-    source VARCHAR NOT NULL,  
-    image_url VARCHAR,
-    created TIMESTAMP NOT NULL,  -- ISO format datetime string
-    collected TIMESTAMP NOT NULL  -- ISO format datetime string
-);
+    restricted_content BOOLEAN,
 
-CREATE TABLE IF NOT EXISTS bean_embeddings (
-    url VARCHAR NOT NULL,  -- Foreign key to Bean.url
-    embedding FLOAT[] NOT NULL
-);
+    -- CLASSIFICATION FIELDS
+    embedding FLOAT[{vector_len}],
+    categories VARCHAR[],
+    sentiments VARCHAR[],
 
-CREATE TABLE IF NOT EXISTS bean_gists (
-    url VARCHAR NOT NULL,  -- Foreign key to Bean.url
-    gist TEXT NOT NULL,
+    -- TODO: REMOVE THESE
+    cluster_id VARCHAR,
+    cluster_size UINT32,
+
+    -- COMPRESSED EXTRACTION FIELDS
+    gist TEXT,
     regions VARCHAR[],
-    entities VARCHAR[]
+    entities VARCHAR[],
+
+    -- EXTRACTION FIELDS FOR FUTURE EXTENSION
+    regions_v2 VARCHAR[],
+    entities_v2 VARCHAR[]
 );
 
 CREATE TABLE IF NOT EXISTS chatters (
@@ -39,15 +49,14 @@ CREATE TABLE IF NOT EXISTS chatters (
 );
 
 CREATE TABLE IF NOT EXISTS publishers (
-    source VARCHAR NOT NULL,
+    source VARCHAR NOT NULL PRIMARY KEY,
     base_url VARCHAR NOT NULL,
-    title VARCHAR DEFAULT NULL,
-    summary TEXT DEFAULT NULL,    
+    site_name VARCHAR DEFAULT NULL,
+    description TEXT DEFAULT NULL,    
     favicon VARCHAR DEFAULT NULL,
     rss_feed VARCHAR DEFAULT NULL
 );
 
--- THESE 2 ARE STATIC TABLES. ONCE INITIALIZED OR REGISTERED, THEY DO NOT CHANGE
 
 CREATE TABLE IF NOT EXISTS fixed_categories AS
 SELECT * FROM read_parquet('{factory}/categories.parquet');
@@ -55,69 +64,22 @@ SELECT * FROM read_parquet('{factory}/categories.parquet');
 CREATE TABLE IF NOT EXISTS fixed_sentiments AS
 SELECT * FROM read_parquet('{factory}/sentiments.parquet');
 
--- THERE ARE COMPUTED TABLES/MATERIALIZED VIEWS THAT ARE REFRESHED PERIODICALLY
-
-CREATE TABLE IF NOT EXISTS computed_bean_clusters (
+-- THIS IS COMPUTED FROM BEANS EMBEDDINGS BEING COMPARED TO OTHER BEANS EMBEDDINGS
+CREATE TABLE IF NOT EXISTS _materialized_clusters (
     url VARCHAR NOT NULL,
     related VARCHAR NOT NULL,
     distance FLOAT DEFAULT 0.0
 );
 
-CREATE TABLE IF NOT EXISTS computed_bean_categories (
+-- THIS IS COMPUTED FROM TAKING DATA FROM BEAN CLUSTERS AND AGGREGATING THE STATS FOR FASTER QUERY
+CREATE TABLE IF NOT EXISTS _materialized_cluster_aggregates (
     url VARCHAR NOT NULL,
-    categories VARCHAR[] NOT NULL
+    cluster_id VARCHAR NOT NULL,
+    cluster_size UINT32 NOT NULL,
+    related VARCHAR[]
 );
 
-CREATE TABLE IF NOT EXISTS computed_bean_sentiments (
-    url VARCHAR NOT NULL,
-    sentiments VARCHAR[] NOT NULL
-);
-
--- THERE ARE VIEWS/DYNAMIC QUERIES THAT ARE USED TO SIMPLIFY APP LEVEL QUERIES
--- NOTE: Technically this table is merger of bean_cores, bean_embeddings and bean_gists. so there are processed contents here
-CREATE VIEW IF NOT EXISTS unprocessed_beans_view AS
-SELECT * EXCLUDE(e.url, g.url) FROM bean_cores b
-LEFT JOIN bean_embeddings e ON b.url = e.url
-LEFT JOIN bean_gists g ON b.url = g.url
-ORDER BY created DESC;
-
-CREATE VIEW IF NOT EXISTS missing_embeddings_view AS
-SELECT * FROM bean_cores b
-WHERE b.url NOT IN (SELECT url FROM bean_embeddings)
-ORDER BY created DESC;
-
-CREATE VIEW IF NOT EXISTS missing_gists_view AS
-SELECT * FROM bean_cores b
-WHERE b.url NOT IN (SELECT url FROM bean_gists)
-ORDER BY created DESC;
-
-CREATE VIEW IF NOT EXISTS missing_clusters_view AS
-SELECT * FROM bean_embeddings e
-WHERE e.url NOT IN (SELECT url FROM computed_bean_clusters);
-
-CREATE VIEW IF NOT EXISTS missing_categories_view AS
-SELECT * FROM bean_embeddings e
-WHERE e.url NOT IN (SELECT url FROM computed_bean_categories);
-
-CREATE VIEW IF NOT EXISTS missing_sentiments_view AS
-SELECT * FROM bean_embeddings e
-WHERE e.url NOT IN (SELECT url FROM computed_bean_sentiments);
-
-CREATE VIEW IF NOT EXISTS processed_beans_view AS
-SELECT * EXCLUDE(e.url, g.url, c.url, s.url) FROM bean_cores b
-INNER JOIN bean_embeddings e ON b.url = e.url
-INNER JOIN bean_gists g ON b.url = g.url
-INNER JOIN computed_bean_categories c ON b.url = c.url
-INNER JOIN computed_bean_sentiments s ON b.url = s.url
--- INNER JOIN (
---     SELECT url, FIRST(related ORDER BY distance) as cluster_id
---     FROM bean_clusters
---     GROUP BY url
--- ) cl ON b.url = cl.url;
-;
-
--- TODO: look to see if it can be replaced with FIRST(collected ORDER BY likes DESC)
-CREATE VIEW IF NOT EXISTS bean_chatters_view AS
+CREATE VIEW IF NOT EXISTS _internal_aggregated_chatters_view AS
 WITH 
     max_stats AS (
         SELECT 
@@ -138,7 +100,7 @@ WITH
     )
 SELECT 
     url,
-    MAX(collected) as updated,
+    DATE(MAX(collected)) as updated,
     SUM(likes) as likes, 
     SUM(comments) as comments, 
     SUM(subscribers) as subscribers,
@@ -149,3 +111,26 @@ FROM(
     WHERE fs.collected = ch.collected
 ) 
 GROUP BY url;
+
+CREATE TABLE IF NOT EXISTS _materialized_chatter_aggregates (
+    url VARCHAR NOT NULL,  -- Foreign key to Bean.url
+    updated DATE NOT NULL,
+    likes UINT32,
+    comments UINT32,
+    subscribers UINT32,
+    shares UINT32,
+    refresh_ts TIMESTAMP NOT NULL
+);
+
+CREATE VIEW IF NOT EXISTS latest_beans_view AS
+SELECT * FROM beans b;
+
+CREATE VIEW IF NOT EXISTS trending_beans_view AS
+SELECT * EXCLUDE(ch.url) FROM beans b
+INNER JOIN _materialized_chatter_aggregates ch ON b.url = ch.url;
+
+CREATE VIEW IF NOT EXISTS aggregated_beans_view AS
+SELECT * EXCLUDE(b.cluster_id, b.cluster_size, cl.url, ch.url, p.source) FROM beans b
+LEFT JOIN _materialized_cluster_aggregates cl ON b.url = cl.url
+LEFT JOIN _materialized_chatter_aggregates ch ON b.url = ch.url
+LEFT JOIN publishers p ON b.source = p.source;

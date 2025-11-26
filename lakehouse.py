@@ -9,6 +9,8 @@ from datetime import datetime
 from retry import retry
 from .models import *
 from .utils import *
+from .bases import BeansackBase
+
 from icecream import ic
 
 RETRY_COUNT = 10
@@ -18,9 +20,19 @@ ORDER_BY_LATEST = "created DESC"
 ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
 ORDER_BY_DISTANCE = "distance ASC"
 
+_TYPES = {
+    BEANS: Bean,
+    PUBLISHERS: Publisher,
+    CHATTERS: Chatter,
+    "_materialized_chatter_aggregates": AggregatedBean,
+    "latest_beans_view": Bean,
+    "aggregated_beans_view": AggregatedBean,
+    "trending_beans_view": AggregatedBean   
+}
+
 _PRIMARY_KEYS = {
-    BEANS: K_URL,
-    PUBLISHERS: K_SOURCE
+    "beans": K_URL,
+    "publishers": K_SOURCE
 }
 
 log = logging.getLogger(__name__)
@@ -81,7 +93,7 @@ def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True)
     if not publishers: return    
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
 
-class Beansack:
+class Beansack(BeansackBase):
     def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
@@ -94,7 +106,7 @@ class Beansack:
         s3_access_key_id = os.getenv('S3_ACCESS_KEY_ID', '')
         s3_secret_access_key = os.getenv('S3_SECRET_ACCESS_KEY', '')
         
-        with open(os.path.join(os.path.dirname(__file__), 'warehouse.sql'), 'r') as sql_file:
+        with open(os.path.join(os.path.dirname(__file__), 'lakehouse.sql'), 'r') as sql_file:
             init_sql = sql_file.read().format(
                 # loading prefixed categories and sentiments
                 factory=os.path.expanduser(factory_dir),
@@ -138,7 +150,38 @@ class Beansack:
             WHERE b.url = df.url
         );
         """
-        return self._execute_df(SQL_INSERT, df)
+        current_count = self.count_rows(BEANS)
+        self._execute_df(SQL_INSERT, df)
+        return self.count_rows(BEANS) - current_count
+    
+    def store_publishers(self, publishers: list[Publisher]): 
+        df = _publishers_to_df(publishers, publisher_filter)
+        if df is None: return
+        fields=', '.join(df.columns.to_list())
+        if not fields: return
+
+        SQL_INSERT = f"""
+        INSERT INTO warehouse.publishers ({fields})
+        SELECT {fields} FROM df
+        WHERE source NOT IN (
+            SELECT source FROM warehouse.publishers p
+        );
+        """
+        current_count = self.count_rows(PUBLISHERS)
+        self._execute_df(SQL_INSERT, df)
+        return self.count_rows(PUBLISHERS) - current_count
+    
+    def store_chatters(self, chatters: list[Chatter]):       
+        if not chatters: return
+
+        df = pd.DataFrame([chatter.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatter in prepare_chatters_for_store(chatters)])        
+        fields=', '.join(df.columns.to_list())
+        if not fields: return
+        SQL_INSERT = f"""
+        INSERT INTO warehouse.chatters ({fields})
+        SELECT {fields} FROM df;
+        """
+        return self._execute_df(SQL_INSERT, df)   
     
     # this is a special function that updates embeddings, associated classifications and clustering
     def update_embeddings(self, beans: list[Bean]):
@@ -193,32 +236,6 @@ class Beansack:
         """
         return self._execute_df(SQL_UPDATE, df)    
 
-    def store_chatters(self, chatters: list[Chatter]):       
-        if not chatters: return
-
-        df = pd.DataFrame([chatter.model_dump(exclude=[K_SHARES, K_UPDATED]) for chatter in prepare_chatters_for_store(chatters)])        
-        fields=', '.join(col for col in df.columns if df[col].notnull().any())
-        SQL_INSERT = f"""
-        INSERT INTO warehouse.chatters ({fields})
-        SELECT {fields} FROM df;
-        """
-        return self._execute_df(SQL_INSERT, df)     
-
-    def store_publishers(self, publishers: list[Publisher]): 
-        df = _publishers_to_df(publishers, publisher_filter)
-        if df is None: return
-        fields=', '.join(df.columns.to_list())
-        if not fields: return
-
-        SQL_INSERT = f"""
-        INSERT INTO warehouse.publishers ({fields})
-        SELECT {fields} FROM df
-        WHERE source NOT IN (
-            SELECT source FROM warehouse.publishers p
-        );
-        """
-        return self._execute_df(SQL_INSERT, df)
-
     def update_publishers(self, publishers: list[Publisher]):
         df = _publishers_to_df(publishers)
         if df is None: return
@@ -246,12 +263,12 @@ class Beansack:
     def exists(self, urls: list[str]) -> list[str]:
         return self._exists("bean", "url", urls)
     
-    def count_rows(self, table):
+    def count_rows(self, table, conditions: list[str] = None) -> int:
         SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
         return self.query_one(SQL_COUNT)
 
-    def _query_beans(self, 
-        table: str = "beans",
+    def _fetch_all(self, 
+        table: str = BEANS,
         kind: str = None, 
         created: datetime = None, collected: datetime = None, updated: datetime = None,
         categories: list[str] = None, 
@@ -261,8 +278,7 @@ class Beansack:
         conditions: list[str] = None,
         order: str = None,
         limit: int = 0, offset: int = 0, 
-        columns: list[str] = None,
-        model = Bean
+        columns: list[str] = None
     ) -> list[Bean]:
         select_expr, select_params = _select(table, columns, embedding)
         where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, sources, distance, conditions)
@@ -276,10 +292,11 @@ class Beansack:
         if order: rel = rel.order(order)
         if distance: rel = rel.order(ORDER_BY_DISTANCE)
         if offset or limit: rel = rel.limit(limit, offset=offset)
-        beans = [model(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+        items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+        if table in _TYPES: items = [_TYPES[table](**item) for item in items]
         cursor.close()
 
-        return beans
+        return items
     
     def query_latest_beans(self,
         kind: str = None, 
@@ -295,7 +312,7 @@ class Beansack:
     ) -> list[Bean]:
         if columns: fields = list(set(columns + [K_CREATED]))
         else: fields = None
-        return self._query_beans(
+        return self._fetch_all(
             table="latest_beans_view",
             kind=kind,
             created=created,
@@ -324,10 +341,10 @@ class Beansack:
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ) -> list[AggregatedBean]:
         if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
         else: fields = None
-        return self._query_beans(
+        return self._fetch_all(
             table="trending_beans_view",
             kind=kind,
             updated=updated,
@@ -357,10 +374,10 @@ class Beansack:
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ) -> list[AggregatedBean]:
         if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
         else: fields = None
-        return self._query_beans(
+        return self._fetch_all(
             table="aggregated_beans_view",
             kind=kind,
             created=created,
@@ -380,20 +397,23 @@ class Beansack:
             model=AggregatedBean
         )
 
-    def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
-        SQL_LATEST_CHATTERS = """SELECT * FROM warehouse._materialized_aggregated_chatters WHERE updated >= ?;"""
-        cursor = self.db.cursor()
-        rel = cursor.query(SQL_LATEST_CHATTERS, params=(updated,))
-        if limit: rel = rel.limit(limit)
-        return [Chatter(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):    
+        return self._fetch_all(
+            table="_materialized_aggregated_chatters",
+            urls=urls,  
+            updated=updated,
+            limit=limit,
+            offset=offset
+        ) 
     
-    def query_publishers(self, conditions: list[str] = None, limit: int = None):        
-        query_expr = "SELECT * FROM warehouse.publishers"
-        if conditions: query_expr = query_expr + " WHERE " + " AND ".join(conditions)
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr)
-        if limit: rel = rel.limit(limit)
-        return [Publisher(**dict(zip(rel.columns, row))) for row in rel.fetchall()]
+    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):        
+        return self._fetch_all(
+            table=PUBLISHERS,
+            sources=sources,
+            conditions=conditions,
+            limit=limit,
+            offset=offset
+        )
     
     ##### Maintenance methods
     def query(self, query_expr: str, params: list = None) -> list[dict]:

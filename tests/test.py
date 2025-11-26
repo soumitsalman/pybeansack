@@ -8,7 +8,7 @@ from datetime import timedelta
 from icecream import ic
 
 # Import from package using relative imports
-from .. import mongosack, lancesack, warehouse
+from .. import lakehouse, mongosack, lancesack
 from ..models import *
 
 import argparse
@@ -31,7 +31,7 @@ get_test_beansack = lambda dbname="test": mongosack.Beansack(
     os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), dbname
 )
 
-get_test_warehouse = lambda: warehouse.Beansack()
+get_test_warehouse = lambda: lakehouse.Beansack()
 
 def _run_test_func(test_func, total=1000):
     # with ThreadPoolExecutor(max_workers=8) as executor:
@@ -156,7 +156,7 @@ def test_store_sources():
     beansack = get_test_beansack("espresso")
 
     def get_and_store(offset):
-        cursor = beansack.sourcestore.find(skip=offset, limit=BATCH_SIZE)
+        cursor = beansack.publisherstore.find(skip=offset, limit=BATCH_SIZE)
         found = []
         for item in cursor:
             found.append(Publisher(

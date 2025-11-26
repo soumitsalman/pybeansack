@@ -12,5 +12,3 @@ s3fs
 tantivy
 pgvector
 psycopg2-binary
-onlymaps[psycopg2]
-onlymaps

@@ -14,6 +14,7 @@ from pymongo.collection import Collection
 from bson import SON
 from .models import *
 from .utils import *
+from .bases import BeansackBase
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ DEFAULT_VECTOR_SEARCH_LIMIT = 1000
 # names of db and collections
 BEANS = "beans"
 CHATTERS = "chatters"
-SOURCES = "sources"
+PUBLISHERS = "publishers"
 PAGES = "pages"
 USERS = "users"
 
@@ -38,6 +39,9 @@ VALUE_EXISTS = { "$exists": True, "$ne": None}
 CLEANUP_WINDOW = 7
 
 class _Bean(Bean):
+    id: Optional[str] = Field(default=None, alias="_id")
+
+class _Publisher(Publisher):
     id: Optional[str] = Field(default=None, alias="_id")
 
 field_value = lambda items: {"$in": items} if isinstance(items, list) else items
@@ -152,11 +156,11 @@ _PRIMARY_KEYS = {
     PUBLISHERS: K_SOURCE
 }
 
-class Beansack:
+class Beansack(BeansackBase):
     db: Database
     beanstore: Collection
     chatterstore: Collection
-    sourcestore: Collection
+    publisherstore: Collection
     userstore: Collection
     pagestore: Collection
 
@@ -175,7 +179,7 @@ class Beansack:
             maxPoolSize=100)[db_name]        
         self.beanstore: Collection = self.db[BEANS]
         self.chatterstore: Collection = self.db[CHATTERS]        
-        self.sourcestore: Collection = self.db[SOURCES]  
+        self.publisherstore: Collection = self.db[PUBLISHERS]  
         self.userstore = self.db[USERS]
         self.pagestore = self.db[PAGES]
 
@@ -200,13 +204,12 @@ class Beansack:
         existing_ids = [item[idkey] for item in existing_ids]
         return list(filter(lambda item: get_id(item) not in existing_ids, items))
 
-    def count_rows(self, table):
-        return self.db[table].count_documents({})     
+    def count_rows(self, table: str, conditions: dict = None) -> int:
+        return self.db[table].count_documents(conditions or {})     
 
     def store_beans(self, beans: list[Bean]) -> int:   
         if not beans: return 0
         beans = prepare_beans_for_store(beans)
-        beans = distinct(beans, K_URL)
         try: return len(self.beanstore.insert_many([bean.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for bean in self._fix_bean_ids(beans)], ordered=False).inserted_ids)
         except BulkWriteError as e: return e.details['nInserted']
 
@@ -220,27 +223,30 @@ class Beansack:
         res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True, exclude_defaults=True) for item in chatters])
         return len(res.inserted_ids or [])
 
-    def update_beans(self, beans: list[Bean]):
+
+    def store_publishers(self, publishers: list[Publisher]):
+        if not publishers: return publishers
+        publishers = prepare_publishers_for_store(publishers)
+        try: return len(self.publisherstore.insert_many([publisher.model_dump(exclude_unset=True, exclude_none=True, by_alias=True) for publisher in self._fix_publisher_ids(publishers)], ordered=False).inserted_ids)
+        except BulkWriteError as e: return e.details['nInserted']
+
+    def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return 0
         updates = list(map(
             lambda bean: UpdateOne(
                 filter = {K_ID: bean.url},
-                update = {"$set": bean.model_dump(by_alias=True, exclude_unset=True, exclude_none=True, exclude_defaults=True)}
+                update = {
+                    "$set": bean.model_dump(by_alias=True, exclude_unset=True, exclude_none=True, exclude_defaults=True) \
+                        if not columns else \
+                        bean.model_dump(by_alias=True, include=columns)
+                }
             ),
             beans
         ))
         return self.beanstore.bulk_write(updates, ordered=False, bypass_document_validation=True).matched_count
 
-    def update_beans_adhoc(self, updates: list[UpdateOne|UpdateMany]):
-        if not updates: return 0
-        batch_size = 128
-        insert = lambda batch: self.beanstore.bulk_write(batch, ordered=False, bypass_document_validation=True).matched_count
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            counts = executor.map(
-                insert,
-                [updates[i:i+batch_size] for i in range(0, len(updates), batch_size)]
-            )        
-        return sum(counts)
+    def update_embeddings(self, beans: list[Bean]):
+        raise NotImplementedError("use update_beans_adhoc instead")
 
     def delete_old(self, window: int):
         time_filter = {K_UPDATED: { "$lt": ndays_ago(window) }}
@@ -500,7 +506,7 @@ class Beansack:
             # current.comments_change = current.comments - yesterday.comments
             # current.shares_change = current.shares - yesterday.shares
         return list(current_chatters.values())
-
+    
     # BUG: if rss feed readers/sites have comments and for those, shares are double counted
     def _chatters_pipeline(self, urls: list[str], days_delta: int = 0):
         pipeline = [
@@ -731,6 +737,10 @@ class Beansack:
 
     def close(self):
         self.db.client.close()
+
+def _fix_publisher_ids(self, publishers: list[Publisher]) -> list[_Publisher]:
+    return [_Publisher(id=publisher.source, **publisher.model_dump(exclude_none=True)) for publisher in publishers]   
+
 
 
 ## local utilities for pymongo

@@ -6,9 +6,9 @@ import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values, execute_batch
 from pgvector.psycopg2 import register_vector
-
 from .models import *
 from .utils import *
+from .bases import BeansackBase
 from icecream import ic
 
 _TYPES = {
@@ -61,7 +61,7 @@ _PAGE_SIZE = 4096
 
 log = logging.getLogger(__name__)
 
-class Beansack:
+class Beansack(BeansackBase):
     db: psycopg2.extensions.connection
 
     def __init__(self, conn_str: str):
@@ -329,15 +329,16 @@ class Beansack:
             offset=offset
         )
 
-    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0):
+    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
         return self._fetch_all(
             table=PUBLISHERS,
             sources=sources,
             conditions=conditions,
-            limit=limit
+            limit=limit,
+            offset=offset
         )
 
-    def count_rows(self, table: str) -> int:
+    def count_rows(self, table: str, conditions: list[str] = None) -> int:
         SQL_COUNT = f"SELECT count(*) FROM {table};"
         with self.db.cursor() as cursor:
             cursor.execute(SQL_COUNT)

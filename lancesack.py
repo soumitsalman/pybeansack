@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import pyarrow as pa
 import pandas as pd
 from .models import *
+from .bases import *
 import logging
 from icecream import ic
 
@@ -75,7 +76,7 @@ class _ScalarReranker(Reranker):
 
 ORDER_BY_LATEST = _ScalarReranker(column="created", desc=True)
 
-class Beansack: 
+class Beansack(BeansackBase, CupboardBase): 
     db: lancedb.DBConnection
     tables: dict[str, lancedb.Table]
     allmugs: lancedb.Table
@@ -101,12 +102,27 @@ class Beansack:
     def store_beans(self, beans: list[Bean]):
         if not beans: return 0
 
-        to_store = prepare_beans_for_store(beans)
-        to_store = distinct(to_store, "url")        
+        to_store = prepare_beans_for_store(beans) 
         result = self.allbeans.merge_insert("url") \
             .when_not_matched_insert_all() \
             .execute([_Bean(**bean.model_dump(exclude_none=True)) for bean in to_store])
         return result.num_inserted_rows
+    
+    def store_publishers(self, publishers: list[Publisher]):
+        if not publishers: return 0
+
+        to_store = prepare_publishers_for_store(publishers)  
+        result = self.allpublishers.merge_insert(K_SOURCE) \
+            .when_not_matched_insert_all() \
+            .execute([_Publisher(**publisher.model_dump(exclude_none=True)) for publisher in to_store])
+        return result.num_inserted_rows
+    
+    def store_chatters(self, chatters: list[Chatter]):
+        if not chatters: return 0
+
+        to_store = prepare_chatters_for_store(chatters)
+        self.allchatters.add([_Chatter(**chatter.model_dump(exclude_none=True)) for chatter in to_store])
+        return len(to_store)
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return 0
@@ -164,16 +180,6 @@ class Beansack:
 
         return result.num_updated_rows
 
-    def store_publishers(self, publishers: list[Publisher]):
-        if not publishers: return 0
-
-        to_store = prepare_publishers_for_store(publishers)  
-        to_store = distinct(to_store, K_SOURCE)
-        result = self.allpublishers.merge_insert(K_SOURCE) \
-            .when_not_matched_insert_all() \
-            .execute([_Publisher(**publisher.model_dump(exclude_none=True)) for publisher in to_store])
-        return result.num_inserted_rows
-
     def update_publishers(self, publishers: list[Publisher]):
         if not publishers: return 0
 
@@ -190,13 +196,6 @@ class Beansack:
                 )
             )
         return result.num_updated_rows
-
-    def store_chatters(self, chatters: list[Chatter]):
-        if not chatters: return 0
-
-        to_store = prepare_chatters_for_store(chatters)
-        self.allchatters.add([_Chatter(**chatter.model_dump(exclude_none=True, exclude=[K_SHARES, K_UPDATED])) for chatter in to_store])
-        return len(to_store)
 
     def store_mugs(self, mugs: list[Mug]):
         if not mugs: return 0
@@ -225,7 +224,7 @@ class Beansack:
         existing_ids = [item[idkey] for item in existing_ids]
         return list(filter(lambda item: getattr(item, idkey) not in existing_ids, items))
 
-    def count_rows(self, table):
+    def count_rows(self, table, conditions: list[str] = None) -> int:
         return self.tables[table].count_rows()
 
     def _query_beans(self,
@@ -304,7 +303,8 @@ class Beansack:
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
-        limit: int = 0, offset: int = 0
+        limit: int = 0, offset: int = 0,
+        columns: list[str] = None
     ) -> list[AggregatedBean]:
         beans = self._query_beans(
             kind=kind,
@@ -320,7 +320,8 @@ class Beansack:
             conditions=conditions,
             order=ORDER_BY_LATEST,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
         publishers = self.allpublishers.search().where(_where(sources=[bean.source for bean in beans])).to_pydantic(_Publisher)
         clusters = self.allclusters.search().where(_where(urls=[bean.url for bean in beans])).to_pydantic(_Cluster)
@@ -332,12 +333,12 @@ class Beansack:
         # Additional aggregation logic can be added here
         return beans
 
-    def query_aggregated_chatters(self, updated: datetime, limit: int = None):        
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):      
         raise NOT_SUPPORTED
     
-    def query_publishers(self, conditions: list[str] = None, limit: int = None):  
+    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:  
         query = self.allpublishers.search()
-        if conditions: query = query.where(_where(conditions=conditions))
+        if conditions: query = query.where(_where(sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
         return query.to_pydantic(_Publisher)
     
