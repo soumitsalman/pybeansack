@@ -67,7 +67,7 @@ class Beansack(BeansackBase):
     def __init__(self, conn_str: str):
         """Initialize the Beansack with a PostgreSQL connection string."""
         self.db = psycopg2.connect(conn_str)
-        # register_vector(self.db, globally=True, arrays=True)
+        register_vector(self.db, globally=True, arrays=True)
     
     # STORE METHODS
 
@@ -75,7 +75,7 @@ class Beansack(BeansackBase):
         if not items: return items
         get_id = lambda item: getattr(item, _PRIMARY_KEYS[table])
         ids = [get_id(item) for item in items]
-        if table == BEANS: existing_ids = {bean.url for bean in self._fetch_all(table, urls=ids)}
+        if table == BEANS: existing_ids = {bean.url for bean in self._fetch_all(table, urls=ids, columns=[K_URL])}
         elif table == PUBLISHERS: existing_ids = {pub.source for pub in self._fetch_all(table, sources=ids)}
         else: raise ValueError(f"Deduplication not supported for table: {table}")
         return list(filter(lambda item: get_id(item) not in existing_ids, items))
