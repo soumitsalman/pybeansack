@@ -61,22 +61,22 @@ def _where(
     entities: list[str] = None,
     sources: list[str] = None,  
     distance: float = 0,
-    exprs: list[str] = None
+    conditions: list[str] = None
 ):
-    conditions = []
+    exprs = []
     params = []
-    if kind: conditions.append("kind = ?"), params.append(kind)
-    if created: conditions.append("created >= ?"), params.append(created)
-    if collected: conditions.append("collected >= ?"), params.append(collected)
-    if updated: conditions.append("updated >= ?"), params.append(updated)
-    if categories: conditions.append("ARRAY_HAS_ANY(categories, ?)"), params.append(categories)
-    if regions: conditions.append("ARRAY_HAS_ANY(regions, ?)"), params.append(regions)
-    if entities: conditions.append("ARRAY_HAS_ANY(entities, ?)"), params.append(entities)
-    if sources: conditions.append(f"source IN ({', '.join('?' for _ in sources)})"), params.extend(sources)
-    if distance: conditions.append("distance <= ?"), params.append(distance)
-    if exprs: conditions.extend(exprs)
+    if kind: exprs.append("kind = ?"), params.append(kind)
+    if created: exprs.append("created >= ?"), params.append(created)
+    if collected: exprs.append("collected >= ?"), params.append(collected)
+    if updated: exprs.append("updated >= ?"), params.append(updated)
+    if categories: exprs.append("ARRAY_HAS_ANY(categories, ?)"), params.append(categories)
+    if regions: exprs.append("ARRAY_HAS_ANY(regions, ?)"), params.append(regions)
+    if entities: exprs.append("ARRAY_HAS_ANY(entities, ?)"), params.append(entities)
+    if sources: exprs.append(f"source IN ({', '.join('?' for _ in sources)})"), params.extend(sources)
+    if distance: exprs.append("distance <= ?"), params.append(distance)
+    if conditions: exprs.extend(conditions)
 
-    if conditions: return " WHERE "+ (" AND ".join(conditions)), params
+    if exprs: return " WHERE "+ (" AND ".join(exprs)), params
     return None, None
 
 _EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
