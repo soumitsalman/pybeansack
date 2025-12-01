@@ -16,6 +16,14 @@ from icecream import ic
 RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
 
+DISTINCT_SOURCES = "DISTINCT source"
+DISTINCT_CLUSTERS = "DISTINCT cluster_id"
+MISSING_EMBEDDING = "embedding IS NULL"
+MISSING_DIGEST = "gist IS NULL"
+MISSING_SOURCE_METADATA = """
+source IS NOT NULL AND
+NOT EXISTS (SELECT 1 FROM publishers p WHERE p.source = source)
+"""
 ORDER_BY_LATEST = "created DESC"
 ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
 ORDER_BY_DISTANCE = "distance ASC"
@@ -94,34 +102,31 @@ def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True)
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
 
 class Beansack(BeansackBase):
-    def __init__(self, catalogdb: str, storagedb: str, factory_dir: str = "factory"):
+    db: duckdb.DuckDBPyConnection
+
+    def __init__(self, catalogdb: str, storagedb: str):
         config = {
             'threads': max(os.cpu_count() >> 1, 1),
             'enable_http_metadata_cache': True,
-            'ducklake_max_retry_count': 100
+            'ducklake_max_retry_count': 100,
+            's3_access_key_id': os.getenv('S3_ACCESS_KEY_ID'),
+            's3_secret_access_key': os.getenv('S3_SECRET_ACCESS_KEY'),
+            's3_endpoint': os.getenv('S3_ENDPOINT'),
+            's3_region': os.getenv('S3_REGION'),
         }
+        catalogdb_type = "postgres" if "postgresql://" in catalogdb else "sqlite"
 
-        s3_endpoint = os.getenv('S3_ENDPOINT', '')
-        s3_region = os.getenv('S3_REGION', '')
-        s3_access_key_id = os.getenv('S3_ACCESS_KEY_ID', '')
-        s3_secret_access_key = os.getenv('S3_SECRET_ACCESS_KEY', '')
-        
-        with open(os.path.join(os.path.dirname(__file__), 'lakehouse.sql'), 'r') as sql_file:
-            init_sql = sql_file.read().format(
-                # loading prefixed categories and sentiments
-                factory=os.path.expanduser(factory_dir),
-                catalog_path=catalogdb,
-                data_path=os.path.expanduser(storagedb),
-                # s3 storage configurations
-                s3_access_key_id=s3_access_key_id,
-                s3_secret_access_key=s3_secret_access_key,
-                s3_endpoint=s3_endpoint,
-                s3_region=s3_region,
-            )
-
+        SQL_CONNECT = f"""
+        INSTALL ducklake;
+        LOAD ducklake;
+        INSTALL {catalogdb_type};
+        LOAD {catalogdb_type};
+        ATTACH 'ducklake:{catalogdb}' AS warehouse (DATA_PATH '{storagedb}');
+        USE warehouse;
+        """
         self.db = duckdb.connect(config=config) 
-        self.execute(init_sql)
-        log.debug("Data warehouse initialized.")
+        self.execute(SQL_CONNECT)
+        log.debug("Data warehouse connected.")
     
     def _exists(self, table: str, field: str, ids: list) -> list[str]:
         if not ids: return
@@ -264,7 +269,8 @@ class Beansack(BeansackBase):
         return self._exists("bean", "url", urls)
     
     def count_rows(self, table, conditions: list[str] = None) -> int:
-        SQL_COUNT = f"SELECT count(*) FROM warehouse.{table};"
+        where_exprs, _ = _where(conditions=conditions)
+        SQL_COUNT = f"SELECT count(*) FROM warehouse.{table} {where_exprs or ''};"
         return self.query_one(SQL_COUNT)
 
     def _fetch_all(self, 
@@ -290,7 +296,7 @@ class Beansack(BeansackBase):
         cursor = self.db.cursor()
         rel = cursor.query(select_expr, params=params)
         if order: rel = rel.order(order)
-        if distance: rel = rel.order(ORDER_BY_DISTANCE)
+        if distance: rel = rel.order(self.ORDER_BY_DISTANCE)
         if offset or limit: rel = rel.limit(limit, offset=offset)
         items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
         if table in _TYPES: items = [_TYPES[table](**item) for item in items]
@@ -405,9 +411,20 @@ class Beansack(BeansackBase):
             offset=offset
         ) 
     
-    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):        
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):        
+        return self._fetch_all(
+            table=CHATTERS,
+            collected=collected,
+            sources=sources,
+            conditions=conditions,
+            limit=limit,
+            offset=offset
+        )
+    
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):        
         return self._fetch_all(
             table=PUBLISHERS,
+            collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
@@ -547,4 +564,33 @@ class Beansack(BeansackBase):
         self.db.close()        
         log.debug("Database connection closed.")
 
- 
+def create_db(catalogdb: str, storagedb: str, factory_dir: str = "factory"):
+    config = {
+        'threads': max(os.cpu_count() >> 1, 1),
+        'enable_http_metadata_cache': True,
+        'ducklake_max_retry_count': 100
+    }
+
+    s3_endpoint = os.getenv('S3_ENDPOINT', '')
+    s3_region = os.getenv('S3_REGION', '')
+    s3_access_key_id = os.getenv('S3_ACCESS_KEY_ID', '')
+    s3_secret_access_key = os.getenv('S3_SECRET_ACCESS_KEY', '')
+    
+    with open(os.path.join(os.path.dirname(__file__), 'lakehouse.sql'), 'r') as sql_file:
+        init_sql = sql_file.read().format(
+            # loading prefixed categories and sentiments
+            factory=os.path.expanduser(factory_dir),
+            catalog_path=catalogdb,
+            data_path=os.path.expanduser(storagedb),
+            # s3 storage configurations
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_endpoint=s3_endpoint,
+            s3_region=s3_region,
+        )
+
+    db = duckdb.connect(config=config) 
+    db.execute(init_sql)
+    db.close()
+    log.debug("Data warehouse initialized.")
+    return Beansack(catalogdb, storagedb)

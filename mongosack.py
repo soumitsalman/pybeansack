@@ -223,7 +223,6 @@ class Beansack(BeansackBase):
         res = self.chatterstore.insert_many([item.model_dump(exclude_unset=True, exclude_none=True, by_alias=True, exclude_defaults=True) for item in chatters])
         return len(res.inserted_ids or [])
 
-
     def store_publishers(self, publishers: list[Publisher]):
         if not publishers: return publishers
         publishers = prepare_publishers_for_store(publishers)
@@ -493,6 +492,9 @@ class Beansack(BeansackBase):
             }
         ]    
         return [item for item in self.beanstore.aggregate(pipeline)]
+    
+    def query_chatters(self, collected: datetime, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0): 
+        raise NotImplementedError("use lakehouse or ducksack for querying chatters")
         
     def query_aggregated_chatters(self, urls: str|list[str] = None) -> list[Chatter]:
         """Retrieves the latest social media status from different mediums."""

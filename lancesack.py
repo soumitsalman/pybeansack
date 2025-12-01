@@ -225,7 +225,8 @@ class Beansack(BeansackBase, CupboardBase):
         return list(filter(lambda item: getattr(item, idkey) not in existing_ids, items))
 
     def count_rows(self, table, conditions: list[str] = None) -> int:
-        return self.tables[table].count_rows()
+        where_exprs = _where(conditions=conditions)
+        return self.tables[table].count_rows(where_exprs)
 
     def _query_beans(self,
         kind: str = None, 
@@ -336,10 +337,18 @@ class Beansack(BeansackBase, CupboardBase):
     def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):      
         raise NOT_SUPPORTED
     
-    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:  
-        query = self.allpublishers.search()
-        if conditions: query = query.where(_where(sources=sources, conditions=conditions))
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Chatter]:  
+        query = self.allchatters.search()
+        if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
+        if offset: query = query.offset(offset)
+        return query.to_pydantic(_Chatter)
+    
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:  
+        query = self.allpublishers.search()
+        if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
+        if limit: query = query.limit(limit)
+        if offset: query = query.offset(offset)
         return query.to_pydantic(_Publisher)
     
     # MAINTENANCE functions

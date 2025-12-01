@@ -43,7 +43,8 @@ class BeansackBase(ABC):
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
-        columns: list[str] = None) -> list[Bean]:
+        columns: list[str] = None
+    ) -> list[Bean]:
         raise NOT_IMPLEMENTED
     
     @abstractmethod
@@ -78,11 +79,15 @@ class BeansackBase(ABC):
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):        
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0) -> list[AggregatedBean]:        
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Chatter]:
         raise NOT_IMPLEMENTED
     
     @abstractmethod

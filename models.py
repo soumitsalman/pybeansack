@@ -115,6 +115,7 @@ class Publisher(BaseModel):
     description: Optional[str] = Field(default=None)
     favicon: Optional[str] = Field(default=None)
     rss_feed: Optional[str] = Field(default=None)
+    collected: Optional[datetime] = Field(default=None)
 
     class Config:
         dtype_specs = {

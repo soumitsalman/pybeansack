@@ -328,10 +328,21 @@ class Beansack(BeansackBase):
             limit=limit,
             offset=offset
         )
+    
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0): 
+        return self._fetch_all(
+            table=CHATTERS,
+            collected=collected,
+            sources=sources,
+            conditions=conditions,
+            limit=limit,    
+            offset=offset
+        )
 
-    def query_publishers(self, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
         return self._fetch_all(
             table=PUBLISHERS,
+            collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
@@ -339,7 +350,8 @@ class Beansack(BeansackBase):
         )
 
     def count_rows(self, table: str, conditions: list[str] = None) -> int:
-        SQL_COUNT = f"SELECT count(*) FROM {table};"
+        where_exprs, _ = _where(conditions=conditions)
+        SQL_COUNT = f"SELECT count(*) FROM {table} {where_exprs or ""};"
         with self.db.cursor() as cursor:
             cursor.execute(SQL_COUNT)
             result = cursor.fetchone()

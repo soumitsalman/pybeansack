@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS publishers (
     description TEXT,
     favicon VARCHAR,
     rss_feed VARCHAR,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    collected TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS chatters (

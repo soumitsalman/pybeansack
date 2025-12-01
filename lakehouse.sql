@@ -74,7 +74,8 @@ CREATE TABLE IF NOT EXISTS publishers (
     site_name VARCHAR DEFAULT NULL,
     description TEXT DEFAULT NULL,    
     favicon VARCHAR DEFAULT NULL,
-    rss_feed VARCHAR DEFAULT NULL
+    rss_feed VARCHAR DEFAULT NULL,
+    collected TIMESTAMP
 );
 
 
