@@ -287,7 +287,7 @@ publisher_filter = lambda x: bool(x.source and x.base_url)
 clean_text = lambda text: text.strip() if text and text.strip() else None
 num_words = lambda text: min(len(text.split()) if text else 0, 1<<15)  # SMALLINT max value
 
-_EXCLUDE_AUTHORS = ["[no-author]", "noreply"]
+_EXCLUDE_AUTHORS = ["[no-author]", "noreply", "hidden", "admin", "isbpostadmin"]
 def prepare_beans_for_store(items: list[Bean]) -> list[Bean]:
     if not items: return items
 
