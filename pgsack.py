@@ -67,7 +67,7 @@ class Beansack(BeansackBase):
     def __init__(self, conn_str: str):
         """Initialize the Beansack with a PostgreSQL connection string."""
         self.db = psycopg2.connect(conn_str)
-        register_vector(self.db, globally=True, arrays=True)
+        # register_vector(self.db, globally=True, arrays=True)
     
     # STORE METHODS
 
@@ -379,6 +379,7 @@ def create_db(conn_str: str, factory_dir: str) -> Beansack:
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(vector_len = VECTOR_LEN, cluster_eps=CLUSTER_EPS)
     db.execute(init_sql)
+    register_vector(db.db, globally=True, arrays=True)
 
     factory_path = Path(factory_dir) 
     _store_parquet(db, factory_path / "categories.parquet", "fixed_categories", True)
