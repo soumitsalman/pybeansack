@@ -393,8 +393,7 @@ class Beansack(BeansackBase):
             order=ORDER_BY_LATEST,
             limit=limit,
             offset=offset,
-            columns=fields,
-            model=AggregatedBean
+            columns=fields
         )
 
     def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):    
