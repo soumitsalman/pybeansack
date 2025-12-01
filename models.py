@@ -320,6 +320,8 @@ def prepare_publishers_for_store(items: list[Publisher]) -> list[Publisher]:
         item.favicon = clean_text(item.favicon)
         item.rss_feed = clean_text(item.rss_feed)
         item.description = clean_text(item.description)
+        item.site_name = clean_text(item.site_name)
+        item.collected = item.collected or now()
 
     items = distinct(items, K_SOURCE)
     return list(filter(publisher_filter, items))
