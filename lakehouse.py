@@ -547,8 +547,8 @@ class Beansack(BeansackBase):
 
     def cleanup(self):
         SQL_CLEANUP = """
-        -- CALL ducklake_merge_adjacent_files('warehouse');
         CALL ducklake_expire_snapshots('warehouse', older_than => now() - INTERVAL '1 day');
+        CALL ducklake_merge_adjacent_files('warehouse');
         CALL ducklake_cleanup_old_files('warehouse', cleanup_all => true);
         CALL ducklake_delete_orphaned_files('warehouse', cleanup_all => true);
         """     
