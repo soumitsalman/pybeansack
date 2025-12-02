@@ -398,8 +398,7 @@ def create_db(storage_path: str, factory_dir: str):
 
     beans.create_scalar_index(K_URL, index_type="BTREE")
     beans.create_scalar_index(K_KIND, index_type="BITMAP")
-    beans.create_scalar_index(K_CREATED, index_type="BTREE")
-    beans.create_index(vector_column_name=K_EMBEDDING, metric="cosine", index_type="IVF_HNSW_SQ")
+    beans.create_scalar_index(K_CREATED, index_type="BTREE")    
     beans.create_scalar_index(K_CATEGORIES, index_type="LABEL_LIST")
     beans.create_scalar_index(K_REGIONS, index_type="LABEL_LIST")
     beans.create_scalar_index(K_ENTITIES, index_type="LABEL_LIST")
