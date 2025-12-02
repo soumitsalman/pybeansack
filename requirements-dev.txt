@@ -13,4 +13,4 @@ faker
 python-slugify
 tantivy
 pgvector
-psycopg2-binary
+psycopg[binary,pool]

@@ -527,7 +527,7 @@ class Beansack(BeansackBase):
         """
         return self.execute(SQL_INSERT_CLUSTER)
 
-    def refresh_aggregated_chatters(self):  
+    def refresh_chatters(self):  
         SQL_INSERT_AGGREGATES = f"""
         INSERT INTO warehouse._materialized_aggregated_chatters        
         SELECT *, CURRENT_TIMESTAMP as refresh_ts 
@@ -538,12 +538,12 @@ class Beansack(BeansackBase):
         """
         return self.execute(SQL_INSERT_AGGREGATES)  
 
-    def refresh(self):    
+    def optimize(self):    
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=4) as executor:
             executor.submit(self.refresh_classifications)
             executor.submit(self.refresh_clusters)
-            executor.submit(self.refresh_aggregated_chatters)
+            executor.submit(self.refresh_chatters)
 
     def cleanup(self):
         SQL_CLEANUP = """

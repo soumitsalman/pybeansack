@@ -352,11 +352,19 @@ class Beansack(BeansackBase, CupboardBase):
         return query.to_pydantic(_Publisher)
     
     # MAINTENANCE functions
-    def refresh_aggregated_chatters(self):
-        log.info("refreshing aggregated chatters - not yet implemented")
+    def refresh_classifications(self):
+        log.info("refreshing classifications - not yet implemented")
         pass
 
-    def refresh(self):
+    def refresh_clusters(self):
+        log.info("refreshing clusters - not yet implemented")
+        pass
+    
+    def refresh_chatters(self):
+        log.info("refreshing chatters - not yet implemented")
+        pass
+
+    def optimize(self):
         [table.optimize() for table in self.tables.values()]
 
     def close(self):

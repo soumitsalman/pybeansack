@@ -500,7 +500,16 @@ class Beansack(BeansackBase):
             offset=offset
         )
     
-    def refresh():
+    def refresh_classifications(self):
+        pass
+
+    def refresh_clusters(self):
+        pass
+
+    def refresh_chatters(self):
+        pass
+    
+    def optimize(self):
         pass
 
     def close(self):

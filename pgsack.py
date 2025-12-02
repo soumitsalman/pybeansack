@@ -1,15 +1,22 @@
+from contextlib import contextmanager
 import os
 import logging
 from pathlib import Path
 from typing import Any
 import pandas as pd
-import psycopg2
-from psycopg2.extras import execute_values, execute_batch
-from pgvector.psycopg2 import register_vector
+import psycopg
+from psycopg import sql
+from psycopg_pool import ConnectionPool
+# from psycopg2.extras import execute_values, execute_batch
+from pgvector.psycopg import register_vector, Vector
 from .models import *
 from .utils import *
 from .bases import BeansackBase
+from retry import retry
 from icecream import ic
+
+RETRY_COUNT = 3
+RETRY_DELAY = (10,120)  # seconds
 
 _TYPES = {
     BEANS: Bean,
@@ -29,57 +36,45 @@ ORDER_BY_LATEST = "created DESC"
 ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
 ORDER_BY_DISTANCE = "distance ASC"
 
-UPDATE_CLASSIFICATIONS = """
-WITH pack AS (
-    SELECT 
-        b.url,
-        ARRAY(
-            SELECT category FROM fixed_categories fc
-            ORDER BY b.embedding <=> fc.embedding LIMIT 2
-        )  AS categories,
-        ARRAY(
-            SELECT sentiment FROM fixed_sentiments fs
-            ORDER BY b.embedding <=> fs.embedding LIMIT 2
-        )  AS sentiments
-    FROM beans b
-    WHERE b.embedding is NOT NULL AND b.categories IS NULL
-)
-UPDATE beans b
-SET 
-    categories = pack.categories,
-    sentiments = pack.sentiments
-FROM pack
-WHERE b.url = pack.url;
-"""
-REFRESH_VIEWS = """
-REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;
-REFRESH MATERIALIZED VIEW _materialized_clusters;
-REFRESH MATERIALIZED VIEW _materialized_cluster_aggregates;
-"""
-
-_PAGE_SIZE = 4096
-
 log = logging.getLogger(__name__)
 
 class Beansack(BeansackBase):
-    db: psycopg2.extensions.connection
+    # db: psycopg.extensions.connection
+    pool: ConnectionPool
 
     def __init__(self, conn_str: str):
         """Initialize the Beansack with a PostgreSQL connection string."""
-        self.db = psycopg2.connect(conn_str)
-        register_vector(self.db, globally=True, arrays=True)
+        self.pool = ConnectionPool(conn_str, max_size=32, num_workers=os.cpu_count(), configure=register_vector)
+        self.pool.open()
+
+    @contextmanager
+    def cursor(self):
+        """Get a new transaction context manager."""
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                yield cur
+                conn.commit()
     
     # STORE METHODS
-
     def deduplicate(self, table: str, items: list) -> list:
         if not items: return items
         get_id = lambda item: getattr(item, _PRIMARY_KEYS[table])
         ids = [get_id(item) for item in items]
-        if table == BEANS: existing_ids = {bean.url for bean in self._fetch_all(table, urls=ids, columns=[K_URL])}
-        elif table == PUBLISHERS: existing_ids = {pub.source for pub in self._fetch_all(table, sources=ids)}
-        else: raise ValueError(f"Deduplication not supported for table: {table}")
-        return list(filter(lambda item: get_id(item) not in existing_ids, items))
 
+        SQL_DEDUP = sql.SQL("""
+        SELECT unnest(%(ids)s::varchar[]) AS id
+        EXCEPT
+        SELECT {pk_col} FROM {table};
+        """).format(
+            table=sql.Identifier(table),
+            pk_col=sql.Identifier(_PRIMARY_KEYS[table])
+        )
+        with self.cursor() as cur:
+            results = cur.execute(SQL_DEDUP, {"ids": ids})
+            non_existing_ids = {row[0] for row in results}
+        return [item for item in items if get_id(item) in non_existing_ids]
+
+    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def _store(self, table: str, items: list[dict | BaseModel], override: bool = False) -> int:
         if not items: return 0
 
@@ -90,16 +85,20 @@ class Beansack(BeansackBase):
         columns = non_null_fields(data)
         if not columns: return 0
 
-        fields = ', '.join(columns)
-        placeholders = ', '.join([f'%({c})s' for c in columns])
-        on_conflict = f"ON CONFLICT ({_PRIMARY_KEYS[table]}) DO NOTHING" if table in _PRIMARY_KEYS else ""
-        sql = f"INSERT INTO {table} ({fields}) VALUES %s {on_conflict};"
-
-        with self.db.cursor() as cursor:
-            if override: cursor.execute(f"TRUNCATE TABLE {table};")
-            execute_values(cursor, sql, data, template=f"({placeholders})")
-            count = cursor.rowcount
-        self.db.commit()
+        fields = sql.SQL(', ').join(map(sql.Identifier, columns))
+        placeholders = sql.SQL(', ').join([sql.Placeholder(name=c) for c in columns])
+        on_conflict = sql.SQL("ON CONFLICT ({}) DO NOTHING").format(sql.Identifier(_PRIMARY_KEYS[table])) if table in _PRIMARY_KEYS else sql.SQL("")
+        SQL_INSERT = sql.SQL("INSERT INTO {table} ({fields}) VALUES ({placeholders}) {on_conflict}").format(
+            table=sql.Identifier(table),
+            fields=fields,
+            placeholders=placeholders,
+            on_conflict=on_conflict
+        )
+        
+        with self.cursor() as cur:
+            if override: cur.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table)))
+            cur.executemany(SQL_INSERT, data)
+            count = cur.rowcount
         log.debug("stored", extra={"source": table, "num_items": count})
         return count
 
@@ -122,12 +121,22 @@ class Beansack(BeansackBase):
         if columns: data = [bean.model_dump(include=set(columns) | ({pk} if pk else {})) for bean in items]
         else: data = [bean.model_dump() for bean in items]
         
-        fields = ', '.join([f"{col} = %({col})s" for col in data[0].keys() if col != pk])
-        sql = f"UPDATE {table} SET {fields} WHERE {pk} = %({pk})s;"
-        with self.db.cursor() as cursor:
-            execute_batch(cursor, sql, data, page_size=_PAGE_SIZE)
-            count = cursor.rowcount
-        self.db.commit()
+        setters = sql.SQL(', ').join(
+            sql.Composed([
+                sql.Identifier(col),
+                sql.SQL(" = "),
+                sql.Placeholder(col)
+            ]) for col in data[0].keys() if col != pk
+        )
+        SQL_UPDATE = sql.SQL("UPDATE {table} SET {setters} WHERE {pk_field} = {pk_placeholder};").format(
+            table=sql.Identifier(table),
+            setters=setters,
+            pk_field=sql.Identifier(pk),
+            pk_placeholder=sql.Placeholder(pk)
+        )
+        with self.cursor() as cur:
+            cur.executemany(SQL_UPDATE, data)
+            count = cur.rowcount
         log.debug("updated", extra={"source": table, "num_items": count})
         return count
     
@@ -140,36 +149,38 @@ class Beansack(BeansackBase):
         """Update embeddings for a list of Beans and the computed categories + sentiments during the process."""
         if not beans: return 0
         data = distinct(beans, K_URL)
-        data = [(bean.url, bean.embedding) for bean in data if bean.embedding and len(bean.embedding) == VECTOR_LEN]
-        sql = """
-        WITH 
-            data(url, embedding) AS (VALUES %s),
-            updates AS (
-                SELECT 
-                d.url,
-                d.embedding,
-                ARRAY(
-                    SELECT fc.category FROM fixed_categories fc
-                    ORDER BY d.embedding <=> fc.embedding LIMIT 2
-                )  as categories,
-                ARRAY(
-                    SELECT fs.sentiment FROM fixed_sentiments fs
-                    ORDER BY d.embedding <=> fs.embedding LIMIT 2
-                )  as sentiments
-                FROM data d
-            )
-        UPDATE beans b
+        urls = [bean.url for bean in data]
+        embeddings = [Vector(bean.embedding) for bean in data]
+        SQL_UPDATE = """
+        UPDATE beans AS b
         SET
-            embedding = u.embedding,
-            categories = u.categories,
-            sentiments = u.sentiments
-        FROM updates u
-        WHERE b.url = u.url;
+            embedding = d.embedding::vector,
+            categories = (
+                SELECT ARRAY(
+                    SELECT category
+                    FROM fixed_categories fc
+                    ORDER BY d.embedding <=> fc.embedding LIMIT 2
+                )
+            ),
+            sentiments = (
+                SELECT ARRAY(
+                    SELECT sentiment
+                    FROM fixed_sentiments fs
+                    ORDER BY d.embedding <=> fs.embedding LIMIT 2
+                )
+            )
+        FROM (
+            SELECT 
+                u.url,
+                u.embedding
+            FROM unnest(%s::varchar[], %s) AS u(url, embedding)
+        ) AS d
+        WHERE b.url = d.url;
         """
-        with self.db.cursor() as cursor:
-            execute_values(cursor, sql, data, template=f"(%s, %s::vector({VECTOR_LEN}))", page_size=_PAGE_SIZE)
-            count = cursor.rowcount
-        self.db.commit()
+        
+        with self.cursor() as cur:
+            cur.execute(SQL_UPDATE, (urls, embeddings))
+            count = cur.rowcount
         return count
     
     def update_publishers(self, publishers: list[Publisher]):
@@ -192,7 +203,7 @@ class Beansack(BeansackBase):
         columns: list[str] = None
     ):        
         fields = ", ".join(columns) if columns else  "*"
-        sql = f"SELECT {fields} FROM {table} "
+        SQL_SELECT = f"SELECT {fields} FROM {table} "
         where_exprs, params = _where( 
             urls=urls,
             kind=kind,
@@ -207,21 +218,21 @@ class Beansack(BeansackBase):
             distance=distance,
             conditions=conditions
         )
-        if where_exprs: sql += f"{where_exprs} "
+        if where_exprs: SQL_SELECT += f"{where_exprs} "
         
         # TODO: add order by distance if embedding is provide and no distance is given
-        if order: sql += f"ORDER BY {order} "
+        if order: SQL_SELECT += f"ORDER BY {order} "
         if limit: 
-            sql += "LIMIT %(limit)s "
+            SQL_SELECT += "LIMIT %(limit)s "
             params['limit'] = limit
         if offset: 
-            sql += "OFFSET %(offset)s "
+            SQL_SELECT += "OFFSET %(offset)s "
             params['offset'] = offset
         
-        with self.db.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-            cols = [desc[0] for desc in cursor.description]
+        with self.cursor() as cur:
+            cur.execute(SQL_SELECT, params)
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
             items = [dict(zip(cols, row)) for row in rows]
 
         if table in _TYPES: items = [_TYPES[table](**item) for item in items]
@@ -328,16 +339,6 @@ class Beansack(BeansackBase):
             limit=limit,
             offset=offset
         )
-    
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0): 
-        return self._fetch_all(
-            table=CHATTERS,
-            collected=collected,
-            sources=sources,
-            conditions=conditions,
-            limit=limit,    
-            offset=offset
-        )
 
     def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
         return self._fetch_all(
@@ -348,30 +349,76 @@ class Beansack(BeansackBase):
             limit=limit,
             offset=offset
         )
+    
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
+        return self._fetch_all(
+            table=CHATTERS,
+            collected=collected,
+            sources=sources,
+            conditions=conditions,
+            limit=limit,
+            offset=offset
+        )
 
     def count_rows(self, table: str, conditions: list[str] = None) -> int:
         where_exprs, _ = _where(conditions=conditions)
         SQL_COUNT = f"SELECT count(*) FROM {table} {where_exprs or ""};"
-        with self.db.cursor() as cursor:
-            cursor.execute(SQL_COUNT)
-            result = cursor.fetchone()
-            return result[0]
+        with self.cursor() as cur:
+            cur.execute(SQL_COUNT)
+            result = cur.fetchone()
+        return result[0]
     
     # MAINTENANCE METHODS
     def execute(self, sql: str):
         """Execute arbitrary SQL commands."""
-        with self.db.cursor() as cursor:
+        with self.cursor() as cursor:
             cursor.execute(sql)
-        self.db.commit()
 
-    def _refresh_classifications(self):        
-        self.execute(UPDATE_CLASSIFICATIONS)
+    def refresh_classifications(self):  
+        SQL_UPDATE_CLASSIFICATIONS = """
+        WITH pack AS (
+            SELECT 
+                b.url,
+                ARRAY(
+                    SELECT category FROM fixed_categories fc
+                    ORDER BY b.embedding <=> fc.embedding LIMIT 2
+                )  AS categories,
+                ARRAY(
+                    SELECT sentiment FROM fixed_sentiments fs
+                    ORDER BY b.embedding <=> fs.embedding LIMIT 2
+                )  AS sentiments
+            FROM beans b
+            WHERE b.embedding is NOT NULL AND b.categories IS NULL
+        )
+        UPDATE beans b
+        SET 
+            categories = pack.categories,
+            sentiments = pack.sentiments
+        FROM pack
+        WHERE b.url = pack.url;
+        """      
+        self.execute(SQL_UPDATE_CLASSIFICATIONS)
+
+    def refresh_clusters(self):
+        SQL_REFRESH_CLUSTERS = """
+        REFRESH MATERIALIZED VIEW _materialized_clusters;
+        REFRESH MATERIALIZED VIEW _materialized_cluster_aggregates;
+        """
+        self.execute(SQL_REFRESH_CLUSTERS)
+
+    def refresh_chatters(self):
+        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
-    def refresh(self):
-        self.execute(REFRESH_VIEWS)
+    def optimize(self):
+        SQL_REFRESH_VIEWS = """
+        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;
+        REFRESH MATERIALIZED VIEW _materialized_clusters;
+        REFRESH MATERIALIZED VIEW _materialized_cluster_aggregates;
+        """
+        self.execute(SQL_REFRESH_VIEWS)
     
     def close(self):
-        self.db.close()
+        self.pool.close()
         
 def create_db(conn_str: str, factory_dir: str) -> Beansack:
     """Create the new tables, views, indexes etc."""
@@ -379,7 +426,6 @@ def create_db(conn_str: str, factory_dir: str) -> Beansack:
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(vector_len = VECTOR_LEN, cluster_eps=CLUSTER_EPS)
     db.execute(init_sql)
-    register_vector(db.db, globally=True, arrays=True)
 
     factory_path = Path(factory_dir) 
     _store_parquet(db, factory_path / "categories.parquet", "fixed_categories", True)

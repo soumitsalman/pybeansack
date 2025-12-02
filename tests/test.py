@@ -846,31 +846,31 @@ def test_lancesack():
 
 def test_pgsack():
     from .. import pgsack
-    db = pgsack.create_db(os.getenv('PG_CONNECTION_STRING'), os.getenv('FACTORY_DIR'))
+    db = pgsack.Beansack(os.getenv('PG_CONNECTION_STRING'))
     
-    if True:
+    if False:
         print("=== INSERT BEANS ===")
         ic(db.count_rows(BEANS))
         beans = generate_fake_beans(ai_fields=False)
         ic(len(beans), db.store_beans(beans))
         ic(db.count_rows(BEANS))
 
-    if True:
+    if False:
         print("=== DEDUPLICATE BEANS ===")
         beans = generate_fake_beans()
-        beans[0].url = "https://wilson.biz/"
-        beans[1].url = "http://clark-evans.com/"
+        beans[0].url = "https://choi.com/"
+        beans[1].url = "https://chase.org/"
         beans[2].url = "https://www.murphy.biz/"
         ic(len(beans), len(db.deduplicate(BEANS, beans)))
 
-    if True:
+    if False:
         print("=== INSERT PUBLISHERS ===")
         ic(db.count_rows(PUBLISHERS))
         publishers = generate_fake_publishers()
         ic(len(publishers), db.store_publishers(publishers))
         ic(db.count_rows(PUBLISHERS))
 
-    if True:
+    if False:
         print("=== INSERT CHATTERS ===")
         ic(db.count_rows(CHATTERS))
         chatters = generate_fake_chatters()
@@ -879,7 +879,7 @@ def test_pgsack():
         ic(len(chatters), db.store_chatters(chatters))
         ic(db.count_rows(CHATTERS))
 
-    if True:
+    if False:
         print("=== UPDATE DIGESTS ===")
         beans = ic(db.query_latest_beans(limit=2, columns=[K_URL, K_ENTITIES, K_REGIONS]))
         urls = [bean.url for bean in beans]
@@ -888,19 +888,19 @@ def test_pgsack():
         print("+++++++++")
         ic(db._fetch_all(table=BEANS, urls=urls, columns=[K_URL, K_ENTITIES, K_REGIONS]))
 
-    if True:
+    if False:
         print("=== UPDATE PUBLISHERS ===")
         publishers = db.query_publishers(limit=5)
         sources = [pub.source for pub in publishers]
         print("+++++++++")
         ic(len(publishers), db.update_publishers(generate_fake_publishers(sources, update=True)))
         print("+++++++++")
-        new_publishers = db.query_publishers(sources=sources)
+        new_publishers = ic(db.query_publishers(sources=sources))
 
 
-    if True:
+    if False:
         print("=== UPDATE EMBEDDINGS ===")
-        beans = ic(db.query_latest_beans(conditions = ["embedding IS NULL"], columns=[K_URL, K_CATEGORIES, K_SENTIMENTS]))
+        beans = ic(db.query_latest_beans(conditions = ["embedding IS NULL"], columns=[K_URL, K_CATEGORIES, K_SENTIMENTS], limit=5))
         urls = [bean.url for bean in beans]
         print("+++++++++")
         ic(db.update_embeddings(generate_fake_embeddings(urls)))
@@ -909,7 +909,7 @@ def test_pgsack():
 
     if True:
         print("=== REFRESH MATERIALIZED VIEWS ===")
-        ic(db.refresh())
+        ic(db.optimize())
 
     if True:
         print("=== QUERY BEANS ===")

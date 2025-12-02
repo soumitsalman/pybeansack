@@ -11,4 +11,5 @@ icecream
 s3fs
 tantivy
 pgvector
-psycopg2-binary
+psycopg
+psycopg[binary,pool]

@@ -95,11 +95,23 @@ class BeansackBase(ABC):
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def refresh():
+    def refresh_classifications(self):
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def close():
+    def refresh_clusters(self):
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def refresh_chatters(self):
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def optimize(self):
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def close(self):
         raise NOT_IMPLEMENTED
 
 class CupboardBase(ABC):
