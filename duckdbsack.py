@@ -4,7 +4,7 @@ import duckdb
 import logging
 import pandas as pd
 from .models import *
-from .bases import BeansackBase
+from .bases import Beansack
 
 
 SQL_INSERT_BEANS = """
@@ -120,7 +120,7 @@ _PRIMARY_KEYS = {
 }
 log = logging.getLogger(__name__)
 
-class Beansack(BeansackBase):
+class DuckDB(Beansack):
     storage_path: str
     db: duckdb.DuckDBPyConnection
 
@@ -577,9 +577,9 @@ def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True)
     if not publishers: return    
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
 
-def create_db(storage_path: str, factory_dir: str) -> BeansackBase:
+def create_db(storage_path: str, factory_dir: str) -> Beansack:
     os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-    db = Beansack(storage_path)
+    db = DuckDB(storage_path)
     with open(os.path.join(os.path.dirname(__file__), 'ducksack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(vector_len=VECTOR_LEN, factory=os.path.expanduser(factory_dir))
     db.db.execute(init_sql)

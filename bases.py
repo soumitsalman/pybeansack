@@ -3,7 +3,7 @@ from .models import *
 
 NOT_IMPLEMENTED = NotImplementedError("Method not implemented in base class")
 
-class BeansackBase(ABC):
+class Beansack(ABC):
     @abstractmethod
     def deduplicate(self, table: str, items: list) -> list:
         raise NOT_IMPLEMENTED
@@ -114,7 +114,7 @@ class BeansackBase(ABC):
     def close(self):
         raise NOT_IMPLEMENTED
 
-class CupboardBase(ABC):
+class Cupboard(ABC):
     @abstractmethod
     def store_mugs(self, mugs: list[Mug]) -> int:
         raise NOT_IMPLEMENTED

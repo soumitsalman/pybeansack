@@ -9,7 +9,7 @@ from datetime import datetime
 from retry import retry
 from .models import *
 from .utils import *
-from .bases import BeansackBase
+from .bases import Beansack
 
 from icecream import ic
 
@@ -45,63 +45,7 @@ _PRIMARY_KEYS = {
 
 log = logging.getLogger(__name__)
 
-def _select(table: str, columns: list[str] = None, embedding: list[float] = None):
-    if columns: fields = columns.copy()
-    else: fields = ["*"]
-    if embedding: fields.append(f"array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance")
-    return f"SELECT {', '.join(fields)} FROM warehouse.{table}", [embedding] if embedding else None
-
-def _where(
-    kind: str = None,
-    created: datetime = None,
-    collected: datetime = None,
-    updated: datetime = None,
-    categories: list[str] = None,
-    regions: list[str] = None,
-    entities: list[str] = None,
-    sources: list[str] = None,  
-    distance: float = 0,
-    conditions: list[str] = None
-):
-    exprs = []
-    params = []
-    if kind: exprs.append("kind = ?"), params.append(kind)
-    if created: exprs.append("created >= ?"), params.append(created)
-    if collected: exprs.append("collected >= ?"), params.append(collected)
-    if updated: exprs.append("updated >= ?"), params.append(updated)
-    if categories: exprs.append("ARRAY_HAS_ANY(categories, ?)"), params.append(categories)
-    if regions: exprs.append("ARRAY_HAS_ANY(regions, ?)"), params.append(regions)
-    if entities: exprs.append("ARRAY_HAS_ANY(entities, ?)"), params.append(entities)
-    if sources: exprs.append(f"source IN ({', '.join('?' for _ in sources)})"), params.extend(sources)
-    if distance: exprs.append("distance <= ?"), params.append(distance)
-    if conditions: exprs.extend(conditions)
-
-    if exprs: return " WHERE "+ (" AND ".join(exprs)), params
-    return None, None
-
-_EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
-
-##### Store methods
-def _beans_to_df(beans: list[Bean], columns):
-    if not beans: return
-
-    beans = distinct(beans, K_URL)
-    if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
-    else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_COLUMNS) for bean in beans] 
-    
-    df = pd.DataFrame(beans)
-    fields = columns or [col for col in df.columns if df[col].notnull().any()]
-    dtype_specs = {field:mapping for field, mapping in Bean.Config.dtype_specs.items() if field in [fields]}
-    return df.astype(dtype_specs)
-
-def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True):
-    if not publishers: return
-    publishers = prepare_publishers_for_store(publishers)        
-    publishers = distinct(publishers, K_SOURCE)
-    if not publishers: return    
-    return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
-
-class Beansack(BeansackBase):
+class Ducklake(Beansack):
     db: duckdb.DuckDBPyConnection
 
     def __init__(self, catalogdb: str, storagedb: str):
@@ -576,7 +520,7 @@ def create_db(catalogdb: str, storagedb: str, factory_dir: str = "factory"):
     s3_access_key_id = os.getenv('S3_ACCESS_KEY_ID', '')
     s3_secret_access_key = os.getenv('S3_SECRET_ACCESS_KEY', '')
     
-    with open(os.path.join(os.path.dirname(__file__), 'lakehouse.sql'), 'r') as sql_file:
+    with open(os.path.join(os.path.dirname(__file__), 'ducklakesack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(
             # loading prefixed categories and sentiments
             factory=os.path.expanduser(factory_dir),
@@ -593,4 +537,60 @@ def create_db(catalogdb: str, storagedb: str, factory_dir: str = "factory"):
     db.execute(init_sql)
     db.close()
     log.debug("Data warehouse initialized.")
-    return Beansack(catalogdb, storagedb)
+    return Ducklake(catalogdb, storagedb)
+
+def _select(table: str, columns: list[str] = None, embedding: list[float] = None):
+    if columns: fields = columns.copy()
+    else: fields = ["*"]
+    if embedding: fields.append(f"array_cosine_distance(embedding::FLOAT[{VECTOR_LEN}], ?::FLOAT[{VECTOR_LEN}]) AS distance")
+    return f"SELECT {', '.join(fields)} FROM warehouse.{table}", [embedding] if embedding else None
+
+def _where(
+    kind: str = None,
+    created: datetime = None,
+    collected: datetime = None,
+    updated: datetime = None,
+    categories: list[str] = None,
+    regions: list[str] = None,
+    entities: list[str] = None,
+    sources: list[str] = None,  
+    distance: float = 0,
+    conditions: list[str] = None
+):
+    exprs = []
+    params = []
+    if kind: exprs.append("kind = ?"), params.append(kind)
+    if created: exprs.append("created >= ?"), params.append(created)
+    if collected: exprs.append("collected >= ?"), params.append(collected)
+    if updated: exprs.append("updated >= ?"), params.append(updated)
+    if categories: exprs.append("ARRAY_HAS_ANY(categories, ?)"), params.append(categories)
+    if regions: exprs.append("ARRAY_HAS_ANY(regions, ?)"), params.append(regions)
+    if entities: exprs.append("ARRAY_HAS_ANY(entities, ?)"), params.append(entities)
+    if sources: exprs.append(f"source IN ({', '.join('?' for _ in sources)})"), params.extend(sources)
+    if distance: exprs.append("distance <= ?"), params.append(distance)
+    if conditions: exprs.extend(conditions)
+
+    if exprs: return " WHERE "+ (" AND ".join(exprs)), params
+    return None, None
+
+_EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
+
+##### Store methods
+def _beans_to_df(beans: list[Bean], columns):
+    if not beans: return
+
+    beans = distinct(beans, K_URL)
+    if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
+    else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_COLUMNS) for bean in beans] 
+    
+    df = pd.DataFrame(beans)
+    fields = columns or [col for col in df.columns if df[col].notnull().any()]
+    dtype_specs = {field:mapping for field, mapping in Bean.Config.dtype_specs.items() if field in [fields]}
+    return df.astype(dtype_specs)
+
+def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True):
+    if not publishers: return
+    publishers = prepare_publishers_for_store(publishers)        
+    publishers = distinct(publishers, K_SOURCE)
+    if not publishers: return    
+    return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])

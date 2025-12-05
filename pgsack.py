@@ -11,7 +11,7 @@ from psycopg_pool import ConnectionPool
 from pgvector.psycopg import register_vector, Vector
 from .models import *
 from .utils import *
-from .bases import BeansackBase
+from .bases import Beansack
 from retry import retry
 from icecream import ic
 
@@ -38,8 +38,7 @@ ORDER_BY_DISTANCE = "distance ASC"
 
 log = logging.getLogger(__name__)
 
-class Beansack(BeansackBase):
-    # db: psycopg.extensions.connection
+class Postgres(Beansack):
     pool: ConnectionPool
 
     def __init__(self, conn_str: str):
@@ -420,9 +419,9 @@ class Beansack(BeansackBase):
     def close(self):
         self.pool.close()
         
-def create_db(conn_str: str, factory_dir: str) -> Beansack:
+def create_db(conn_str: str, factory_dir: str) -> Postgres:
     """Create the new tables, views, indexes etc."""
-    db = Beansack(conn_str)  # Just to ensure the DB is reachable
+    db = Postgres(conn_str)  # Just to ensure the DB is reachable
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(vector_len = VECTOR_LEN, cluster_eps=CLUSTER_EPS)
     db.execute(init_sql)

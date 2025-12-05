@@ -14,7 +14,7 @@ from pymongo.collection import Collection
 from bson import SON
 from .models import *
 from .utils import *
-from .bases import BeansackBase
+from .bases import Beansack
 
 log = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ _PRIMARY_KEYS = {
     PUBLISHERS: K_SOURCE
 }
 
-class Beansack(BeansackBase):
+class MongoDB(Beansack):
     db: Database
     beanstore: Collection
     chatterstore: Collection

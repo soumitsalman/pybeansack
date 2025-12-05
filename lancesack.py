@@ -76,7 +76,7 @@ class _ScalarReranker(Reranker):
 
 ORDER_BY_LATEST = _ScalarReranker(column="created", desc=True)
 
-class Beansack(BeansackBase, CupboardBase): 
+class LanceDB(Beansack, Cupboard): 
     db: lancedb.DBConnection
     tables: dict[str, lancedb.Table]
     allmugs: lancedb.Table
@@ -406,7 +406,7 @@ def create_db(storage_path: str, factory_dir: str):
     chatters.create_scalar_index(K_URL, index_type="BTREE")
     clusters.create_scalar_index(K_URL, index_type="BTREE")
 
-    return Beansack(storage_path)
+    return LanceDB(storage_path)
 
 def _connect(storage_path: str):
     storage_options = None

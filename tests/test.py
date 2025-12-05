@@ -8,7 +8,7 @@ from datetime import timedelta
 from icecream import ic
 
 # Import from package using relative imports
-from .. import lakehouse, mongosack, lancesack
+from .. import ducklakesack, mongosack, lancesack
 from ..models import *
 
 import argparse
@@ -27,11 +27,11 @@ BATCH_SIZE = 128
 LOG_MSG_FOUND = "[%s] offset %d, Found %d"
 LOG_MSG_STORED = "[%s] offset %d, Found %d, Stored %d"
 
-get_test_beansack = lambda dbname="test": mongosack.Beansack(
+get_test_beansack = lambda dbname="test": mongosack.MongoDB(
     os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), dbname
 )
 
-get_test_warehouse = lambda: lakehouse.Beansack()
+get_test_warehouse = lambda: ducklakesack.Ducklake()
 
 def _run_test_func(test_func, total=1000):
     # with ThreadPoolExecutor(max_workers=8) as executor:
@@ -822,7 +822,7 @@ def generate_fake_sips():
     return [generate() for _ in range(random.randrange(10, 30))]
 
 def test_lancesack():
-    db = lancesack.Beansack(f"{os.getenv('TEST_STORAGE')}/{datetime.now().strftime('%Y-%m-%d')}-lancedb/v2")
+    db = lancesack.LanceDB(f"{os.getenv('TEST_STORAGE')}/{datetime.now().strftime('%Y-%m-%d')}-lancedb/v2")
     
     ic(db.allbeans.count_rows())
     ic(db.store_beans(generate_fake_beans(ai_fields=False)))
@@ -846,7 +846,7 @@ def test_lancesack():
 
 def test_pgsack():
     from .. import pgsack
-    db = pgsack.Beansack(os.getenv('PG_CONNECTION_STRING'))
+    db = pgsack.Postgres(os.getenv('PG_CONNECTION_STRING'))
     
     if False:
         print("=== INSERT BEANS ===")
