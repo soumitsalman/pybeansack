@@ -76,11 +76,9 @@ class _ScalarReranker(Reranker):
 
 ORDER_BY_LATEST = _ScalarReranker(column="created", desc=True)
 
-class LanceDB(Beansack, Cupboard): 
+class LanceDB(Beansack): 
     db: lancedb.DBConnection
     tables: dict[str, lancedb.Table]
-    allmugs: lancedb.Table
-    allsips: lancedb.Table
     allbeans: lancedb.Table
     allpublishers: lancedb.Table
     allchatters: lancedb.Table
@@ -365,31 +363,108 @@ class LanceDB(Beansack, Cupboard):
         pass
 
     def optimize(self):
+        try: self.tables[BEANS].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine")
+        except: pass
         [table.optimize() for table in self.tables.values()]
 
     def close(self):
         del self.db
         del self.tables
 
+class LanceDBCupboard(Cupboard): 
+    db: lancedb.DBConnection
+    tables: dict[str, lancedb.Table]
+
+    def __init__(self, storage_path: str):
+        self.db = _connect(storage_path)
+        self.tables = {
+            MUGS: self.db.create_table(MUGS, schema=_Mug, exist_ok=True),
+            SIPS: self.db.create_table(SIPS, schema=_Sip, exist_ok=True)
+        }
+
+    # INGESTION functions   
+    def store_mugs(self, mugs: list[Mug]):
+        if not mugs: return 0
+
+        to_store = distinct(mugs, "id")
+        result = self.tables[MUGS].merge_insert("id") \
+            .when_not_matched_insert_all() \
+            .execute( [_Mug(**mug.model_dump(exclude_none=True)) for mug in to_store])
+        return result.num_inserted_rows
+    
+    def store_sips(self, sips: list[Sip]):
+        if not sips: return 0
+
+        to_store = distinct(sips, "id") 
+        result = self.tables[SIPS].merge_insert("id") \
+            .when_not_matched_insert_all() \
+            .execute([_Sip(**sip.model_dump(exclude_none=True)) for sip in to_store])
+        return result.num_inserted_rows
+
+    def count_rows(self, table, conditions: list[str] = None) -> int:
+        where_exprs = _where(conditions=conditions)
+        return self.tables[table].count_rows(where_exprs)
+
+    def _query_items(self,
+        table: str,
+        created: datetime = None, updated: datetime = None,
+        embedding: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        order = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Bean]:
+        query = self.tables[table].search() if not embedding else self.tables[table].search(query=embedding, query_type="vector", vector_column_name=K_EMBEDDING)      
+        where_expr = _where(created=created, updated=updated, conditions=conditions)
+        if where_expr: query = query.where(where_expr)
+        if embedding: query = query.distance_type("cosine")
+        if distance: query = query.distance_range(upper_bound = distance)
+        if order and embedding: query = query.rerank(order, query_string="default")
+        if limit: query = query.limit(limit)
+        if offset: query = query.offset(offset)
+        if columns: query = query.select(columns+(["_distance"] if embedding else []))
+        return query.to_pydantic(_Bean)
+    
+    def query_sips(self,
+        created: datetime = None, updated: datetime = None,
+        embedding: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Sip]:
+        return self._query_items(
+            table=SIPS,
+            created=created,
+            updated=updated,
+            embedding=embedding,
+            distance=distance,
+            conditions=conditions,
+            order=ORDER_BY_LATEST,
+            limit=limit,
+            offset=offset,
+            columns=columns
+        )
+    
+    def optimize(self):
+        try: [self.tables[table].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine") for table in [MUGS, SIPS]]
+        except: pass
+        [table.optimize() for table in self.tables.values()]
+
+    def close(self):
+        del self.db
+        del self.tables
 
 def create_db(storage_path: str, factory_dir: str):
     db = _connect(storage_path)
-    beans = db.create_table("beans", schema=_Bean, exist_ok=True)
-    publishers = db.create_table("publishers", schema=_Publisher, exist_ok=True)
-    chatters = db.create_table("chatters", schema=_Chatter, exist_ok=True)
-    mugs = db.create_table("mugs", schema=_Mug, exist_ok=True)
-    sip = db.create_table("sips", schema=_Sip, exist_ok=True)
+    beans = db.create_table(BEANS, schema=_Bean, exist_ok=True)
+    publishers = db.create_table(PUBLISHERS, schema=_Publisher, exist_ok=True)
+    chatters = db.create_table(CHATTERS, schema=_Chatter, exist_ok=True)
     categories = db.create_table(
         "fixed_categories", 
         pd.read_parquet(f"{factory_dir}/categories.parquet"),
         mode="overwrite"
     )
     sentiments = db.create_table(
-        "fixed_sentiments", 
-        pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
-        mode="overwrite"
-    )
-    db.create_table(
         "fixed_sentiments", 
         pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
         mode="overwrite"
