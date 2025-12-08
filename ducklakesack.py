@@ -9,7 +9,7 @@ from datetime import datetime
 from retry import retry
 from .models import *
 from .utils import *
-from .bases import Beansack
+from .database import *
 
 from icecream import ic
 

@@ -5,12 +5,6 @@ from typing import Optional
 from datetime import datetime
 from .utils import *
 
-BEANS = "beans"
-PUBLISHERS = "publishers"
-CHATTERS = "chatters"
-MUGS = "mugs"
-SIPS = "sips"
-
 # CHANNEL = "social media group/forum"
 POST = "post"
 JOB = "job"

@@ -14,7 +14,7 @@ from pymongo.collection import Collection
 from bson import SON
 from .models import *
 from .utils import *
-from .bases import Beansack
+from .database import *
 
 log = logging.getLogger(__name__)
 
@@ -23,9 +23,6 @@ DEFAULT_VECTOR_SEARCH_SCORE = 0.75
 DEFAULT_VECTOR_SEARCH_LIMIT = 1000
 
 # names of db and collections
-BEANS = "beans"
-CHATTERS = "chatters"
-PUBLISHERS = "publishers"
 PAGES = "pages"
 USERS = "users"
 

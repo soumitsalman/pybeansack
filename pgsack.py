@@ -11,7 +11,7 @@ from psycopg_pool import ConnectionPool
 from pgvector.psycopg import register_vector, Vector
 from .models import *
 from .utils import *
-from .bases import Beansack
+from .database import *
 from retry import retry
 from icecream import ic
 

@@ -11,7 +11,7 @@ from .models import *
 from .staticdb import *
 from .cdnstore import *
 from .utils import *
-from .bases import *
+from .database import *
 
 DB_TYPE = Literal["duckdb", "duck", "lancedb", "lance", "ducklake", "dl", "postgres", "postgresql", "pg"]
 

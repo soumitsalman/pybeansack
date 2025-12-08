@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import pyarrow as pa
 import pandas as pd
 from .models import *
-from .bases import *
+from .database import *
 import logging
 from icecream import ic
 
@@ -87,13 +87,11 @@ class LanceDB(Beansack):
     def __init__(self, storage_path: str):
         self.db = _connect(storage_path)
         self.tables = {}
-        self.tables["beans"] = self.allbeans = self.db.open_table("beans")        
-        self.tables["publishers"] = self.allpublishers = self.db.open_table("publishers")
-        self.tables["chatters"] = self.allchatters = self.db.open_table("chatters")
-        self.tables["mugs"] = self.allmugs = self.db.open_table("mugs")
-        self.tables["sips"] = self.allsips = self.db.open_table("sips")
-        self.tables["fixed_categories"] = self.fixed_categories = self.db.open_table("fixed_categories")
-        self.tables["fixed_sentiments"] = self.fixed_sentiments = self.db.open_table("fixed_sentiments")
+        self.tables[BEANS] = self.allbeans = self.db.open_table(BEANS)        
+        self.tables[PUBLISHERS] = self.allpublishers = self.db.open_table(PUBLISHERS)
+        self.tables[CHATTERS] = self.allchatters = self.db.open_table(CHATTERS)
+        self.tables[FIXED_CATEGORIES] = self.fixed_categories = self.db.open_table(FIXED_CATEGORIES)
+        self.tables[FIXED_SENTIMENTS] = self.fixed_sentiments = self.db.open_table(FIXED_SENTIMENTS)
         self.tables["clusters"] = self.allclusters = self.db.open_table("clusters")
 
     # INGESTION functions
@@ -423,15 +421,50 @@ class LanceDBCupboard(Cupboard):
         if limit: query = query.limit(limit)
         if offset: query = query.offset(offset)
         if columns: query = query.select(columns+(["_distance"] if embedding else []))
-        return query.to_pydantic(_Bean)
+        return query.to_pydantic(_Sip)
+    
+    def _query_with_multiple_vectors(self,
+        table: str,
+        created: datetime = None, updated: datetime = None,
+        vectors: list[float] = None, distance: float = 0, 
+        conditions: list[str] = None,
+        order = None,
+        limit: int = 0, offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Sip]:
+        query = self.tables[table].search() if not vectors else self.tables[table].search(query=vectors, query_type="vector", vector_column_name=K_EMBEDDING)      
+        where_expr = _where(created=created, updated=updated, conditions=conditions)
+        if where_expr: query = query.where(where_expr)
+        if vectors: query = query.distance_type("cosine")
+        if distance: query = query.distance_range(upper_bound = distance)
+        if order and vectors: query = query.rerank(order, query_string="default")
+        if limit: query = query.limit(limit)
+        if offset: query = query.offset(offset)
+        if columns: query = query.select(columns+(["_distance"] if vectors else []))
+        
+        # Get all rows and deduplicate by 'id'
+        df = query.to_pandas().drop_duplicates(subset=['id'], keep='first')
+        return [_Sip(**sip) for sip in df.to_dict('records')]
     
     def query_sips(self,
         created: datetime = None, updated: datetime = None,
-        embedding: list[float] = None, distance: float = 0, 
+        embedding: list[float]|list[list[float]] = None, distance: float = 0, 
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ) -> list[Sip]:
+        if embedding and isinstance(embedding[0], list):
+            return self._query_with_multiple_vectors(
+                table=SIPS,
+                created=created,
+                updated=updated,
+                vectors=embedding,
+                distance=distance,
+                conditions=conditions,
+                limit=limit,
+                offset=offset,
+                columns=columns
+            )
         return self._query_items(
             table=SIPS,
             created=created,
@@ -439,7 +472,6 @@ class LanceDBCupboard(Cupboard):
             embedding=embedding,
             distance=distance,
             conditions=conditions,
-            order=ORDER_BY_LATEST,
             limit=limit,
             offset=offset,
             columns=columns

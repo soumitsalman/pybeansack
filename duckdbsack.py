@@ -4,8 +4,7 @@ import duckdb
 import logging
 import pandas as pd
 from .models import *
-from .bases import Beansack
-
+from .database import *
 
 SQL_INSERT_BEANS = """
 INSERT INTO beans (url, kind, source, created, collected, updated, title, embedding, digest) 
@@ -18,7 +17,6 @@ SQL_INSERT_CHATTERS = """
 INSERT INTO chatters (url, chatter_url, source, group, collected, likes, comments, shares, subscribers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (url, chatter_url, likes, comments, shares) DO NOTHING
 """
-
 
 SQL_WHERE_URLS = lambda urls: "url IN (" + ', '.join(f"'{url}'" for url in urls) + ")"
 SQL_NOT_WHERE_URLS = lambda urls: "url NOT IN (" + ', '.join(f"'{url}'" for url in urls) + ")"
