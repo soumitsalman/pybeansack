@@ -1,4 +1,9 @@
-__all__ = ['models',  'staticdb', 'cdnstore', 'Beansack', 'Cupboard', 'MongoDB', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', "LanceDBCupboard", "create_client", "create_db", "create_cupboard"]  # Specify modules to be exported
+__all__ = [
+    'models',  'staticdb', 'cdnstore', 
+    'Beansack', 'Cupboard', 'MongoDB', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', "LanceDBCupboard", 
+    "create_client", "create_db", "create_cupboard",
+    "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "MUGS"
+]  # Specify modules to be exported
 __version__ = "0.5.1"
 
 from typing import Literal
