@@ -347,18 +347,30 @@ class LanceDB(Beansack):
         if offset: query = query.offset(offset)
         return query.to_pydantic(_Publisher)
     
+    def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_SUPPORTED
+    
+    def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_SUPPORTED
+    
+    def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_SUPPORTED
+    
+    def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_SUPPORTED
+    
+    def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_SUPPORTED
+    
     # MAINTENANCE functions
     def refresh_classifications(self):
-        log.info("refreshing classifications - not yet implemented")
-        pass
+        raise NOT_SUPPORTED
 
     def refresh_clusters(self):
-        log.info("refreshing clusters - not yet implemented")
-        pass
+        raise NOT_SUPPORTED
     
     def refresh_chatters(self):
-        log.info("refreshing chatters - not yet implemented")
-        pass
+        raise NOT_SUPPORTED
 
     def optimize(self):
         try: self.tables[BEANS].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine")

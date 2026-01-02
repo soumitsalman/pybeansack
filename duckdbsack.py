@@ -347,7 +347,7 @@ class DuckDB(Beansack):
         order: str = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None,
-    ) -> list[Bean]:
+    ):
         select_expr, select_params = _select(table, columns, embedding)
         where_expr, where_params = _where(urls, kind, created, collected, updated, categories, regions, entities, sources, distance, conditions)
         if where_expr: select_expr += where_expr
@@ -497,6 +497,32 @@ class DuckDB(Beansack):
             limit=limit,
             offset=offset
         )
+    
+    def _fetch_all_scalar(self, sql: str, params: list = None) -> list[str]:
+        with self.db.cursor() as cur:
+            rel = cur.query(sql, params=params)
+            items = [row[0] for row in rel.fetchall()]
+        return items
+    
+    def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_CATEGORIES = "SELECT category FROM fixed_categories ORDER BY category;"
+        return self._fetch_all_scalar(SQL_CATEGORIES)
+    
+    def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment;"
+        return self._fetch_all_scalar(SQL_SENTIMENTS)
+    
+    def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity;"
+        return self._fetch_all_scalar(SQL_ENTITIES)
+    
+    def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region;"
+        return self._fetch_all_scalar(SQL_REGIONS)
+    
+    def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_SOURCES = "SELECT source FROM publishers ORDER BY source;"
+        return self._fetch_all_scalar(SQL_SOURCES)
     
     def refresh_classifications(self):
         pass

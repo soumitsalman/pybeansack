@@ -98,6 +98,26 @@ class Beansack(ABC):
         raise NOT_IMPLEMENTED
     
     @abstractmethod
+    def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_IMPLEMENTED   
+    
+    @abstractmethod
+    def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_IMPLEMENTED
+
+    @abstractmethod
+    def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
+        raise NOT_IMPLEMENTED
+
+    @abstractmethod
     def count_rows(self, table: str, conditions: list[str] = None) -> int:
         raise NOT_IMPLEMENTED
     

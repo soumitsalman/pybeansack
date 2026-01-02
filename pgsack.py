@@ -358,6 +358,32 @@ class Postgres(Beansack):
             limit=limit,
             offset=offset
         )
+    
+    def _fetch_all_scalar(self, sql: str, params: list = None) -> list[str]:
+        with self.cursor() as cur:
+            cur.execute(sql, params)            
+            items = [row[0] for row in cur.fetchall()]
+        return items
+    
+    def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_CATEGORIES = "SELECT category FROM fixed_categories ORDER BY category;"
+        return self._fetch_all_scalar(SQL_CATEGORIES)
+    
+    def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment;"
+        return self._fetch_all_scalar(SQL_SENTIMENTS)
+    
+    def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity;"
+        return self._fetch_all_scalar(SQL_ENTITIES)
+    
+    def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region;"
+        return self._fetch_all_scalar(SQL_REGIONS)
+    
+    def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
+        SQL_SOURCES = "SELECT source FROM publishers ORDER BY source;"
+        return self._fetch_all_scalar(SQL_SOURCES)
 
     def count_rows(self, table: str, conditions: list[str] = None) -> int:
         where_exprs, _ = _where(conditions=conditions)
