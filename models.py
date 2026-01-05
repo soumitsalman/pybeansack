@@ -91,6 +91,11 @@ class Chatter(BaseModel):
         )
 
     class Config:
+        populate_by_name = True
+        arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
         json_encoders={datetime: rfc3339}
         dtype_specs = {
             'chatter_url': 'string',
@@ -112,6 +117,12 @@ class Publisher(BaseModel):
     collected: Optional[datetime] = Field(default=None)
 
     class Config:
+        populate_by_name = True
+        arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
+        json_encoders={datetime: rfc3339}
         dtype_specs = {
             'source': 'string',
             'base_url': 'string',

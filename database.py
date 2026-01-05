@@ -86,15 +86,15 @@ class Beansack(ABC):
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0) -> list[AggregatedBean]:        
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:        
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Chatter]:
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:
         raise NOT_IMPLEMENTED
     
     @abstractmethod

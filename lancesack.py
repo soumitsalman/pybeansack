@@ -287,7 +287,7 @@ class LanceDB(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ) -> list[AggregatedBean]:
         raise NOT_SUPPORTED
     
     def query_aggregated_beans(self,
@@ -330,21 +330,23 @@ class LanceDB(Beansack):
         # Additional aggregation logic can be added here
         return beans
 
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):      
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:      
         raise NOT_SUPPORTED
     
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Chatter]:  
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:  
         query = self.allchatters.search()
         if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
         if offset: query = query.offset(offset)
+        if columns: query = query.select(columns)
         return query.to_pydantic(_Chatter)
     
-    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0) -> list[Publisher]:  
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:  
         query = self.allpublishers.search()
         if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
         if offset: query = query.offset(offset)
+        if columns: query = query.select(columns)
         return query.to_pydantic(_Publisher)
     
     def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:

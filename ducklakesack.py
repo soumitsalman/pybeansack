@@ -229,7 +229,7 @@ class Ducklake(Beansack):
         order: str = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ):
         select_expr, select_params = _select(table, columns, embedding)
         where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, sources, distance, conditions)
         if where_expr: select_expr += where_expr
@@ -237,14 +237,13 @@ class Ducklake(Beansack):
         if select_params: params.extend(select_params)
         if where_params: params.extend(where_params)
 
-        cursor = self.db.cursor()
-        rel = cursor.query(select_expr, params=params)
-        if order: rel = rel.order(order)
-        if distance: rel = rel.order(self.ORDER_BY_DISTANCE)
-        if offset or limit: rel = rel.limit(limit, offset=offset)
-        items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
-        if table in _TYPES: items = [_TYPES[table](**item) for item in items]
-        cursor.close()
+        with self.db.cursor() as cursor:
+            rel = cursor.query(select_expr, params=params)
+            if order: rel = rel.order(order)
+            if distance: rel = rel.order(ORDER_BY_DISTANCE)
+            if offset or limit: rel = rel.limit(limit, offset=offset)
+            items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+            if table in _TYPES: items = [_TYPES[table](**item) for item in items]
 
         return items
     
@@ -325,7 +324,7 @@ class Ducklake(Beansack):
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ) -> list[AggregatedBean]:
-        if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
+        if columns: fields = list(set(columns + [K_CREATED]))
         else: fields = None
         return self._fetch_all(
             table="aggregated_beans_view",
@@ -346,79 +345,83 @@ class Ducklake(Beansack):
             columns=fields
         )
 
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):    
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:    
         return self._fetch_all(
             table="_materialized_aggregated_chatters",
             urls=urls,  
             updated=updated,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         ) 
     
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):        
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:        
         return self._fetch_all(
             table=CHATTERS,
             collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):        
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:        
         return self._fetch_all(
             table=PUBLISHERS,
             collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def _fetch_all_scalar(self, sql: str, params: list = None) -> list[str]:
+    def _fetch_all_scalar(self, sql: str, order_by: str = None, limit: int = 0, offset: int = 0, ) -> list[str]:
         with self.db.cursor() as cur:
-            rel = cur.query(sql, params=params)
+            rel = cur.query(sql)
+            if order_by: rel.order(order_by)
+            if limit or offset: rel.limit(limit, offset=offset)
             items = [row[0] for row in rel.fetchall()]
         return items
     
     def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_CATEGORIES = "SELECT category FROM fixed_categories ORDER BY category;"
-        return self._fetch_all_scalar(SQL_CATEGORIES)
+        SQL_CATEGORIES = "SELECT category FROM fixed_categories"
+        return self._fetch_all_scalar(SQL_CATEGORIES, order_by="category", limit=limit, offset=offset)
     
     def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment;"
-        return self._fetch_all_scalar(SQL_SENTIMENTS)
+        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments"
+        return self._fetch_all_scalar(SQL_SENTIMENTS, order_by="sentiment", limit=limit, offset=offset)
     
     def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity;"
-        return self._fetch_all_scalar(SQL_ENTITIES)
+        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL"
+        return self._fetch_all_scalar(SQL_ENTITIES, order_by="entity", limit=limit, offset=offset)
     
     def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region;"
-        return self._fetch_all_scalar(SQL_REGIONS)
+        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL"
+        return self._fetch_all_scalar(SQL_REGIONS, order_by="region", limit=limit, offset=offset)
     
     def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_SOURCES = "SELECT source FROM publishers ORDER BY source;"
-        return self._fetch_all_scalar(SQL_SOURCES)
-    
+        SQL_SOURCES = "SELECT source FROM publishers"
+        return self._fetch_all_scalar(SQL_SOURCES, order_by="source", limit=limit, offset=offset)
+
     ##### Maintenance methods
     def query(self, query_expr: str, params: list = None) -> list[dict]:
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr, params=params)
-        return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+        with self.db.cursor() as cursor:
+            rel = cursor.query(query_expr, params=params)
+            items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+        return items    
     
     def query_one(self, query_expr: str, params: list = None):
-        cursor = self.db.cursor()
-        rel = cursor.query(query_expr, params=params)
-        count = rel.fetchone()[0]
-        cursor.close()
+        with self.db.cursor() as cursor:
+            rel = cursor.query(query_expr, params=params)
+            count = rel.fetchone()[0]
         return count
 
     @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def execute(self, expr: str, params: list = None):
-        cursor = self.db.cursor()
-        cursor.execute(expr, params)
-        cursor.close()
+        with self.db.cursor() as cursor:
+            cursor.execute(expr, params)
 
     def refresh_classifications(self):
         SQL_INSERT_CLASSIFICATION = f"""

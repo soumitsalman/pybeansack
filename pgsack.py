@@ -202,8 +202,8 @@ class Postgres(Beansack):
         columns: list[str] = None
     ):        
         fields = ", ".join(columns) if columns else  "*"
-        SQL_SELECT = f"SELECT {fields} FROM {table} "
-        where_exprs, params = _where( 
+        select_expr, params = f"SELECT {fields} FROM {table} ", {}
+        where_exprs, where_params = _where( 
             urls=urls,
             kind=kind,
             created=created,
@@ -217,19 +217,20 @@ class Postgres(Beansack):
             distance=distance,
             conditions=conditions
         )
-        if where_exprs: SQL_SELECT += f"{where_exprs} "
+        if where_exprs: 
+            select_expr += f"{where_exprs} "
+            params.update(where_params)
         
-        # TODO: add order by distance if embedding is provide and no distance is given
-        if order: SQL_SELECT += f"ORDER BY {order} "
-        if limit: 
-            SQL_SELECT += "LIMIT %(limit)s "
-            params['limit'] = limit
-        if offset: 
-            SQL_SELECT += "OFFSET %(offset)s "
-            params['offset'] = offset
+        if embedding and not distance: order = f"{order}, {ORDER_BY_DISTANCE}" if order else ORDER_BY_DISTANCE
+        if order: select_expr += f"ORDER BY {order} "
+
+        if limit or offset:
+            limit_expr, limit_params = _limit(limit=limit, offset=offset)
+            select_expr += limit_expr
+            params.update(limit_params)
         
         with self.cursor() as cur:
-            cur.execute(SQL_SELECT, params)
+            cur.execute(select_expr, params=params, binary=True)
             rows = cur.fetchall()
             cols = [desc[0] for desc in cur.description]
             items = [dict(zip(cols, row)) for row in rows]
@@ -248,7 +249,7 @@ class Postgres(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ):
+    ) -> list[Bean]:
         return self._fetch_all(
             table=BEANS, 
             urls=None,
@@ -278,7 +279,7 @@ class Postgres(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ):
+    ) -> list[AggregatedBean]:
         return self._fetch_all(
             table="trending_beans_view", 
             urls=None,
@@ -309,7 +310,7 @@ class Postgres(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ) -> list[AggregatedBean]:
         return self._fetch_all(
             table="aggregated_beans_view",
             kind=kind,
@@ -329,61 +330,75 @@ class Postgres(Beansack):
             columns=columns
         )
 
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):        
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:        
         return self._fetch_all(
             table="_materialized_chatter_aggregates",
             urls=urls,
             updated=updated,            
             order=ORDER_BY_TRENDING,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
 
-    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:
         return self._fetch_all(
             table=PUBLISHERS,
             collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:
         return self._fetch_all(
             table=CHATTERS,
             collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def _fetch_all_scalar(self, sql: str, params: list = None) -> list[str]:
+    def _fetch_all_scalar(self, expr: str, params: dict = None) -> list[str]:
         with self.cursor() as cur:
-            cur.execute(sql, params)            
-            items = [row[0] for row in cur.fetchall()]
+            cur.execute(expr, params=params, binary=True)   
+            rows = cur.fetchall()         
+            items = [row[0] for row in rows]
         return items
     
     def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_CATEGORIES = "SELECT category FROM fixed_categories ORDER BY category;"
-        return self._fetch_all_scalar(SQL_CATEGORIES)
+        expr = "SELECT category FROM fixed_categories ORDER BY category "
+        limit_expr, limit_params = _limit(limit=limit, offset=offset)
+        expr += limit_expr
+        return self._fetch_all_scalar(expr, limit_params)
     
     def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment;"
-        return self._fetch_all_scalar(SQL_SENTIMENTS)
+        expr = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment "
+        limit_expr, limit_params = _limit(limit=limit, offset=offset)
+        expr += limit_expr
+        return self._fetch_all_scalar(expr, limit_params)
     
     def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity;"
-        return self._fetch_all_scalar(SQL_ENTITIES)
+        expr = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity "
+        limit_expr, limit_params = _limit(limit=limit, offset=offset)
+        expr += limit_expr
+        return self._fetch_all_scalar(expr, limit_params)
     
     def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region;"
-        return self._fetch_all_scalar(SQL_REGIONS)
+        expr = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region "
+        limit_expr, limit_params = _limit(limit=limit, offset=offset)
+        expr += limit_expr
+        return self._fetch_all_scalar(expr, limit_params)
     
     def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_SOURCES = "SELECT source FROM publishers ORDER BY source;"
-        return self._fetch_all_scalar(SQL_SOURCES)
+        expr = "SELECT source FROM publishers ORDER BY source "
+        limit_expr, limit_params = _limit(limit=limit, offset=offset)
+        expr += limit_expr
+        return self._fetch_all_scalar(expr, limit_params)
 
     def count_rows(self, table: str, conditions: list[str] = None) -> int:
         where_exprs, _ = _where(conditions=conditions)
@@ -512,3 +527,14 @@ def _where(
     if conditions: exprs.extend(conditions)
     if exprs: return ("WHERE " + " AND ".join(exprs), {k: v for k, v in params.items() if v})
     else: return ("", {})
+
+def _limit(limit: int = 0, offset: int = 0) -> tuple[str, dict]:
+    expr, params = "", {}
+    if limit: 
+        expr += "LIMIT %(limit)s "
+        params['limit'] = limit
+    if offset: 
+        expr += "OFFSET %(offset)s "
+        params['offset'] = offset
+    return expr, params
+        

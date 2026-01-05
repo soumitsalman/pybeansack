@@ -143,9 +143,8 @@ class DuckDB(Beansack):
         return deduped
 
     def _execute_df(self, sql, df):
-        cursor = self.db.cursor()
-        cursor.execute(sql)        
-        cursor.close()
+        with self.db.cursor() as cursor:
+            cursor.execute(sql)        
         return True
 
     def store_beans(self, beans: list[Bean]) -> list[Bean]:                   
@@ -224,7 +223,6 @@ class DuckDB(Beansack):
         WHEN MATCHED THEN UPDATE SET embedding = pack.embedding, categories = pack.categories, sentiments = pack.sentiments;
         """
         return self._execute_df(SQL_UPDATE, df)
-        # return self.refresh_clusters()
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return None
@@ -259,80 +257,6 @@ class DuckDB(Beansack):
         WHEN MATCHED THEN UPDATE SET {', '.join(updates)};
         """
         return self._execute_df(SQL_UPDATE, df)    
-
-    # def get_beans(self, filter=None, offset=0, limit=0) -> list[Bean]:
-    #     query = "SELECT * FROM beans"
-    #     if filter: query += f" WHERE {filter}"
-    #     if limit: query += f" LIMIT {limit}"
-    #     if offset: query += f" OFFSET {offset}"
-
-    #     local_conn = self.db.cursor()
-    #     return [Bean(
-    #         url=bean[0],
-    #         kind=bean[1],
-    #         source=bean[2],
-
-    #         created=bean[3],
-    #         collected=bean[4],
-    #         updated=bean[5],
-
-    #         title=bean[6],
-    #         embedding=bean[7],
-    #         slots=True
-    #     ) for bean in local_conn.sql(query).fetchall()]
-
-    # def search_beans(self, embedding: list[float], max_distance: float = 0.0, limit: int = 0) -> list[Bean]:
-    #     local_conn = self.db.cursor()
-    #     query = local_conn.sql(SQL_SEARCH_BEANS(embedding))
-    #     if max_distance:
-    #         query = query.filter(f"distance <= {max_distance}")
-    #     if limit:
-    #         query = query.limit(limit)
-    #     # result.show()
-    #     return [Bean(
-    #         url=bean[0],
-    #         kind=bean[1],
-    #         source=bean[2],
-
-    #         created=bean[3],
-    #         collected=bean[4],
-    #         updated=bean[5],
-
-    #         title=bean[6],
-    #         search_score=bean[7],
-    #         slots=True
-    #     ) for bean in query.fetchall()]
-    
-    # def search_bean_cluster(self, url: str, max_distance: float = 0.0, limit: int = 0) -> list[str]:        
-    #     local_conn = self.db.cursor()
-    #     query = local_conn.query(SQL_SEARCH_BEAN_CLUSTER(url))
-    #     if max_distance:
-    #         query = query.filter(f"distance <= {max_distance}")
-    #     if limit:
-    #         query = query.limit(limit)
-    #     # query.show()
-    #     return [bean[0] for bean in query.fetchall()]
-    
-    # def get_chatters(self, filter = None, offset = 0, limit = 0):
-    #     query = "SELECT * FROM chatters"
-    #     if filter: query += f" WHERE {filter}"
-    #     if limit: query += f" LIMIT {limit}"
-    #     if offset: query += f" OFFSET {offset}"
-
-    #     local_conn = self.db.cursor()
-    #     return [Chatter(
-    #         url=chatter[0],
-    #         chatter_url=chatter[1],
-    #         collected=chatter[2],
-    #         source=chatter[3],
-    #         group=chatter[4],
-    #         likes=chatter[5],
-    #         comments=chatter[6],
-    #         shares=chatter[7],
-    #         subscribers=chatter[8],
-    #         slots=True
-    #     ) for chatter in local_conn.sql(query).fetchall()]  
-    
     
     def _fetch_all(self, 
         table: str = "beans",
@@ -355,15 +279,13 @@ class DuckDB(Beansack):
         if select_params: params.extend(select_params)
         if where_params: params.extend(where_params)
 
-        cursor = self.db.cursor()
-        rel = cursor.query(select_expr, params=params)
-        if order: rel = rel.order(order)
-        if distance: rel = rel.order(ORDER_BY_DISTANCE)
-        if offset or limit: rel = rel.limit(limit, offset=offset)
-        items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
-        if table in _TYPES: items = [_TYPES[table](**item) for item in items]
-        cursor.close()
-
+        with self.db.cursor() as cursor:
+            rel = cursor.query(select_expr, params=params)
+            if order: rel = rel.order(order)
+            if distance: rel = rel.order(ORDER_BY_DISTANCE)
+            if offset or limit: rel = rel.limit(limit, offset=offset)
+            items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+            if table in _TYPES: items = [_TYPES[table](**item) for item in items]
         return items
     
     def count_rows(self, table, conditions: list[str] = None) -> int:
@@ -414,7 +336,7 @@ class DuckDB(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ) -> list[AggregatedBean]:
         if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
         else: fields = None
         return self._fetch_all(
@@ -447,7 +369,7 @@ class DuckDB(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[Bean]:
+    ) -> list[AggregatedBean]:
         if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
         else: fields = None
         return self._fetch_all(
@@ -469,61 +391,84 @@ class DuckDB(Beansack):
             columns=fields
         )
     
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0):
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:
         return self._fetch_all(
             table="_materialized_chatter_aggregates",
             urls=urls,
             updated=updated,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0): 
+    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None): 
         return self._fetch_all(
             table=CHATTERS,
             collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0):
+    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:
         return self._fetch_all(
             table=PUBLISHERS,
             collected=collected,
             sources=sources,
             conditions=conditions,
             limit=limit,
-            offset=offset
+            offset=offset,
+            columns=columns
         )
     
-    def _fetch_all_scalar(self, sql: str, params: list = None) -> list[str]:
+    def _fetch_all_scalar(self, expr: str, order_by: str = None, limit: int = 0, offset: int = 0, ) -> list[str]:
         with self.db.cursor() as cur:
-            rel = cur.query(sql, params=params)
+            rel = cur.query(expr)
+            if order_by: rel.order(order_by)
+            if limit or offset: rel.limit(limit, offset=offset)
             items = [row[0] for row in rel.fetchall()]
         return items
     
     def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_CATEGORIES = "SELECT category FROM fixed_categories ORDER BY category;"
-        return self._fetch_all_scalar(SQL_CATEGORIES)
+        SQL_CATEGORIES = "SELECT category FROM fixed_categories"
+        return self._fetch_all_scalar(SQL_CATEGORIES, order_by="category", limit=limit, offset=offset)
     
     def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment;"
-        return self._fetch_all_scalar(SQL_SENTIMENTS)
+        SQL_SENTIMENTS = "SELECT sentiment FROM fixed_sentiments"
+        return self._fetch_all_scalar(SQL_SENTIMENTS, order_by="sentiment", limit=limit, offset=offset)
     
     def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity;"
-        return self._fetch_all_scalar(SQL_ENTITIES)
+        SQL_ENTITIES = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL"
+        return self._fetch_all_scalar(SQL_ENTITIES, order_by="entity", limit=limit, offset=offset)
     
     def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region;"
-        return self._fetch_all_scalar(SQL_REGIONS)
+        SQL_REGIONS = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL"
+        return self._fetch_all_scalar(SQL_REGIONS, order_by="region", limit=limit, offset=offset)
     
     def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
-        SQL_SOURCES = "SELECT source FROM publishers ORDER BY source;"
-        return self._fetch_all_scalar(SQL_SOURCES)
+        SQL_SOURCES = "SELECT source FROM publishers"
+        return self._fetch_all_scalar(SQL_SOURCES, order_by="source", limit=limit, offset=offset)
     
+    # MAINTENANCE FUNCTIONS
+
+    def query(self, query_expr: str, params: list = None) -> list[dict]:
+        with self.db.cursor() as cursor:
+            rel = cursor.query(query_expr, params=params)
+            items = [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+        return items    
+    
+    def query_one(self, query_expr: str, params: list = None):
+        with self.db.cursor() as cursor:
+            rel = cursor.query(query_expr, params=params)
+            count = rel.fetchone()[0]
+        return count
+
+    def execute(self, expr: str, params: list = None):
+        with self.db.cursor() as cursor:
+            cursor.execute(expr, params)
+
     def refresh_classifications(self):
         pass
 
@@ -578,6 +523,16 @@ def _where(
 
     if conditions: return " WHERE "+ (" AND ".join(conditions)), params
     return None, None
+
+def _limit(limit: int = 0, offset: int = 0) -> tuple[str, list]:
+    expr, params = "", []
+    if limit: 
+        expr += "LIMIT ? "
+        params.append(limit)
+    if offset: 
+        expr += "OFFSET ? "
+        params.append(offset)
+    return expr, params
 
 _EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "distance"]
 
