@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 import logging
 import re
-from icecream import ic
 from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.errors import BulkWriteError

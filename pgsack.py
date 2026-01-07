@@ -4,17 +4,15 @@ import logging
 from pathlib import Path
 from typing import Any
 import pandas as pd
-import psycopg
 from psycopg import sql
 from psycopg_pool import ConnectionPool
-# from psycopg2.extras import execute_values, execute_batch
 from pgvector.psycopg import register_vector, Vector
 from .models import *
 from .utils import *
 from .database import *
 from retry import retry
-from icecream import ic
 
+TIMEOUT = 270  # seconds
 RETRY_COUNT = 3
 RETRY_DELAY = (10,120)  # seconds
 
@@ -43,7 +41,13 @@ class Postgres(Beansack):
 
     def __init__(self, conn_str: str):
         """Initialize the Beansack with a PostgreSQL connection string."""
-        self.pool = ConnectionPool(conn_str, max_size=32, num_workers=os.cpu_count(), configure=register_vector)
+        self.pool = ConnectionPool(
+            conn_str, 
+            min_size=0,
+            max_size=32,
+            num_workers=os.cpu_count(),
+            configure=register_vector
+        )
         self.pool.open()
 
     @contextmanager
@@ -68,9 +72,7 @@ class Postgres(Beansack):
             table=sql.Identifier(table),
             pk_col=sql.Identifier(_PRIMARY_KEYS[table])
         )
-        with self.cursor() as cur:
-            results = cur.execute(SQL_DEDUP, {"ids": ids})
-            non_existing_ids = {row[0] for row in results}
+        non_existing_ids = self._query_scalars(SQL_DEDUP, {"ids": ids})
         return [item for item in items if get_id(item) in non_existing_ids]
 
     @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
@@ -185,7 +187,31 @@ class Postgres(Beansack):
     def update_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
         if not publishers: return 0
-        return self._update(PUBLISHERS, distinct(publishers, K_SOURCE))       
+        return self._update(PUBLISHERS, distinct(publishers, K_SOURCE))    
+
+    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    def _query_composites(self, expr: str, params: dict = None) -> list[Any]:
+        with self.pool.connection() as conn:
+            with conn.execute(expr, params=params, binary=True) as cur:
+                rows = cur.fetchall()
+                cols = [desc[0] for desc in cur.description]
+                items = [dict(zip(cols, row)) for row in rows]
+        return items    
+
+    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    def _query_scalars(self, expr: str, params: dict = None) -> list[str]:
+        with self.pool.connection() as conn:
+            with conn.execute(expr, params=params, binary=True) as cur: 
+                rows = cur.fetchall()         
+                items = [row[0] for row in rows]
+        return items
+    
+    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    def _query_one(self, expr: str, params: dict = None):
+        with self.pool.connection() as conn:
+            with conn.execute(expr, params=params, binary=True) as cur: 
+                result = cur.fetchone()         
+        return result[0]
 
     def _fetch_all(self, 
         table: str,
@@ -229,12 +255,7 @@ class Postgres(Beansack):
             select_expr += limit_expr
             params.update(limit_params)
         
-        with self.cursor() as cur:
-            cur.execute(select_expr, params=params, binary=True)
-            rows = cur.fetchall()
-            cols = [desc[0] for desc in cur.description]
-            items = [dict(zip(cols, row)) for row in rows]
-
+        items = self._query_composites(select_expr, params)
         if table in _TYPES: items = [_TYPES[table](**item) for item in items]
         log.debug("queried", extra={"source": table, "num_items": len(items)})
         return items
@@ -363,50 +384,41 @@ class Postgres(Beansack):
             columns=columns
         )
     
-    def _fetch_all_scalar(self, expr: str, params: dict = None) -> list[str]:
-        with self.cursor() as cur:
-            cur.execute(expr, params=params, binary=True)   
-            rows = cur.fetchall()         
-            items = [row[0] for row in rows]
-        return items
-    
     def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
         expr = "SELECT category FROM fixed_categories ORDER BY category "
         limit_expr, limit_params = _limit(limit=limit, offset=offset)
         expr += limit_expr
-        return self._fetch_all_scalar(expr, limit_params)
+        return self._query_scalars(expr, limit_params)
     
     def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
         expr = "SELECT sentiment FROM fixed_sentiments ORDER BY sentiment "
         limit_expr, limit_params = _limit(limit=limit, offset=offset)
         expr += limit_expr
-        return self._fetch_all_scalar(expr, limit_params)
+        return self._query_scalars(expr, limit_params)
     
     def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
         expr = "SELECT DISTINCT unnest(entities) as entity FROM beans WHERE entities IS NOT NULL ORDER BY entity "
         limit_expr, limit_params = _limit(limit=limit, offset=offset)
         expr += limit_expr
-        return self._fetch_all_scalar(expr, limit_params)
+        return self._query_scalars(expr, limit_params)
     
     def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
         expr = "SELECT DISTINCT unnest(regions) as region FROM beans WHERE regions IS NOT NULL ORDER BY region "
         limit_expr, limit_params = _limit(limit=limit, offset=offset)
         expr += limit_expr
-        return self._fetch_all_scalar(expr, limit_params)
+        return self._query_scalars(expr, limit_params)
     
     def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
         expr = "SELECT source FROM publishers ORDER BY source "
         limit_expr, limit_params = _limit(limit=limit, offset=offset)
         expr += limit_expr
-        return self._fetch_all_scalar(expr, limit_params)
+        return self._query_scalars(expr, limit_params)
 
     def count_rows(self, table: str, conditions: list[str] = None) -> int:
+        expr = f"SELECT count(*) FROM {table} "
         where_exprs, _ = _where(conditions=conditions)
-        SQL_COUNT = f"SELECT count(*) FROM {table} {where_exprs or ""};"
-        with self.cursor() as cur:
-            cur.execute(SQL_COUNT)
-            result = cur.fetchone()
-        return result[0]
+        if where_exprs: expr += where_exprs        
+        return self._query_one(expr)
     
     # MAINTENANCE METHODS
     def execute(self, sql: str):

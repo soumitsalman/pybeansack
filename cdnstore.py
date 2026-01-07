@@ -1,5 +1,4 @@
 import os
-import s3fs
 from .utils import random_filename
 
 def _ext_to_dir(ext: str) -> str:
@@ -25,9 +24,11 @@ class CDNStore:
         region: str = None,
         public_url: str = None
     ):      
+        from s3fs import S3FileSystem
+
         self.endpoint_url = endpoint_url
         self.bucket = bucket  
-        self.fs = s3fs.S3FileSystem(
+        self.fs = S3FileSystem(
             endpoint_url=endpoint_url,
             key=access_key_id, 
             secret=secret_key, 

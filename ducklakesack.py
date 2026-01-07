@@ -11,8 +11,6 @@ from .models import *
 from .utils import *
 from .database import *
 
-from icecream import ic
-
 RETRY_COUNT = 10
 RETRY_DELAY = (1,5)  # seconds
 

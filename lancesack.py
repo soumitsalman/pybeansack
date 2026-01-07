@@ -10,7 +10,6 @@ import pandas as pd
 from .models import *
 from .database import *
 import logging
-from icecream import ic
 
 log = logging.getLogger(__name__)
 

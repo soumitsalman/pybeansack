@@ -4,12 +4,8 @@ pymongo
 pandas
 duckdb
 lancedb
-boto3
-rfc3339
-retry
-icecream
-s3fs
-tantivy
 pgvector
 psycopg
 psycopg[binary,pool]
+rfc3339
+retry
