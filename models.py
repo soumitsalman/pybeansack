@@ -69,14 +69,15 @@ DIGEST_COLUMNS = [K_URL, K_CREATED, K_GIST]
 CONTENT_COLUMNS = [K_URL, K_CREATED, K_SOURCE, K_TITLE, K_CONTENT]
 
 class Chatter(BaseModel):
-    chatter_url: Optional[str] = Field(default=None, min_length=1) # this is the url of the social media post that contains the Bean url
-    url: str = Field(min_length=1) # this the url from Bean
-    source: Optional[str] = Field(default=None) # this is the domain name of the source
-    forum: Optional[str] = Field(default=None) # this is the group/forum the chatter was collected from
-    collected: Optional[datetime] = Field(default=None)
-    likes: int = Field(default=0)
-    comments: int = Field(default=0)
-    subscribers: int = Field(default=0)
+    """Social media chatter or comments that mention an article URL."""
+    chatter_url: Optional[str] = Field(default=None, min_length=1, description="The URL of the social media post that contains the article URL.")
+    url: str = Field(min_length=1, description="The URL of the article mentioned in the social media post/comment.")
+    source: Optional[str] = Field(default=None, description="The id of the source/publisher of the chatter.")
+    forum: Optional[str] = Field(default=None, description="The group or forum from which the chatter was collected.")
+    collected: Optional[datetime] = Field(default=None, description="The date and time when the chatter was collected.")
+    likes: int = Field(default=0, description="The number of likes on the chatter.")
+    comments: int = Field(default=0, description="The number of comments on the chatter.")
+    subscribers: int = Field(default=0, description="The number of subscribers to the forum or group.")
 
     def to_tuple(self) -> tuple:
         return (
@@ -108,13 +109,14 @@ class Chatter(BaseModel):
         }
 
 class Publisher(BaseModel):
-    source: str = Field(min_length=1) # this is domain name that gets matched with the source field in Bean
-    base_url: str = Field(min_length=1)
-    site_name: Optional[str] = Field(default=None)
-    description: Optional[str] = Field(default=None)
-    favicon: Optional[str] = Field(default=None)
-    rss_feed: Optional[str] = Field(default=None)
-    collected: Optional[datetime] = Field(default=None)
+    """The website, publisher or social media from which an article or chatter is sourced."""
+    source: str = Field(min_length=1, description="The domain name that matches the source field in Bean.")
+    base_url: str = Field(min_length=1, description="The base URL of the publisher.")
+    site_name: Optional[str] = Field(default=None, description="The name of the site.")
+    description: Optional[str] = Field(default=None, description="A description of the publisher.")
+    favicon: Optional[str] = Field(default=None, description="The URL of the publisher's favicon.")
+    rss_feed: Optional[str] = Field(default=None, description="The URL of the publisher's RSS feed.")
+    collected: Optional[datetime] = Field(default=None, description="The date and time when the publisher information was collected.")
 
     class Config:
         populate_by_name = True
@@ -133,28 +135,29 @@ class Publisher(BaseModel):
         }
 
 class Bean(BaseModel):    
-    url: str    
-    kind: Optional[str] = Field(default=None)
-    source: Optional[str] = Field(default=None)
-    title: Optional[str] = Field(default=None)
-    title_length: Optional[int] = Field(default=None)
-    summary: Optional[str] = Field(default=None)
-    summary_length: Optional[int] = Field(default=None)
-    content: Optional[str] = Field(default=None)
-    content_length: Optional[int] = Field(default=None)
-    restricted_content: Optional[bool] = Field(default=None)
-    image_url: Optional[str] = Field(default=None)
-    author: Optional[str] = Field(default=None)
-    created: Optional[datetime] = Field(default=None)
-    collected: Optional[datetime] = Field(default=None)
+    """An article such as a news or blog post."""
+    url: str = Field(description="The URL of the article.")
+    kind: Optional[str] = Field(default=None, description="The kind/type of the article, e.g., news, blog, oped, job, post.")
+    source: Optional[str] = Field(default=None, description="The source/publisher id of the article.")
+    title: Optional[str] = Field(default=None, description="The title of the article.")
+    title_length: Optional[int] = Field(default=None, description="The length of the title in words.")
+    summary: Optional[str] = Field(default=None, description="A summary of the article.")
+    summary_length: Optional[int] = Field(default=None, description="The length of the summary in words.")
+    content: Optional[str] = Field(default=None, description="The full content of the article.")
+    content_length: Optional[int] = Field(default=None, description="The length of the content in words.")
+    restricted_content: Optional[bool] = Field(default=None, description="Indicates if the content is restricted.")
+    image_url: Optional[str] = Field(default=None, description="The URL of the article's image.")
+    author: Optional[str] = Field(default=None, description="The author of the article (if available).")
+    created: Optional[datetime] = Field(default=None, description="The published date of the article.")
+    collected: Optional[datetime] = Field(default=None, description="The date when the article was collected into the system.")
 
     # llm fields
-    embedding: Optional[list[float]] = Field(default=None)
-    gist: Optional[str] = Field(default=None)
-    entities: Optional[list[str]] = Field(default=None)
-    regions: Optional[list[str]] = Field(default=None)
-    categories: Optional[list[str]] = Field(default=None)
-    sentiments: Optional[list[str]] = Field(default=None)
+    embedding: Optional[list[float]] = Field(default=None, description="The embedding vector for the article.")
+    gist: Optional[str] = Field(default=None, description="A gist or key points of the article.")
+    entities: Optional[list[str]] = Field(default=None, description="Named entities mentioned in the article.")
+    regions: Optional[list[str]] = Field(default=None, description="Geographic regions mentioned in the article.")
+    categories: Optional[list[str]] = Field(default=None, description="Categories associated with the article.")
+    sentiments: Optional[list[str]] = Field(default=None, description="Sentiments expressed in the article.")
     
     @cached_property
     def digest(self) -> str:
@@ -191,12 +194,12 @@ class Bean(BaseModel):
         }
 
 class _CupboardItem(BaseModel):
-    id: str = Field(...)
-    title: Optional[str] = Field(None, description="This is the title")
-    content: Optional[str] = Field(None, description="This is the content")
-    embedding: Optional[list[float]] = Field(None, description="This is the embedding vector of title+content")
-    created: Optional[datetime] = Field(None, description="This is the created timestamp")
-    updated: Optional[datetime] = Field(None, description="This is the updated timestamp")
+    id: str = Field(description="The unique identifier of the item.")
+    title: Optional[str] = Field(None, description="The title of the item.")
+    content: Optional[str] = Field(None, description="The content of the item.")
+    embedding: Optional[list[float]] = Field(None, description="The embedding vector of the title and content.")
+    created: Optional[datetime] = Field(None, description="The creation timestamp.")
+    updated: Optional[datetime] = Field(None, description="The last updated timestamp.")
 
     class Config:
         populate_by_name = True
@@ -207,35 +210,35 @@ class _CupboardItem(BaseModel):
         json_encoders={datetime: rfc3339}
 
 class Sip(_CupboardItem):
-    mug: Optional[str] = Field(None, description="This is the slug to the parent mug")
-    related: Optional[list[str]] = Field(None, description="These are the slugs to related past sips")
-    beans: Optional[list[str]] = Field(None, description="These are the urls to the beans")
+    mug: Optional[str] = Field(None, description="The slug of the parent mug.")
+    related: Optional[list[str]] = Field(None, description="The slugs of related past sips.")
+    beans: Optional[list[str]] = Field(None, description="The URLs of the beans.")
 
 class Mug(_CupboardItem):
-    sips: Optional[list[str]] = Field(None, description="These are the slugs to the sips/sections")
-    highlights: Optional[list[str]] = Field(None, description="These are the highlights")   
-    tags: Optional[list[str]] = Field(None, description="These are the tags")
+    sips: Optional[list[str]] = Field(None, description="The slugs of the sips or sections.")
+    highlights: Optional[list[str]] = Field(None, description="The highlights of the mug.")
+    tags: Optional[list[str]] = Field(None, description="The tags associated with the mug.")
 
 class AggregatedBean(Bean, Chatter, Publisher): 
     # adding aggregated bean specific field
-    cluster_id: Optional[str] = Field(default=None)
-    cluster_size: Optional[int] = Field(default=None)
-    related: Optional[list[str]] = Field(default=None)
-    trend_score: Optional[int] = Field(default=None) 
+    cluster_id: Optional[str] = Field(default=None, description="The ID of the cluster this bean belongs to.")
+    cluster_size: Optional[int] = Field(default=None, description="The size of the cluster.")
+    related: Optional[list[str]] = Field(default=None, description="Related bean URLs.")
+    trend_score: Optional[int] = Field(default=None, description="The trend score of the bean.")
 
     # modifying publisher fields for rendering
-    source: Optional[str] = Field(default=None) # this is domain name that gets matched with the source field in Bean
-    base_url: Optional[str] = Field(default=None)
+    source: Optional[str] = Field(default=None, description="The domain name that matches the source field in Bean.")
+    base_url: Optional[str] = Field(default=None, description="The base URL of the publisher.")
 
     # modifying chatters fields for rendering
-    updated: Optional[datetime] = Field(default=None) # only applies during chatter aggregation
-    likes: Optional[int] = Field(default=None)
-    comments: Optional[int] = Field(default=None)
-    shares: Optional[int] = Field(default=None)
-    subscribers: Optional[int] = Field(default=None)
+    updated: Optional[datetime] = Field(default=None, description="The last updated date during chatter aggregation.")
+    likes: Optional[int] = Field(default=None, description="The number of likes.")
+    comments: Optional[int] = Field(default=None, description="The number of comments.")
+    shares: Optional[int] = Field(default=None, description="The number of shares.")
+    subscribers: Optional[int] = Field(default=None, description="The number of subscribers.")
 
     # query support fields    
-    distance: Optional[float|int] = None
+    distance: Optional[float|int] = Field(default=None, description="The distance score for queries.")
 
     class Config:
         populate_by_name = True
@@ -246,14 +249,14 @@ class AggregatedBean(Bean, Chatter, Publisher):
         json_encoders={datetime: rfc3339}       
     
 class User(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")  
-    email: str = None 
-    name: Optional[str] = None
-    image_url: Optional[str] = None  
-    linked_accounts: Optional[list[str]] = None
-    following: Optional[list[str]] = None
-    created: Optional[datetime] = None
-    updated: Optional[datetime] = None
+    id: Optional[str] = Field(default=None, alias="_id", description="The unique identifier of the user.")
+    email: str = Field(description="The email address of the user.")
+    name: Optional[str] = Field(default=None, description="The name of the user.")
+    image_url: Optional[str] = Field(default=None, description="The URL of the user's profile image.")
+    linked_accounts: Optional[list[str]] = Field(default=None, description="List of linked account identifiers.")
+    following: Optional[list[str]] = Field(default=None, description="List of users or entities the user is following.")
+    created: Optional[datetime] = Field(default=None, description="The creation date of the user account.")
+    updated: Optional[datetime] = Field(default=None, description="The last updated date of the user account.")
 
     class Config:
         populate_by_name = True
@@ -261,21 +264,21 @@ class User(BaseModel):
         by_alias=True
 
 class Page(BaseModel):
-    id: str = Field(alias="_id")
-    title: Optional[str] = None
-    description: Optional[str] = None
-    created: Optional[datetime] = Field(default_factory=datetime.now)
-    owner: Optional[str] = Field(default=SYSTEM)
-    public: Optional[bool] = Field(default=False)
-    related: Optional[list[str]] = Field(default=None)
+    id: str = Field(alias="_id", description="The unique identifier of the page.")
+    title: Optional[str] = Field(default=None, description="The title of the page.")
+    description: Optional[str] = Field(default=None, description="A description of the page.")
+    created: Optional[datetime] = Field(default_factory=datetime.now, description="The creation date of the page.")
+    owner: Optional[str] = Field(default=SYSTEM, description="The owner of the page.")
+    public: Optional[bool] = Field(default=False, description="Indicates if the page is public.")
+    related: Optional[list[str]] = Field(default=None, description="Related page identifiers.")
     
-    query_urls: Optional[list[str]] = Field(default=None, alias="urls")
-    query_kinds: Optional[list[str]] = Field(default=None, alias="kinds")
-    query_sources: Optional[list[str]] = Field(default=None, alias="sources")   
-    query_tags :Optional[list[str]] = Field(default=None, alias="tags")
-    query_text: Optional[str] = Field(default=None, alias="text")
-    query_embedding: Optional[list[float]] = Field(default=None, alias="embedding")
-    query_distance: Optional[float] = Field(default=None, alias="distance")
+    query_urls: Optional[list[str]] = Field(default=None, alias="urls", description="Query URLs for the page.")
+    query_kinds: Optional[list[str]] = Field(default=None, alias="kinds", description="Query kinds for the page.")
+    query_sources: Optional[list[str]] = Field(default=None, alias="sources", description="Query sources for the page.")
+    query_tags :Optional[list[str]] = Field(default=None, alias="tags", description="Query tags for the page.")
+    query_text: Optional[str] = Field(default=None, alias="text", description="Query text for the page.")
+    query_embedding: Optional[list[float]] = Field(default=None, alias="embedding", description="Query embedding for the page.")
+    query_distance: Optional[float] = Field(default=None, alias="distance", description="Query distance for the page.")
     
     class Config:
         populate_by_name = True
