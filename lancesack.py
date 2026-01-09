@@ -490,6 +490,18 @@ class LanceDBCupboard(Cupboard):
             columns=columns
         )
     
+    def _remove_from(self, table: str, created: datetime = None, conditions: list[str] = None) -> int:       
+        where_expr = _where(created=created, conditions=conditions)
+        current_total = self.tables[table].count_rows()
+        self.tables[table].delete(where_expr)
+        return current_total - self.tables[table].count_rows()
+    
+    def remove_mugs(self, created: datetime = None, conditions: list[str] = None) -> int:
+        return self._remove_from(MUGS, created=created, conditions=conditions)
+    
+    def remove_sips(self, created: datetime = None, conditions: list[str] = None) -> int:
+        return self._remove_from(SIPS, created=created, conditions=conditions)
+    
     def optimize(self):
         try: [self.tables[table].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine") for table in [MUGS, SIPS]]
         except: pass

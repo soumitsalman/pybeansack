@@ -161,6 +161,14 @@ class Cupboard(ABC):
         raise NOT_IMPLEMENTED   
     
     @abstractmethod
+    def remove_mugs(self, created: datetime = None, conditions: list[str] = None) -> list[Sip]:
+        raise NOT_IMPLEMENTED  
+    
+    @abstractmethod
+    def remove_sips(self, created: datetime = None, conditions: list[str] = None) -> list[Sip]:
+        raise NOT_IMPLEMENTED   
+    
+    @abstractmethod
     def optimize(self):
         raise NOT_IMPLEMENTED
     
