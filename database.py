@@ -159,3 +159,11 @@ class Cupboard(ABC):
         columns: list[str] = None
     ) -> list[Sip]:
         raise NOT_IMPLEMENTED   
+    
+    @abstractmethod
+    def optimize(self):
+        raise NOT_IMPLEMENTED
+    
+    @abstractmethod
+    def close(self):
+        raise NOT_IMPLEMENTED
