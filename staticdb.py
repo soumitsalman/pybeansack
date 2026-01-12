@@ -64,9 +64,9 @@ DISTANCE_FUNCTIONS = {
 # TODO: make this more generic in future
 SQL_VECTOR_SEARCH = lambda embedding, metric: f"""
 SELECT 
-    {K_ID},
+    id,
     {DISTANCE_FUNCTIONS[metric]}(
-        {K_EMBEDDING}::FLOAT[{len(embedding)}], 
+        embedding::FLOAT[{len(embedding)}], 
         {embedding}::FLOAT[{len(embedding)}]
     ) as distance
 FROM items
@@ -108,11 +108,12 @@ class StaticDB:
             data = pd.DataFrame().from_dict(data, orient="columns")
             cursor.execute(SQL_INSERT_PANDAS)
 
-    def vector_search(self, embedding: list[float], max_distance: float = 0.0, limit: int = 0, metric: str ="cos") -> list[str]|None:
+    def vector_search(self, embedding: list[float], distance: float = 0.0, limit: int = 0, metric: str ="cos") -> list[str]|None:
         cursor = self.db.cursor()
         query = cursor.sql(SQL_VECTOR_SEARCH(embedding, metric))
-        if max_distance: query = query.filter(f"distance <= {max_distance}")
+        if distance: query = query.filter(f"distance <= {distance}")
         if limit: query = query.limit(limit)
         # query.show()
-        return [item[0] for item in query.fetchall()]
+        from icecream import ic
+        return [item[0] for item in ic(query.fetchall())]
 

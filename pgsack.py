@@ -45,6 +45,8 @@ class Postgres(Beansack):
             conn_str, 
             min_size=0,
             max_size=32,
+            timeout=TIMEOUT,
+            max_idle=TIMEOUT,
             num_workers=os.cpu_count(),
             configure=register_vector
         )
