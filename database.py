@@ -9,6 +9,7 @@ SIPS = "sips"
 FIXED_CATEGORIES = "fixed_categories"
 FIXED_SENTIMENTS = "fixed_sentiments"
 NOT_IMPLEMENTED = NotImplementedError("Method not implemented in base class")
+DATETIME = datetime|tuple[datetime, datetime]
 
 class Beansack(ABC):
     @abstractmethod
@@ -42,8 +43,8 @@ class Beansack(ABC):
     @abstractmethod
     def query_latest_beans(self, 
         kind: str = None, 
-        created: datetime = None, 
-        collected: datetime = None,
+        created: DATETIME = None, 
+        collected: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
         sources: list[str] = None, 
@@ -57,8 +58,8 @@ class Beansack(ABC):
     @abstractmethod
     def query_trending_beans(self,
         kind: str = None, 
-        updated: datetime = None, 
-        collected: datetime = None,
+        updated: DATETIME = None, 
+        collected: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
         sources: list[str] = None, 
@@ -72,9 +73,9 @@ class Beansack(ABC):
     @abstractmethod
     def query_aggregated_beans(self,
         kind: str = None, 
-        created: datetime = None, 
-        collected: datetime = None,
-        updated: datetime = None,
+        created: DATETIME = None, 
+        collected: DATETIME = None,
+        updated: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
         sources: list[str] = None, 
@@ -86,15 +87,15 @@ class Beansack(ABC):
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_aggregated_chatters(self, urls: list[str] = None, updated: datetime = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:        
+    def query_aggregated_chatters(self, urls: list[str] = None, updated: DATETIME = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:        
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_publishers(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:
+    def query_publishers(self, collected: DATETIME = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:
         raise NOT_IMPLEMENTED
     
     @abstractmethod
-    def query_chatters(self, collected: datetime = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:
+    def query_chatters(self, collected: DATETIME = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:
         raise NOT_IMPLEMENTED
     
     @abstractmethod
@@ -152,7 +153,7 @@ class Cupboard(ABC):
     
     @abstractmethod
     def query_sips(self, 
-        created: datetime = None, updated: datetime = None,
+        created: DATETIME = None, updated: DATETIME = None,
         embedding: list[float]|list[list[float]] = None, distance: float = 0, 
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
@@ -161,11 +162,11 @@ class Cupboard(ABC):
         raise NOT_IMPLEMENTED   
     
     @abstractmethod
-    def remove_mugs(self, created: datetime = None, conditions: list[str] = None) -> list[Sip]:
+    def remove_mugs(self, created: DATETIME = None, conditions: list[str] = None) -> list[Sip]:
         raise NOT_IMPLEMENTED  
     
     @abstractmethod
-    def remove_sips(self, created: datetime = None, conditions: list[str] = None) -> list[Sip]:
+    def remove_sips(self, created: DATETIME = None, conditions: list[str] = None) -> list[Sip]:
         raise NOT_IMPLEMENTED   
     
     @abstractmethod

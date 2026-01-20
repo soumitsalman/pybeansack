@@ -2,7 +2,7 @@ __all__ = [
     'models',  'staticdb', 'cdnstore', 
     'Beansack', 'Cupboard', 'MongoDB', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', "LanceDBCupboard", 
     "create_client", "create_db", "create_cupboard",
-    "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "MUGS"
+    "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "MUGS", "DATETIME"
 ]  # Specify modules to be exported
 __version__ = "0.5.1"
 
