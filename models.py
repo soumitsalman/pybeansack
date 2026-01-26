@@ -162,9 +162,10 @@ class Bean(BaseModel):
     @cached_property
     def digest(self) -> str:
         text = ""
-        if self.created: text += f"U:{self.created.strftime('%Y-%m-%d')};"
+        if self.kind: text += f"{self.kind};"
+        if self.created: text += f"{self.created.strftime('%b-%d-%Y')};"
         if self.gist: text += self.gist
-        # TODO: add entitiies and region down the road
+        # TODO: add entities and region down the road
         if self.categories: text += f"C:{'|'.join(self.categories)};"
         if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
         return text
