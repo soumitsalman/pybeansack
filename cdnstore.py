@@ -14,60 +14,54 @@ class CDNStore:
     under the 'articles' folder by default (per your request images go to that
     folder as well).
     """
+    fs = None
+    root_path: str = None
+    cdn_url: str = None
 
     def __init__(
         self,
-        endpoint_url: str,
-        access_key_id: str,
-        secret_key: str,
-        bucket: str,
-        region: str = None,
-        public_url: str = None
-    ):      
-        from s3fs import S3FileSystem
+        root_path: str,        
+        cdn_url: str = None
+    ):  
+        is_s3 = root_path.startswith("s3://")
+        self.root_path = root_path.removeprefix("s3://").removesuffix('/')
+        if cdn_url: self.cdn_url = cdn_url.rstrip('/')
 
-        self.endpoint_url = endpoint_url
-        self.bucket = bucket  
-        self.fs = S3FileSystem(
-            endpoint_url=endpoint_url,
-            key=access_key_id, 
-            secret=secret_key, 
-            client_kwargs={"region_name": region} if region else None
-        )     
-        self.public_url = (public_url or endpoint_url).rstrip('/')   
+        if is_s3:
+            from s3fs import S3FileSystem
+            region = os.getenv("S3_REGION")
+            self.fs = S3FileSystem(
+                endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+                key=os.getenv("S3_ACCESS_KEY_ID"), 
+                secret=os.getenv("S3_SECRET_ACCESS_KEY"), 
+                client_kwargs={"region_name": region} if region else None,
+                config_kwargs={"s3": {"addressing_style": "virtual"}}
+            ) 
+        # else:
+        #     self.fs = os # use local filesystem
 
     def _relative_path(self, blob_name: str, ext: str) -> str:
         """Return s3fs-style path: 'bucket/key'"""
         blob_name = blob_name or random_filename(ext)
-        return f"{self.bucket}/{_ext_to_dir(ext)}/{blob_name}.{ext}"
+        return f"{self.root_path}/{_ext_to_dir(ext)}/{blob_name}.{ext}"
 
     def _public_url(self, key: str) -> str:
-        return f"{self.public_url}/{key}"
+        return f"{self.cdn_url}/{key}"
 
-    def upload_bytes(self, data: bytes, blob_name: str = None, ext: str = "png") -> str:
-        """Upload raw bytes into '.../articles/<blob_name>' and return public URL."""
-        file_key = self._relative_path(blob_name, ext)
-        mode = "wb" if "/images/" in file_key else "w"
-        data = data if mode == "wb" else str(data.decode('utf-8'))
-        with self.fs.open(file_key, mode) as f:
+    def upload_file(self, source_file_path: str, directory: str = None) -> str:
+        from pathlib import Path
+        file_name = Path(source_file_path).name
+        file_path = f"{directory}/{file_name}" if directory else file_name
+        self.fs.put(source_file_path, f"{self.root_path}/{file_path}")
+        return self._public_url(file_path)
+    
+    def upload_binary(self, data: bytes, file_path: str = None) -> str:
+        with self.fs.open(f"{self.root_path}/{file_path}", "wb") as f:
             f.write(data)
-        return self._public_url(file_key)
+        return self._public_url(file_path)
     
-    def upload_file(self, file_path: str) -> str:
-        """Upload a local file into '.../articles/<blob_name>' and return public URL."""
-        from icecream import ic
-        file_key = self._relative_path(
-            os.path.splitext(os.path.basename(file_path))[0], 
-            os.path.splitext(file_path)[1].lstrip('.') or 'png'
-        )
-        self.fs.put(file_path, file_key)
-        return self._public_url(file_key)
-    
-    def upload_image(self, data: bytes, blob_name: str = None) -> str:
-        """Upload image synchronously to ./images/"""
-        return self.upload_bytes(data, blob_name, ext='png')
-    
-    def upload_article(self, data: str, blob_name: str = None) -> str:
-        """Upload article synchronously t ./articles/"""
-        return self.upload_bytes(data.encode('utf-8'), blob_name, ext='html')
+    def upload_text(self, data: str, file_path: str = None) -> str:
+        with self.fs.open(f"{self.root_path}/{file_path}", "w", encoding='utf-8') as f:
+            print(f.write(data))
+        return self._public_url(file_path)
 

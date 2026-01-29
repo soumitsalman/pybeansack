@@ -229,9 +229,9 @@ class Postgres(Beansack):
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ):        
-        fields = ", ".join(columns) if columns else  "*"
-        select_expr, params = f"SELECT {fields} FROM {table} ", {}
-        where_exprs, where_params = _where( 
+        fields_expr = ", ".join(columns) if columns else "*"
+        # Build base WHERE conditions (without embedding distance)
+        where_expr, where_params = _where( 
             urls=urls,
             kind=kind,
             created=created,
@@ -241,23 +241,39 @@ class Postgres(Beansack):
             regions=regions,
             entities=entities,
             sources=sources,
-            embedding=embedding,
-            distance=distance,
             conditions=conditions
         )
-        if where_exprs: 
-            select_expr += f"{where_exprs} "
-            params.update(where_params)
+        params = where_params
         
-        if embedding and not distance: order = f"{order}, {ORDER_BY_DISTANCE}" if order else ORDER_BY_DISTANCE
-        if order: select_expr += f"ORDER BY {order} "
-
+        # Use CTE when embedding is provided
+        if embedding:
+            expr = f"""
+            WITH vector_distances AS (
+                SELECT *, (embedding <=> %(embedding)s::vector) AS distance
+                FROM {table}
+                {where_expr}
+            )
+            SELECT {fields_expr}
+            FROM vector_distances
+            WHERE distance <= %(distance)s """
+            
+            params['embedding'] = embedding
+            params['distance'] = distance
+        else:
+            # No embedding, use regular query
+            expr = f"SELECT {fields_expr} FROM {table} {where_expr} "
+        
+        # Add ORDER BY
+        if embedding: order = f"{ORDER_BY_DISTANCE}, {order}" if order else ORDER_BY_DISTANCE
+        if order: expr += f" ORDER BY {order} "
+        
+        # Add LIMIT/OFFSET
         if limit or offset:
             limit_expr, limit_params = _limit(limit=limit, offset=offset)
-            select_expr += limit_expr
+            expr += limit_expr
             params.update(limit_params)
         
-        items = self._query_composites(select_expr, params)
+        items = self._query_composites(expr, params)
         if table in _TYPES: items = [_TYPES[table](**item) for item in items]
         log.debug("queried", extra={"source": table, "num_items": len(items)})
         return items
@@ -500,10 +516,8 @@ def _where(
     created: DATETIME = None, collected: DATETIME = None, updated: DATETIME = None,
     categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, 
     sources: list[str] = None, 
-    embedding: list[float] = None, distance: float = 0, 
     conditions: list[str] = None,
-):
-    
+):    
     exprs = []
     params = {}
     if urls: 
@@ -549,11 +563,7 @@ def _where(
     if sources: 
         exprs.append("source = ANY(%(sources)s)")
         params['sources'] = sources
-    # cosine distance operator: <=>
-    if embedding and distance: 
-        exprs.append("(embedding <=> %(embedding)s::vector) <= %(distance)s")
-        params['embedding'] = embedding
-        params['distance'] = distance
+    # Note: embedding distance filtering is handled in _fetch_all() via CTE
     if conditions: exprs.extend(conditions)
     if exprs: return ("WHERE " + " AND ".join(exprs), {k: v for k, v in params.items() if v})
     else: return ("", {})
