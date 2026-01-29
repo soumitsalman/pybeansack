@@ -32,9 +32,6 @@ class _Chatter(Chatter, LanceModel):
 
 class _Sip(Sip, LanceModel):    
     embedding: VECTOR_TYPE = Field(None, description="This is the embedding vector of title+content")
-    
-class _Mug(Mug, LanceModel):    
-    embedding: VECTOR_TYPE = Field(None, description="This is the embedding vector of title+content")
 
 class _Cluster(LanceModel):
     url: str
@@ -191,24 +188,6 @@ class LanceDB(Beansack):
                 )
             )
         return result.num_updated_rows
-
-    def store_mugs(self, mugs: list[Mug]):
-        if not mugs: return 0
-
-        to_store = distinct(mugs, "id")
-        result = self.allmugs.merge_insert("id") \
-            .when_not_matched_insert_all() \
-            .execute( [_Mug(**mug.model_dump(exclude_none=True)) for mug in to_store])
-        return result.num_inserted_rows
-    
-    def store_sips(self, sips: list[Sip]):
-        if not sips: return 0
-
-        to_store = distinct(sips, "id") 
-        result = self.allsips.merge_insert("id") \
-            .when_not_matched_insert_all() \
-            .execute([_Sip(**sip.model_dump(exclude_none=True)) for sip in to_store])
-        return result.num_inserted_rows
 
     # QUERY functions
     def deduplicate(self, table: str, items: list) -> list:
@@ -389,20 +368,10 @@ class LanceDBCupboard(Cupboard):
     def __init__(self, storage_path: str):
         self.db = _connect(storage_path)
         self.tables = {
-            MUGS: self.db.create_table(MUGS, schema=_Mug, exist_ok=True),
             SIPS: self.db.create_table(SIPS, schema=_Sip, exist_ok=True)
         }
 
     # INGESTION functions   
-    def store_mugs(self, mugs: list[Mug]):
-        if not mugs: return 0
-
-        to_store = distinct(mugs, "id")
-        result = self.tables[MUGS].merge_insert("id") \
-            .when_not_matched_insert_all() \
-            .execute( [_Mug(**mug.model_dump(exclude_none=True)) for mug in to_store])
-        return result.num_inserted_rows
-    
     def store_sips(self, sips: list[Sip]):
         if not sips: return 0
 
@@ -412,7 +381,7 @@ class LanceDBCupboard(Cupboard):
             .execute([_Sip(**sip.model_dump(exclude_none=True)) for sip in to_store])
         return result.num_inserted_rows
 
-    def count_rows(self, table, conditions: list[str] = None) -> int:
+    def count_rows(self, table=SIPS, conditions: list[str] = None) -> int:
         where_exprs = _where(conditions=conditions)
         return self.tables[table].count_rows(where_exprs)
 
@@ -496,15 +465,13 @@ class LanceDBCupboard(Cupboard):
         self.tables[table].delete(where_expr)
         return current_total - self.tables[table].count_rows()
     
-    def remove_mugs(self, created: DATETIME = None, conditions: list[str] = None) -> int:
-        return self._remove_from(MUGS, created=created, conditions=conditions)
-    
     def remove_sips(self, created: DATETIME = None, conditions: list[str] = None) -> int:
         return self._remove_from(SIPS, created=created, conditions=conditions)
     
     def optimize(self):
-        try: [self.tables[table].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine") for table in [MUGS, SIPS]]
-        except: pass
+        # NOTE: something wrong with the vector index creation
+        # try: [self.tables[table].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine") for table in [MUGS, SIPS]]
+        # except: pass
         [table.optimize() for table in self.tables.values()]
 
     def close(self):

@@ -142,11 +142,7 @@ class Beansack(ABC):
     def close(self):
         raise NOT_IMPLEMENTED
 
-class Cupboard(ABC):
-    @abstractmethod
-    def store_mugs(self, mugs: list[Mug]) -> int:
-        raise NOT_IMPLEMENTED
-    
+class Cupboard(ABC):    
     @abstractmethod
     def store_sips(self, sips: list[Sip]) -> int:
         raise NOT_IMPLEMENTED
@@ -159,11 +155,7 @@ class Cupboard(ABC):
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ) -> list[Sip]:
-        raise NOT_IMPLEMENTED   
-    
-    @abstractmethod
-    def remove_mugs(self, created: DATETIME = None, conditions: list[str] = None) -> list[Sip]:
-        raise NOT_IMPLEMENTED  
+        raise NOT_IMPLEMENTED    
     
     @abstractmethod
     def remove_sips(self, created: DATETIME = None, conditions: list[str] = None) -> list[Sip]:

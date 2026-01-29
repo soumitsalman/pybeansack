@@ -194,13 +194,39 @@ class Bean(BaseModel):
             'entities': 'object'  
         }
 
-class _CupboardItem(BaseModel):
+# sip kinds
+HEADLINE = "headline"
+REPORT = "report"
+EDITORIAL = "editorial"
+NEWSLETTER = "newsletter"
+SECTION = "section"
+TWITTER_POST = "twitter"
+LINKEDIN_POST = "linkedin"
+REDDIT_POST = "reddit"
+INSTAGRAM_POST = "instagram"
+
+class Sip(BaseModel):
+    # ID must have
     id: str = Field(description="The unique identifier of the item.")
-    title: Optional[str] = Field(None, description="The title of the item.")
-    content: Optional[str] = Field(None, description="The content of the item.")
-    embedding: Optional[list[float]] = Field(None, description="The embedding vector of the title and content.")
-    created: Optional[datetime] = Field(None, description="The creation timestamp.")
-    updated: Optional[datetime] = Field(None, description="The last updated timestamp.")
+    
+    # Main body fields
+    kind: Optional[str] = Field(default=None, description="Kind of sip, e.g., headline, report, editorial, opinion, twitter, linkedin, reddit.")
+    title: Optional[str] = Field(default=None, description="Title of the sip.")    
+    content: Optional[str] = Field(default=None, description="Content of the sip.")
+    summary: Optional[str] = Field(default=None, description="Summary of the sip.")
+    tags: Optional[list[str]] = Field(default=None, description="List of tags associated with the sip.")
+    image_url: Optional[str] = Field(default=None, description="URL of the image associated with the sip.")
+    
+    # retrieval and linking fields
+    beans: Optional[list[str]] = Field(default=None, description="List of beans that were used to create this sip.")
+    embedding: Optional[list[float]] = Field(default=None, description="Embedding vector for the sip.")
+
+    # timestamps
+    created: Optional[datetime] = Field(default=None, description="The creation timestamp.")
+    updated: Optional[datetime] = Field(default=None, description="The last updated timestamp.")
+
+    def __str__(self):
+        return f"# {self.title}\n{self.content}"
 
     class Config:
         populate_by_name = True
@@ -210,15 +236,6 @@ class _CupboardItem(BaseModel):
         by_alias=True
         json_encoders={datetime: rfc3339}
 
-class Sip(_CupboardItem):
-    mug: Optional[str] = Field(None, description="The slug of the parent mug.")
-    related: Optional[list[str]] = Field(None, description="The slugs of related past sips.")
-    beans: Optional[list[str]] = Field(None, description="The URLs of the beans.")
-
-class Mug(_CupboardItem):
-    sips: Optional[list[str]] = Field(None, description="The slugs of the sips or sections.")
-    highlights: Optional[list[str]] = Field(None, description="The highlights of the mug.")
-    tags: Optional[list[str]] = Field(None, description="The tags associated with the mug.")
 
 class AggregatedBean(Bean, Chatter, Publisher): 
     # adding aggregated bean specific field
