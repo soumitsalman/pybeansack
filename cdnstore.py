@@ -45,7 +45,7 @@ class CDNStore:
         return f"{self.root_path}/{_ext_to_dir(ext)}/{blob_name}.{ext}"
 
     def _public_url(self, key: str) -> str:
-        return f"{self.cdn_url}/{key}"
+        return f"{self.cdn_url}/{key}" if self.cdn_url else key
 
     # def upload_file(self, source_file_path: str, directory: str = None) -> str:
     #     from pathlib import Path
