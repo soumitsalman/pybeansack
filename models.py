@@ -200,17 +200,13 @@ REPORT = "report"
 EDITORIAL = "editorial"
 NEWSLETTER = "newsletter"
 SECTION = "section"
-TWITTER_POST = "twitter"
-LINKEDIN_POST = "linkedin"
-REDDIT_POST = "reddit"
-INSTAGRAM_POST = "instagram"
 
 class Sip(BaseModel):
     # ID must have
     id: str = Field(description="The unique identifier of the item.")
     
     # Main body fields
-    kind: Optional[str] = Field(default=None, description="Kind of sip, e.g., headline, report, editorial, opinion, twitter, linkedin, reddit.")
+    kind: Optional[str] = Field(default=None, description="Kind of sip, e.g., headline, report, editorial, newsletter, post.")
     title: Optional[str] = Field(default=None, description="Title of the sip.")    
     content: Optional[str] = Field(default=None, description="Content of the sip.")
     summary: Optional[str] = Field(default=None, description="Summary of the sip.")
