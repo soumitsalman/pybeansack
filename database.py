@@ -158,7 +158,7 @@ class Cupboard(ABC):
         raise NOT_IMPLEMENTED    
     
     @abstractmethod
-    def remove_sips(self, created: DATETIME = None, conditions: list[str] = None) -> list[Sip]:
+    def remove_sips(self, created: DATETIME = None, conditions: list[str] = None) -> int:
         raise NOT_IMPLEMENTED   
     
     @abstractmethod
