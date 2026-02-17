@@ -69,15 +69,15 @@ DIGEST_COLUMNS = [K_URL, K_CREATED, K_GIST]
 CONTENT_COLUMNS = [K_URL, K_CREATED, K_SOURCE, K_TITLE, K_CONTENT]
 
 class Chatter(BaseModel):
-    """Social media chatter or comments that mention an article URL."""
-    chatter_url: Optional[str] = Field(default=None, min_length=1, description="The URL of the social media post that contains the article URL.")
-    url: str = Field(min_length=1, description="The URL of the article mentioned in the social media post/comment.")
-    source: Optional[str] = Field(default=None, description="The id of the source/publisher of the chatter.")
-    forum: Optional[str] = Field(default=None, description="The group or forum from which the chatter was collected.")
-    collected: Optional[datetime] = Field(default=None, description="The date and time when the chatter was collected.")
-    likes: int = Field(default=0, description="The number of likes on the chatter.")
-    comments: int = Field(default=0, description="The number of comments on the chatter.")
-    subscribers: int = Field(default=0, description="The number of subscribers to the forum or group.")
+    """Social media engagement stats of an article/bean (specified by `url`)."""
+    chatter_url: Optional[str] = Field(default=None, min_length=1, description="The URL of the social medium post/comment that contains the article URL.")
+    url: str = Field(min_length=1, description="The URL of the article mentioned in the social medium post/comment.")
+    source: Optional[str] = Field(default=None, description="The publisher ID of the social medium from which the data was collected.")
+    forum: Optional[str] = Field(default=None, description="The social medium group/forum/community/page from which the data was collected.")
+    collected: Optional[datetime] = Field(default=None, description="The date and time when the data was collected.")
+    likes: int = Field(default=0, description="The cumulative total number of likes (lower bound).")
+    comments: int = Field(default=0, description="The cumulative total number of comments (lower bound).")
+    subscribers: int = Field(default=0, description="The cumulative total number of subscribers (lower bound).")
 
     def to_tuple(self) -> tuple:
         return (
@@ -109,11 +109,11 @@ class Chatter(BaseModel):
         }
 
 class Publisher(BaseModel):
-    """The website, publisher or social media from which an article or chatter is sourced."""
-    source: str = Field(min_length=1, description="The domain name that matches the source field in Bean.")
+    """Metadata of the website, publication or social medium from which an article or chatter is sourced."""
+    source: str = Field(min_length=1, description="The publisher ID/domain name of the publisher. This matches the source field in Bean.")
     base_url: str = Field(min_length=1, description="The base URL of the publisher.")
     site_name: Optional[str] = Field(default=None, description="The name of the site.")
-    description: Optional[str] = Field(default=None, description="A description of the publisher.")
+    description: Optional[str] = Field(default=None, description="A description/details of the publisher.")
     favicon: Optional[str] = Field(default=None, description="The URL of the publisher's favicon.")
     rss_feed: Optional[str] = Field(default=None, description="The URL of the publisher's RSS feed.")
     collected: Optional[datetime] = Field(default=None, description="The date and time when the publisher information was collected.")
@@ -135,29 +135,29 @@ class Publisher(BaseModel):
         }
 
 class Bean(BaseModel):    
-    """An article such as a news or blog post."""
+    """Metadata of an article such as a news or blog post."""
     url: str = Field(description="The URL of the article.")
-    kind: Optional[str] = Field(default=None, description="The kind/type of the article, e.g., news, blog, oped, job, post.")
-    source: Optional[str] = Field(default=None, description="The source/publisher id of the article.")
+    kind: Optional[str] = Field(default=None, description="The content type of the article, e.g., news, blog, oped, job, post.")
+    source: Optional[str] = Field(default=None, description="The publisher ID of the article.")
     title: Optional[str] = Field(default=None, description="The title of the article.")
     title_length: Optional[int] = Field(default=None, description="The length of the title in words.")
     summary: Optional[str] = Field(default=None, description="A summary of the article.")
     summary_length: Optional[int] = Field(default=None, description="The length of the summary in words.")
-    content: Optional[str] = Field(default=None, description="The full content of the article.")
+    content: Optional[str] = Field(default=None, description="The full content of the article if available.")
     content_length: Optional[int] = Field(default=None, description="The length of the content in words.")
     restricted_content: Optional[bool] = Field(default=None, description="Indicates if the content is restricted.")
-    image_url: Optional[str] = Field(default=None, description="The URL of the article's image.")
+    image_url: Optional[str] = Field(default=None, description="The URL of the article's featured image.")
     author: Optional[str] = Field(default=None, description="The author of the article (if available).")
-    created: Optional[datetime] = Field(default=None, description="The published date of the article.")
+    created: Optional[datetime] = Field(default=None, description="The publish date of the article.")
     collected: Optional[datetime] = Field(default=None, description="The date when the article was collected into the system.")
 
     # llm fields
-    embedding: Optional[list[float]] = Field(default=None, description="The embedding vector for the article.")
-    gist: Optional[str] = Field(default=None, description="A gist or key points of the article.")
-    entities: Optional[list[str]] = Field(default=None, description="Named entities mentioned in the article.")
-    regions: Optional[list[str]] = Field(default=None, description="Geographic regions mentioned in the article.")
-    categories: Optional[list[str]] = Field(default=None, description="Categories associated with the article.")
-    sentiments: Optional[list[str]] = Field(default=None, description="Sentiments expressed in the article.")
+    embedding: Optional[list[float]] = Field(default=None, description="The vector embedding for the article content.")
+    gist: Optional[str] = Field(default=None, description="The highlights and key points of the article content.")
+    entities: Optional[list[str]] = Field(default=None, description="Named entities mentioned in the article content.")
+    regions: Optional[list[str]] = Field(default=None, description="Geographic regions mentioned in the article content.")
+    categories: Optional[list[str]] = Field(default=None, description="Categories/topics of the article content.")
+    sentiments: Optional[list[str]] = Field(default=None, description="Sentiments expressed in the article content.")
     
     @cached_property
     def digest(self) -> str:
@@ -202,6 +202,7 @@ NEWSLETTER = "newsletter"
 SECTION = "section"
 
 class Sip(BaseModel):
+    """Generated article stored in cupboard"""
     # ID must have
     id: str = Field(description="The unique identifier of the item.")
     
@@ -214,8 +215,8 @@ class Sip(BaseModel):
     image_url: Optional[str] = Field(default=None, description="URL of the image associated with the sip.")
     
     # retrieval and linking fields
-    beans: Optional[list[str]] = Field(default=None, description="List of beans that were used to create this sip.")
-    embedding: Optional[list[float]] = Field(default=None, description="Embedding vector for the sip.")
+    beans: Optional[list[str]] = Field(default=None, description="List of beans that were used to generate this sip.")
+    embedding: Optional[list[float]] = Field(default=None, description="Vector Embedding of the sip.")
 
     # timestamps
     created: Optional[datetime] = Field(default=None, description="The creation timestamp.")
