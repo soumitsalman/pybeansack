@@ -221,7 +221,9 @@ class Postgres(Beansack):
         kind: str = None, 
         created: DATETIME = None, collected: DATETIME = None, updated: DATETIME = None,
         categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
+        regions: list[str] = None, 
+        entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -240,6 +242,7 @@ class Postgres(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             conditions=conditions
         )
@@ -282,7 +285,9 @@ class Postgres(Beansack):
         kind: str = None, 
         created: DATETIME = None, collected: DATETIME = None,
         categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
+        regions: list[str] = None, 
+        entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -298,6 +303,7 @@ class Postgres(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -312,7 +318,9 @@ class Postgres(Beansack):
         kind: str = None, 
         updated: DATETIME = None, collected: DATETIME = None,
         categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
+        regions: list[str] = None,
+        entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -328,6 +336,7 @@ class Postgres(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -343,7 +352,9 @@ class Postgres(Beansack):
         collected: DATETIME = None,
         updated: DATETIME = None,
         categories: list[str] = None, 
-        regions: list[str] = None, entities: list[str] = None, 
+        regions: list[str] = None, 
+        entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -359,6 +370,7 @@ class Postgres(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -380,10 +392,19 @@ class Postgres(Beansack):
             columns=columns
         )
 
-    def query_publishers(self, collected: DATETIME = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:
+    def query_publishers(self, 
+        collected: DATETIME = None, 
+        tags: list[str] = None,
+        sources: list[str] = None, 
+        conditions: list[str] = None, 
+        limit: int = 0, 
+        offset: int = 0, 
+        columns: list[str] = None
+    ) -> list[Publisher]:
         return self._fetch_all(
             table=PUBLISHERS,
             collected=collected,
+            tags=tags,
             sources=sources,
             conditions=conditions,
             limit=limit,
@@ -514,7 +535,7 @@ def _where(
     urls: list[str] = None,
     kind: str = None, 
     created: DATETIME = None, collected: DATETIME = None, updated: DATETIME = None,
-    categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, 
+    categories: list[str] = None, regions: list[str] = None, entities: list[str] = None, tags: list[str] = None,
     sources: list[str] = None, 
     conditions: list[str] = None,
 ):    
@@ -560,6 +581,9 @@ def _where(
     if entities: 
         exprs.append("entities && %(entities)s::varchar[]")
         params['entities'] = entities
+    if tags:
+        exprs.append("tags @@ plainto_tsquery('simple', %(tags)s)")
+        params['tags'] = " ".join(tags)
     if sources: 
         exprs.append("source = ANY(%(sources)s)")
         params['sources'] = sources

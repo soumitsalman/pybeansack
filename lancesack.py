@@ -207,6 +207,7 @@ class LanceDB(Beansack):
         created: DATETIME = None, collected: DATETIME = None, updated: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -215,7 +216,7 @@ class LanceDB(Beansack):
         columns: list[str] = None
     ) -> list[Bean]:
         query = self.allbeans.search() if not embedding else self.allbeans.search(query=embedding, query_type="vector", vector_column_name=K_EMBEDDING)      
-        where_expr = _where(urls=None, kind=kind, created=created, collected=collected, updated=updated, categories=categories, regions=regions, entities=entities, sources=sources, conditions=conditions)
+        where_expr = _where(urls=None, kind=kind, created=created, collected=collected, updated=updated, categories=categories, regions=regions, entities=entities, tags=tags, sources=sources, conditions=conditions)
         if where_expr: query = query.where(where_expr)
         if embedding: query = query.distance_type("cosine")
         if distance: query = query.distance_range(upper_bound = distance)
@@ -231,6 +232,7 @@ class LanceDB(Beansack):
         collected: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -244,6 +246,7 @@ class LanceDB(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -260,6 +263,7 @@ class LanceDB(Beansack):
         collected: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -275,6 +279,7 @@ class LanceDB(Beansack):
         updated: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -289,6 +294,7 @@ class LanceDB(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -319,7 +325,7 @@ class LanceDB(Beansack):
         if columns: query = query.select(columns)
         return query.to_pydantic(_Chatter)
     
-    def query_publishers(self, collected: DATETIME = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:  
+    def query_publishers(self, collected: DATETIME = None, tags: list[str] = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:  
         query = self.allpublishers.search()
         if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
@@ -535,6 +541,7 @@ def _where(
     categories: list[str] = None,
     regions: list[str] = None,
     entities: list[str] = None,
+    tags: list[str] = None,
     sources: list[str] = None,  
     conditions: list[str] = None
 ):
@@ -547,6 +554,7 @@ def _where(
     if categories: exprs.append(f"ARRAY_HAS_ANY(categories, [{list_expr(categories)}])")
     if regions: exprs.append(f"ARRAY_HAS_ANY(regions, [{list_expr(regions)}])")
     if entities: exprs.append(f"ARRAY_HAS_ANY(entities, [{list_expr(entities)}])")
+    if tags: exprs.append(f"ARRAY_HAS_ANY(tags, [{list_expr(tags)}])")
     if sources: exprs.append(f"source IN ({list_expr(sources)})")
     if conditions: exprs.extend([c for c in conditions if c])
 

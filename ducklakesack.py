@@ -220,6 +220,7 @@ class Ducklake(Beansack):
         created: DATETIME = None, collected: DATETIME = None, updated: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -228,7 +229,7 @@ class Ducklake(Beansack):
         columns: list[str] = None
     ):
         select_expr, select_params = _select(table, columns, embedding)
-        where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, sources, distance, conditions)
+        where_expr, where_params = _where(kind, created, collected, updated, categories, regions, entities, tags, sources, distance, conditions)
         if where_expr: select_expr += where_expr
         params = []
         if select_params: params.extend(select_params)
@@ -250,6 +251,7 @@ class Ducklake(Beansack):
         collected: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -266,6 +268,7 @@ class Ducklake(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -282,6 +285,7 @@ class Ducklake(Beansack):
         collected: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -298,6 +302,7 @@ class Ducklake(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -315,6 +320,7 @@ class Ducklake(Beansack):
         updated: DATETIME = None,
         categories: list[str] = None, 
         regions: list[str] = None, entities: list[str] = None, 
+        tags: list[str] = None,
         sources: list[str] = None, 
         embedding: list[float] = None, distance: float = 0, 
         conditions: list[str] = None,
@@ -332,6 +338,7 @@ class Ducklake(Beansack):
             categories=categories,
             regions=regions,
             entities=entities,
+            tags=tags,
             sources=sources,
             embedding=embedding,
             distance=distance,
@@ -363,7 +370,7 @@ class Ducklake(Beansack):
             columns=columns
         )
     
-    def query_publishers(self, collected: DATETIME = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:        
+    def query_publishers(self, collected: DATETIME = None, tags: list[str] = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:        
         return self._fetch_all(
             table=PUBLISHERS,
             collected=collected,
@@ -579,6 +586,7 @@ def _where(
     categories: list[str] = None,
     regions: list[str] = None,
     entities: list[str] = None,
+    tags: list[str] = None,
     sources: list[str] = None,  
     distance: float = 0,
     conditions: list[str] = None
@@ -592,6 +600,7 @@ def _where(
     if categories: exprs.append("ARRAY_HAS_ANY(categories, ?)"), params.append(categories)
     if regions: exprs.append("ARRAY_HAS_ANY(regions, ?)"), params.append(regions)
     if entities: exprs.append("ARRAY_HAS_ANY(entities, ?)"), params.append(entities)
+    if tags: exprs.append("ARRAY_HAS_ANY(tags, ?)"), params.append(tags)
     if sources: exprs.append(f"source IN ({', '.join('?' for _ in sources)})"), params.extend(sources)
     if distance: exprs.append("distance <= ?"), params.append(distance)
     if conditions: exprs.extend(conditions)
