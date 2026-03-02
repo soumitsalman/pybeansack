@@ -1,8 +1,31 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- CONTENT TABLES
+CREATE OR REPLACE FUNCTION immutable_tags_to_text(
+    a varchar[],
+    b varchar[],
+    c varchar[]
+)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+    SELECT array_to_string(
+        (
+            SELECT array_agg(elem)
+            FROM unnest(
+                COALESCE(a, '{}') ||
+                COALESCE(b, '{}') ||
+                COALESCE(c, '{}')
+            ) AS elem
+            WHERE elem IS NOT NULL
+        ),
+        ' '
+    );
+$$;
 
+-- CONTENT TABLES
 CREATE TABLE IF NOT EXISTS beans (
     -- CORE FIELDS
     url VARCHAR NOT NULL PRIMARY KEY,
@@ -30,7 +53,12 @@ CREATE TABLE IF NOT EXISTS beans (
     -- COMPRESSED EXTRACTION FIELDS
     gist TEXT,
     regions VARCHAR[],
-    entities VARCHAR[]
+    entities VARCHAR[],
+
+    -- TEXT SEARCH FIELD
+    tags TSVECTOR GENERATED ALWAYS AS (
+        to_tsvector('simple', immutable_tags_to_text(regions, entities, categories))
+    ) STORED
 );
 
 CREATE TABLE IF NOT EXISTS publishers (
@@ -151,9 +179,10 @@ CREATE INDEX IF NOT EXISTS idx_beans_source ON beans(source);
 CREATE INDEX IF NOT EXISTS idx_beans_categories ON beans USING gin(categories);
 CREATE INDEX IF NOT EXISTS idx_beans_entities ON beans USING gin(entities);
 CREATE INDEX IF NOT EXISTS idx_beans_regions ON beans USING gin(regions);
--- Full text search index on title and content
--- CREATE INDEX IF NOT EXISTS idx_beans_title_fts ON beans USING gin(to_tsvector('english', title));
--- CREATE INDEX IF NOT EXISTS idx_beans_content_fts ON beans USING gin(to_tsvector('english', content));
+
+-- tags search
+CREATE INDEX IF NOT EXISTS idx_beans_tags ON beans USING gin(tags);
+-- vector search
 CREATE INDEX IF NOT EXISTS idx_beans_embedding_hnsw_cosine ON beans USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 CREATE INDEX IF NOT EXISTS idx_beans_embedding_hnsw_l2 ON beans USING hnsw (embedding vector_l2_ops)
@@ -167,3 +196,4 @@ CREATE INDEX IF NOT EXISTS idx_chatters_url ON chatters(url);
 CREATE INDEX IF NOT EXISTS idx_chatters_collected ON chatters(collected DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mat_agg_chatters_url ON _materialized_chatter_aggregates(url);
+
