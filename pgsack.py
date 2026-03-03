@@ -34,7 +34,7 @@ _PRIMARY_KEYS = {
 }
 
 ORDER_BY_LATEST = "created DESC"
-ORDER_BY_TRENDING = "updated DESC, comments DESC, likes DESC"
+ORDER_BY_TRENDING = "trend_score DESC"
 ORDER_BY_DISTANCE = "distance ASC"
 
 log = logging.getLogger(__name__)
@@ -140,11 +140,9 @@ class Postgres(Beansack):
             pk_field=sql.Identifier(pk),
             pk_placeholder=sql.Placeholder(pk)
         )
-        # with self.cursor() as cur:
-        #     cur.executemany(SQL_UPDATE, data)
-        #     count = cur.rowcount
-        count = self.execute(SQL_UPDATE, data).rowcount
-        log.debug("updated", extra={"source": table, "num_items": count})
+        with self.cursor() as cur:
+            cur.executemany(SQL_UPDATE, data)
+            count = cur.rowcount
         return count
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
@@ -184,11 +182,8 @@ class Postgres(Beansack):
         ) AS d
         WHERE b.url = d.url;
         """
-        # with self.cursor() as cur:
-        #     cur.execute(SQL_UPDATE, (urls, embeddings))
-        #     count = cur.rowcount
         count = self.execute(SQL_UPDATE, (urls, embeddings)).rowcount
-        self._cluster_unmapped_beans(urls)  # re-cluster only the updated beans
+        # self._cluster_unmapped_beans(urls)  # re-cluster only the updated beans
         return count
     
     def update_publishers(self, publishers: list[Publisher]):
@@ -496,7 +491,7 @@ class Postgres(Beansack):
         self.execute(SQL_UPDATE_CLASSIFICATIONS)
 
     def _cluster_unmapped_beans(self, unmapped_urls):
-        BATCH_SIZE = 16
+        BATCH_SIZE = 8
         SQL_INSERT_CLUSTERS = """
         INSERT INTO _internal_clusters (url, related)
         WITH input_embeddings AS (
@@ -515,14 +510,9 @@ class Postgres(Beansack):
         SELECT related, url FROM similar_beans
         ON CONFLICT (url, related) DO NOTHING;
         """
-        with ThreadPoolExecutor(thread_name_prefix="CLUSTERER") as executor: 
-            result = executor.map(
-                lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls], "cluster_eps": CLUSTER_EPS}).rowcount, 
-                batched(unmapped_urls, BATCH_SIZE)
-            )
-        count = sum(result)
-        log.debug("clustered", extra={"num_items": count, "source": "beans"})
-        return count
+        with ThreadPoolExecutor(max_workers=os.cpu_count(), thread_name_prefix="CLUSTERER") as executor: 
+            cluster_many = lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls], "cluster_eps": CLUSTER_EPS})
+            executor.map(cluster_many, batched(unmapped_urls, BATCH_SIZE))
 
     def refresh_clusters(self):        
         SQL_QUERY_UNMAPPED = """
