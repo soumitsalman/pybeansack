@@ -496,7 +496,7 @@ class Postgres(Beansack):
         self.execute(SQL_UPDATE_CLASSIFICATIONS)
 
     def _cluster_unmapped_beans(self, unmapped_urls):
-        BATCH_SIZE = 32
+        BATCH_SIZE = 16
         SQL_INSERT_CLUSTERS = """
         INSERT INTO _internal_clusters (url, related)
         WITH input_embeddings AS (
