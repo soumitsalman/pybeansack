@@ -496,7 +496,8 @@ class Postgres(Beansack):
         self.execute(SQL_UPDATE_CLASSIFICATIONS)
 
     def _cluster_unmapped_beans(self, unmapped_urls):
-        SQL_INSERT_CLUSTERS = f"""
+        BATCH_SIZE = 32
+        SQL_INSERT_CLUSTERS = """
         INSERT INTO _internal_clusters (url, related)
         WITH input_embeddings AS (
             SELECT url, embedding
@@ -507,19 +508,23 @@ class Postgres(Beansack):
             SELECT DISTINCT ie.url, b.url AS related
             FROM input_embeddings ie
             CROSS JOIN beans b
-            WHERE (ie.embedding <-> b.embedding) <= {CLUSTER_EPS}
+            WHERE (ie.embedding <-> b.embedding) <= %(cluster_eps)s
         )
         SELECT url, related FROM similar_beans
         UNION
         SELECT related, url FROM similar_beans
         ON CONFLICT (url, related) DO NOTHING;
         """
-        count = self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in unmapped_urls]}).rowcount
+        with ThreadPoolExecutor(thread_name_prefix="CLUSTERER") as executor: 
+            result = executor.map(
+                lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls], "cluster_eps": CLUSTER_EPS}).rowcount, 
+                batched(unmapped_urls, BATCH_SIZE)
+            )
+        count = sum(result)
         log.debug("clustered", extra={"num_items": count, "source": "beans"})
         return count
 
-    def refresh_clusters(self):
-        BATCH_SIZE = 64
+    def refresh_clusters(self):        
         SQL_QUERY_UNMAPPED = """
         SELECT url FROM beans b
         WHERE b.embedding IS NOT NULL
@@ -527,9 +532,7 @@ class Postgres(Beansack):
             SELECT 1 FROM _internal_clusters ic WHERE ic.url = b.url
         );
         """
-        unmapped_urls = self._query_scalars(SQL_QUERY_UNMAPPED)  
-        with ThreadPoolExecutor(thread_name_prefix="CLUSTERER") as executor: 
-            executor.map(self._cluster_unmapped_beans, batched(unmapped_urls, BATCH_SIZE))
+        self._cluster_unmapped_beans(self._query_scalars(SQL_QUERY_UNMAPPED))  
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;")
 
     def refresh_chatters(self):
