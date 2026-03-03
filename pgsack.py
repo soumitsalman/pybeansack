@@ -495,19 +495,7 @@ class Postgres(Beansack):
         """      
         self.execute(SQL_UPDATE_CLASSIFICATIONS)
 
-    def _cluster_unmapped_beans(self, unmapped_urls = None):
-        BATCH_SIZE = 64
-        # if list of url is not given then find them
-        if not unmapped_urls:
-            SQL_QUERY_UNMAPPED = """
-            SELECT url FROM beans b
-            WHERE b.embedding IS NOT NULL
-            AND NOT EXISTS (
-                SELECT 1 FROM _internal_clusters ic WHERE ic.url = b.url
-            );
-            """
-            unmapped_urls = self._query_scalars(SQL_QUERY_UNMAPPED)   
-
+    def _cluster_unmapped_beans(self, unmapped_urls):
         SQL_INSERT_CLUSTERS = f"""
         INSERT INTO _internal_clusters (url, related)
         WITH input_embeddings AS (
@@ -526,25 +514,31 @@ class Postgres(Beansack):
         SELECT related, url FROM similar_beans
         ON CONFLICT (url, related) DO NOTHING;
         """
-        insert_url_clusters = lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls]}).rowcount
-        
-        with ThreadPoolExecutor(thread_name_prefix="CLUSTERER") as executor: 
-            executor.map(insert_url_clusters, batched(unmapped_urls, BATCH_SIZE))
+        count = self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in unmapped_urls]}).rowcount
+        log.debug("clustered", extra={"num_items": count, "source": "beans"})
+        return count
 
     def refresh_clusters(self):
-        self._cluster_unmapped_beans()
+        BATCH_SIZE = 64
+        SQL_QUERY_UNMAPPED = """
+        SELECT url FROM beans b
+        WHERE b.embedding IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM _internal_clusters ic WHERE ic.url = b.url
+        );
+        """
+        unmapped_urls = self._query_scalars(SQL_QUERY_UNMAPPED)  
+        with ThreadPoolExecutor(thread_name_prefix="CLUSTERER") as executor: 
+            executor.map(self._cluster_unmapped_beans, batched(unmapped_urls, BATCH_SIZE))
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;")
 
     def refresh_chatters(self):
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
     def optimize(self):
-        self._cluster_unmapped_beans()
-        SQL_REFRESH_VIEWS = """
-        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;
-        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;
-        """
-        self.execute(SQL_REFRESH_VIEWS)
+        self.refresh_classifications()
+        self.refresh_clusters()
+        self.refresh_chatters()
     
     def close(self):
         self.pool.close()
