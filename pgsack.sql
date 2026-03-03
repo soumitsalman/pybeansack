@@ -97,27 +97,32 @@ CREATE TABLE IF NOT EXISTS fixed_sentiments (
 );
 
 -- VIEWS & MATERIALIZED VIEWS --
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS _materialized_clusters AS
-WITH scope AS (
-    SELECT url, embedding FROM beans                 
-    WHERE embedding IS NOT NULL
-)
-SELECT s1.url as url, s2.url as related
-FROM scope s1
-CROSS JOIN scope s2
-WHERE s1.url <> s2.url AND (s1.embedding <-> s2.embedding) <= {cluster_eps}; 
+-- materialized view for this is a bad idea. recomputes everything
+CREATE TABLE IF NOT EXISTS _internal_clusters (
+    url VARCHAR NOT NULL,
+    related VARCHAR NOT NULL,
+    UNIQUE(url, related)
+);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS _materialized_cluster_aggregates AS
 WITH cluster_groups AS (
-    SELECT url, ARRAY_AGG(related) AS related, count(*) AS cluster_size 
-    FROM _materialized_clusters 
+    SELECT url,
+        ARRAY_AGG(related) AS related,
+        COUNT(*)           AS cluster_size
+    FROM _internal_clusters
     GROUP BY url
+),
+best_related AS (
+    SELECT DISTINCT ON (ic.url)
+        ic.url,
+        ic.related AS cluster_id
+    FROM _internal_clusters ic
+    JOIN cluster_groups cg ON cg.url = ic.related
+    ORDER BY ic.url, cg.cluster_size DESC
 )
-SELECT cg.*, cl.related AS cluster_id
+SELECT cg.url, cg.related, cg.cluster_size, br.cluster_id
 FROM cluster_groups cg
-INNER JOIN _materialized_clusters cl ON cg.url = cl.url
-WHERE cl.related = (SELECT related FROM _materialized_clusters WHERE url = cg.url ORDER BY cluster_size DESC LIMIT 1);
+JOIN best_related br ON br.url = cg.url;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS _materialized_chatter_aggregates AS
 WITH 
@@ -154,17 +159,24 @@ GROUP BY url;
 
 CREATE OR REPLACE VIEW trending_beans_view AS
 SELECT 
-    b.*,  
-    ch.updated, ch.likes, ch.comments, ch.subscribers, ch.shares
+    b.*,   
+    ch.updated, ch.comments, ch.shares, ch.likes, ch.subscribers,
+    cl.cluster_size, cl.related, cl.cluster_id,
+    (100 * COALESCE(cl.cluster_size - 1, 0)
+     + 50 * COALESCE(ch.comments, 0)
+     + 10 * COALESCE(ch.shares, 0)
+     +      COALESCE(ch.likes, 0))
+    / ((CURRENT_DATE + 2) - GREATEST(DATE(b.created), COALESCE(ch.updated, DATE(b.created))))::float
+    AS trend_score
 FROM beans b
-INNER JOIN _materialized_chatter_aggregates ch ON b.url = ch.url
-ORDER BY updated DESC, comments DESC, likes DESC;
+LEFT JOIN _materialized_chatter_aggregates ch ON b.url = ch.url
+LEFT JOIN _materialized_cluster_aggregates cl ON b.url = cl.url;
 
 CREATE OR REPLACE VIEW aggregated_beans_view AS
 SELECT 
     b.*,  
-    ch.updated, ch.likes, ch.comments, ch.subscribers, ch.shares,
-    cl.related, cl.cluster_id, cl.cluster_size,
+    ch.updated, ch.comments, ch.shares, ch.likes, ch.subscribers,
+    cl.cluster_size, cl.related, cl.cluster_id, 
     p.base_url, p.site_name, p.description, p.favicon, p.rss_feed
 FROM beans b
 LEFT JOIN _materialized_chatter_aggregates ch ON b.url = ch.url
@@ -196,4 +208,5 @@ CREATE INDEX IF NOT EXISTS idx_chatters_url ON chatters(url);
 CREATE INDEX IF NOT EXISTS idx_chatters_collected ON chatters(collected DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mat_agg_chatters_url ON _materialized_chatter_aggregates(url);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mat_agg_clusters_url ON _materialized_cluster_aggregates(url);
 

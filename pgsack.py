@@ -1,8 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import os
 import logging
 from pathlib import Path
 from typing import Any
+from itertools import batched
 import pandas as pd
 from psycopg import sql
 from psycopg_pool import ConnectionPool
@@ -15,6 +17,7 @@ from retry import retry
 TIMEOUT = 270  # seconds
 RETRY_COUNT = 3
 RETRY_DELAY = (10,120)  # seconds
+CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.4))
 
 _TYPES = {
     BEANS: Bean,
@@ -137,9 +140,10 @@ class Postgres(Beansack):
             pk_field=sql.Identifier(pk),
             pk_placeholder=sql.Placeholder(pk)
         )
-        with self.cursor() as cur:
-            cur.executemany(SQL_UPDATE, data)
-            count = cur.rowcount
+        # with self.cursor() as cur:
+        #     cur.executemany(SQL_UPDATE, data)
+        #     count = cur.rowcount
+        count = self.execute(SQL_UPDATE, data).rowcount
         log.debug("updated", extra={"source": table, "num_items": count})
         return count
     
@@ -180,10 +184,11 @@ class Postgres(Beansack):
         ) AS d
         WHERE b.url = d.url;
         """
-        
-        with self.cursor() as cur:
-            cur.execute(SQL_UPDATE, (urls, embeddings))
-            count = cur.rowcount
+        # with self.cursor() as cur:
+        #     cur.execute(SQL_UPDATE, (urls, embeddings))
+        #     count = cur.rowcount
+        count = self.execute(SQL_UPDATE, (urls, embeddings)).rowcount
+        self._cluster_unmapped_beans(urls)  # re-cluster only the updated beans
         return count
     
     def update_publishers(self, publishers: list[Publisher]):
@@ -201,7 +206,7 @@ class Postgres(Beansack):
         return items    
 
     @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
-    def _query_scalars(self, expr: str, params: dict = None) -> list[str]:
+    def _query_scalars(self, expr: str, params: dict = None) -> list:
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur: 
                 rows = cur.fetchall()         
@@ -460,10 +465,10 @@ class Postgres(Beansack):
         return self._query_one(expr)
     
     # MAINTENANCE METHODS
-    def execute(self, sql: str):
+    def execute(self, sql: str, params = None):
         """Execute arbitrary SQL commands."""
-        with self.cursor() as cursor:
-            cursor.execute(sql)
+        with self.pool.connection() as conn:
+            return conn.execute(sql, params=params, binary=True)
 
     def refresh_classifications(self):  
         SQL_UPDATE_CLASSIFICATIONS = """
@@ -490,21 +495,54 @@ class Postgres(Beansack):
         """      
         self.execute(SQL_UPDATE_CLASSIFICATIONS)
 
-    def refresh_clusters(self):
-        SQL_REFRESH_CLUSTERS = """
-        REFRESH MATERIALIZED VIEW _materialized_clusters;
-        REFRESH MATERIALIZED VIEW _materialized_cluster_aggregates;
+    def _cluster_unmapped_beans(self, unmapped_urls = None):
+        BATCH_SIZE = 64
+        # if list of url is not given then find them
+        if not unmapped_urls:
+            SQL_QUERY_UNMAPPED = """
+            SELECT url FROM beans b
+            WHERE b.embedding IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM _internal_clusters ic WHERE ic.url = b.url
+            );
+            """
+            unmapped_urls = self._query_scalars(SQL_QUERY_UNMAPPED)   
+
+        SQL_INSERT_CLUSTERS = f"""
+        INSERT INTO _internal_clusters (url, related)
+        WITH input_embeddings AS (
+            SELECT url, embedding
+            FROM beans
+            WHERE url = ANY(%(input_urls)s)
+        ),
+        similar_beans AS (
+            SELECT DISTINCT ie.url, b.url AS related
+            FROM input_embeddings ie
+            CROSS JOIN beans b
+            WHERE (ie.embedding <-> b.embedding) <= {CLUSTER_EPS}
+        )
+        SELECT url, related FROM similar_beans
+        UNION
+        SELECT related, url FROM similar_beans
+        ON CONFLICT (url, related) DO NOTHING;
         """
-        self.execute(SQL_REFRESH_CLUSTERS)
+        insert_url_clusters = lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls]}).rowcount
+        
+        with ThreadPoolExecutor(thread_name_prefix="CLUSTERER") as executor: 
+            executor.map(insert_url_clusters, batched(unmapped_urls, BATCH_SIZE))
+
+    def refresh_clusters(self):
+        self._cluster_unmapped_beans()
+        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;")
 
     def refresh_chatters(self):
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
     def optimize(self):
+        self._cluster_unmapped_beans()
         SQL_REFRESH_VIEWS = """
         REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;
-        REFRESH MATERIALIZED VIEW _materialized_clusters;
-        REFRESH MATERIALIZED VIEW _materialized_cluster_aggregates;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;
         """
         self.execute(SQL_REFRESH_VIEWS)
     
