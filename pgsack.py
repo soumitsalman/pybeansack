@@ -183,6 +183,7 @@ class Postgres(Beansack):
         WHERE b.url = d.url;
         """
         count = self.execute(SQL_UPDATE, (urls, embeddings)).rowcount
+        # NOTE: system gets overwhelmed
         # self._cluster_unmapped_beans(urls)  # re-cluster only the updated beans
         return count
     
@@ -495,24 +496,30 @@ class Postgres(Beansack):
         SQL_INSERT_CLUSTERS = """
         INSERT INTO _internal_clusters (url, related)
         WITH input_embeddings AS (
-            SELECT url, embedding
+            SELECT url, categories, embedding
             FROM beans
-            WHERE url = ANY(%(input_urls)s)
+            WHERE url = %(input_url)s
         ),
         similar_beans AS (
             SELECT DISTINCT ie.url, b.url AS related
             FROM input_embeddings ie
             CROSS JOIN beans b
-            WHERE (ie.embedding <-> b.embedding) <= %(cluster_eps)s
+            WHERE ie.url <> b.url
+                AND ie.categories = b.categories
+                AND b.embedding IS NOT NULL
+                AND (ie.embedding <-> b.embedding) <= %(cluster_eps)s
         )
         SELECT url, related FROM similar_beans
         UNION
         SELECT related, url FROM similar_beans
         ON CONFLICT (url, related) DO NOTHING;
         """
-        with ThreadPoolExecutor(max_workers=os.cpu_count(), thread_name_prefix="CLUSTERER") as executor: 
-            cluster_many = lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls], "cluster_eps": CLUSTER_EPS})
-            executor.map(cluster_many, batched(unmapped_urls, BATCH_SIZE))
+        with self.cursor() as cur:
+            cur.executemany(SQL_INSERT_CLUSTERS, [{"input_url": url, "cluster_eps": CLUSTER_EPS} for url in unmapped_urls])
+            return cur.rowcount
+        # with ThreadPoolExecutor(max_workers=os.cpu_count(), thread_name_prefix="CLUSTERER") as executor: 
+        #     cluster_many = lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls], "cluster_eps": CLUSTER_EPS})
+        #     executor.map(cluster_many, batched(unmapped_urls, BATCH_SIZE))
 
     def refresh_clusters(self):        
         SQL_QUERY_UNMAPPED = """
@@ -528,10 +535,10 @@ class Postgres(Beansack):
     def refresh_chatters(self):
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
-    def optimize(self):
-        self.refresh_classifications()
-        self.refresh_clusters()
+    def optimize(self):        
         self.refresh_chatters()
+        self.refresh_classifications()
+        # self.refresh_clusters()
     
     def close(self):
         self.pool.close()
