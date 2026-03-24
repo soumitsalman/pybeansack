@@ -300,17 +300,19 @@ class Page(BaseModel):
         arbitrary_types_allowed=False
         by_alias=True
 
+_EXCLUDE_AUTHORS = ["[no-author]", "noreply", "hidden", "admin", "isbpostadmin", "unknown", "anonymous"]
+
 distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
 non_null_fields = lambda items: list(set().union(*[[k for k, v in item.items() if v] for item in items]))
 
 bean_filter = lambda x: bool(x.title and x.collected and x.created and x.source and x.kind)
 chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
 publisher_filter = lambda x: bool(x.source and x.base_url)
+count_words = lambda text: min(len(text.split()) if text else 0, (1<<15)-1)  # SMALLINT max value
 
 clean_text = lambda text: text.strip() if text and text.strip() else None
-num_words = lambda text: min(len(text.split()) if text else 0, (1<<15)-1)  # SMALLINT max value
+clean_author = lambda author: clean_text(author) if author and author.lower() not in _EXCLUDE_AUTHORS else None
 
-_EXCLUDE_AUTHORS = ["[no-author]", "noreply", "hidden", "admin", "isbpostadmin"]
 def prepare_beans_for_store(items: list[Bean]) -> list[Bean]:
     if not items: return items
 
@@ -319,16 +321,16 @@ def prepare_beans_for_store(items: list[Bean]) -> list[Bean]:
         item.kind = clean_text(item.kind)
         item.source = clean_text(item.source)
         item.title = clean_text(item.title)
-        item.title_length = num_words(item.title)
+        item.title_length = count_words(item.title)
         item.summary = clean_text(item.summary)
-        item.summary_length = num_words(item.summary)
+        item.summary_length = count_words(item.summary)
         item.content = clean_text(item.content)
-        item.content_length = num_words(item.content)
+        item.content_length = count_words(item.content)
         item.author = clean_text(item.author)
         item.image_url = clean_text(item.image_url)
         item.created = item.created or now()
         item.collected = item.collected or now()
-        if item.author and any(ex for ex in _EXCLUDE_AUTHORS if ex in item.author): item.author = None
+        item.author = clean_author(item.author)
         if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
     
     items = distinct(items, K_URL)
