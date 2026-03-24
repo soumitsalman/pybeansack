@@ -54,8 +54,8 @@ K_DESCRIPTION = "description"
 
 K_RESTRICTED_CONTENT = "restricted_content"
 K_CONTENT_LENGTH = "content_length"
-SUMMARY_LENGTH = "summary_length"
-TITLE_LENGTH = "title_length"
+K_SUMMARY_LENGTH = "summary_length"
+K_TITLE_LENGTH = "title_length"
 
 # K_SITE_NAME = "site_name"
 K_BASE_URL = "base_url"
