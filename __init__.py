@@ -1,5 +1,5 @@
 __all__ = [
-    'models',  'staticdb', 'cdnstore', 
+    'models',  'simplevectordb', 'cdnstore', 
     'Beansack', 'Cupboard', 'MongoDB', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', "LanceDBCupboard", 
     "create_client", "create_db", "create_cupboard",
     "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "MUGS", "DATETIME"
@@ -13,7 +13,7 @@ from .ducklakesack import Ducklake
 from .lancesack import LanceDB, LanceDBCupboard
 from .pgsack import Postgres
 from .models import *
-from .staticdb import *
+from .simplevectordb import *
 from .cdnstore import *
 from .utils import *
 from .database import *
