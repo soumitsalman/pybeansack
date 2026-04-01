@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
-from .utils import random_filename
+import asyncio
+import aioboto3
+from s3fs import S3FileSystem
+from botocore.client import Config
 
 def _ext_to_dir(ext: str) -> str:
     if ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'webp']: return "images"
@@ -8,70 +11,82 @@ def _ext_to_dir(ext: str) -> str:
     else: return "files"
 
 class CDNStore:
-    """Lightweight S3 store using s3fs.
+    def __init__(self, bucket: str, public_access_url_template: str = None):          
+        self.bucket = bucket.removeprefix("s3://").removesuffix("/")
 
-    The store exposes simple helpers: upload_bytes and upload_file. It constructs
-    object keys using the parsed bucket prefix and ensures objects are saved
-    under the 'articles' folder by default (per your request images go to that
-    folder as well).
-    """
-    s3_link = None
-    root_path: str = None
-    cdn_url: str = None
-
-    def __init__(
-        self,
-        root_path: str,        
-        cdn_url: str = None
-    ):  
-        self.root_path = root_path.removeprefix("s3://").removesuffix('/')
-        if cdn_url: self.cdn_url = cdn_url.rstrip('/')
-
-        if not root_path.startswith("s3://"): return
-        
-        from s3fs import S3FileSystem
         region = os.getenv("S3_REGION")
+        endpoint_url = os.getenv("S3_ENDPOINT")
         self.s3_link = S3FileSystem(
-            endpoint_url=os.getenv("S3_ENDPOINT"),
+            endpoint_url=endpoint_url,
             key=os.getenv("S3_ACCESS_KEY_ID"), 
             secret=os.getenv("S3_SECRET_ACCESS_KEY"), 
             client_kwargs={"region_name": region} if region else None,
             config_kwargs={"s3": {"addressing_style": "virtual"}}
-        ) 
+        )
+        self.public_url_template = public_access_url_template.rstrip("/") if public_access_url_template else endpoint_url.rstrip("/")+"/{bucket}/{key}"
 
-    def _relative_path(self, blob_name: str, ext: str) -> str:
-        """Return s3fs-style path: 'bucket/key'"""
-        blob_name = blob_name or random_filename(ext)
-        return f"{self.root_path}/{_ext_to_dir(ext)}/{blob_name}.{ext}"
-
-    def _public_url(self, key: str) -> str:
-        return f"{self.cdn_url}/{key}" if self.cdn_url else key
-
-    # def upload_file(self, source_file_path: str, directory: str = None) -> str:
-    #     from pathlib import Path
-    #     file_name = Path(source_file_path).name
-    #     file_path = f"{directory}/{file_name}" if directory else file_name
-    #     if self.s3_link:
-    #         self.s3_link.put(source_file_path, f"{self.root_path}/{file_path}")
-    #     return self._public_url(file_path)
+    def upload_binary(self, path: str, data: bytes) -> str:   
+        with self.s3_link.open(f"{self.bucket}/{path.lstrip('/')}", "wb") as f:
+            f.write(data)
+        return _public_url(self.public_url_template, self.bucket, path)
     
-    def upload_binary(self, data: bytes, file_path: str = None) -> str:   
-        if self.s3_link:
-            with self.s3_link.open(f"{self.root_path}/{file_path}", "wb") as f:
-                f.write(data)
-        else:
-            file = Path(self.root_path, file_path)
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_bytes(data)
-        return self._public_url(file_path)
-    
-    def upload_text(self, data: str, file_path: str = None) -> str:
-        if self.s3_link:
-            with self.s3_link.open(f"{self.root_path}/{file_path}", "w", encoding='utf-8') as f:
-                f.write(data)
-        else:
-            file = Path(self.root_path, file_path)
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_text(data, encoding='utf-8')
-        return self._public_url(file_path)
+    def upload_text(self, path: str, content: str) -> str:
+        with self.s3_link.open(f"{self.bucket}/{path.lstrip('/')}", "w", encoding='utf-8') as f:
+            f.write(content)
+            from icecream import ic
+            ic(f.name, f.full_name, f.path)
+        return _public_url(self.public_url_template, self.bucket, path)
+
+_CONFIG = Config(s3={'addressing_style': 'virtual'})
+_MAX_CONCURRENCY = 100
+
+class AsyncCDNStore:
+    def __init__(self, bucket: str, public_access_url_template: str = None, max_concurrency: int = _MAX_CONCURRENCY):
+        self.bucket = bucket.removeprefix("s3://").removesuffix("/")
+        self.session = aioboto3.Session(
+            aws_access_key_id=os.getenv("S3_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("S3_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("S3_REGION")
+        )
+        self.endpoint_url = os.getenv("S3_ENDPOINT")
+        self.public_url_template = public_access_url_template.rstrip("/") if public_access_url_template else self.endpoint_url.rstrip("/")+"/{bucket}/{key}"
+        self.throttle = asyncio.Semaphore(max_concurrency) 
+
+    async def _upload(self, s3_client, key: str, content: bytes) -> str:
+        async with self.throttle:
+            await s3_client.put_object(
+                Bucket=self.bucket, 
+                Key=key, 
+                Body=content.encode('utf-8'), 
+                ContentType="text/plain; charset=utf-8"
+            )
+        return _public_url(self.public_url_template, self.bucket, key)
+
+    async def upload_text(self, path: str, content: str) -> str:
+        """Uploads a single text file. 
+        Parameters:
+            path should be in the format 'folder/file_name.ext'.
+            content is the text content to be uploaded.
+        """
+        async with self.session.client('s3', endpoint_url=self.endpoint_url, config=_CONFIG) as s3:
+            return await self._upload(s3, path, content)
+
+    async def batch_upload_texts(self, data: list[dict]) -> dict[str, str]:
+        """Uploads multiple text items concurrently. 
+        Parameters:
+            data: A list of dictionaries, each containing 'path' and 'content' keys.
+                'path' should be in the format 'folder/file_name.ext'.
+                'content' is the text content to be uploaded.
+        """
+        async with self.session.client('s3', endpoint_url=self.endpoint_url, config=_CONFIG) as s3:
+            return await asyncio.gather(*(self._upload(s3, item['path'], item['content']) for item in data))
+
+def _parse_s3_path(file_path: str) -> tuple[str, str]:
+    """Parses bucket/folder/file_name.ext into (bucket, folder/file_name.ext)"""
+    return tuple(file_path.strip().removeprefix("s3://").split('/', 1))        
+
+def _public_url(public_url_template: str, bucket: str, key: str) -> str:
+    """Creates a public access URL based on template. Ex: https://{bucket}.t3.tigrisfiles.io/{key}"""
+    return public_url_template.format(bucket=bucket, key=key)
+        
 
