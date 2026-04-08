@@ -1,6 +1,8 @@
 __all__ = [
-    'models',  'simplevectordb', 'cdnstore', 
+    'models', 
+    'Bean', 'Chatter', 'Publisher', 'Sip', 'Mug', 
     'Beansack', 'Cupboard', 'MongoDB', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', "LanceDBCupboard", 
+    'SimpleVectorDB', 'AsyncCDNStore',
     "create_client", "create_db", "create_cupboard",
     "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "MUGS", "DATETIME"
 ]  # Specify modules to be exported
