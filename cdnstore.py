@@ -33,8 +33,6 @@ class CDNStore:
     def upload_text(self, path: str, content: str) -> str:
         with self.s3_link.open(f"{self.bucket}/{path.lstrip('/')}", "w", encoding='utf-8') as f:
             f.write(content)
-            from icecream import ic
-            ic(f.name, f.full_name, f.path)
         return _public_url(self.public_url_template, self.bucket, path)
 
 _CONFIG = Config(s3={'addressing_style': 'virtual'})
