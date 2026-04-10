@@ -23,14 +23,14 @@ _TYPES = {
     BEANS: Bean,
     PUBLISHERS: Publisher,
     CHATTERS: Chatter,
-    "_materialized_chatter_aggregates": AggregatedBean,
+    # "_materialized_chatter_aggregates": AggregatedBean,
+    "trending_beans_view": TrendingBean,
     "aggregated_beans_view": AggregatedBean,
-    "trending_beans_view": AggregatedBean   
 }
 
 _PRIMARY_KEYS = {
-    "beans": K_URL,
-    "publishers": K_SOURCE
+    BEANS: K_URL,
+    PUBLISHERS: K_SOURCE,
 }
 
 ORDER_BY_LATEST = "created DESC"
@@ -110,15 +110,23 @@ class Postgres(Beansack):
 
     def store_beans(self, beans: list[Bean]):
         """Store a list of Beans in the database."""
-        return self._store(BEANS, prepare_beans_for_store(beans))
+        return self._store(BEANS, beans)
+    
+    def store_related(self, related_beans: list[dict]):
+        SQL_INSERT = "INSERT INTO related_beans (url, related_url) VALUES (%s, %s) ON CONFLICT (url, related_url) DO NOTHING"
+        with self.cursor() as cur:
+            cur.executemany(sql.SQL(SQL_INSERT), [(d["url"], d["related_url"]) for d in related_beans])
+            count = cur.rowcount
+        log.debug("stored", extra={"source": "related_beans", "num_items": count})
+        return count
     
     def store_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
-        return self._store(PUBLISHERS, prepare_publishers_for_store(publishers))
+        return self._store(PUBLISHERS, publishers)
     
     def store_chatters(self, chatters: list[Chatter]):
         """Store a list of Chatters in the database."""
-        return self._store(CHATTERS, prepare_chatters_for_store(chatters))
+        return self._store(CHATTERS, chatters)
     
     def _update(self, table: str, items: list, columns: list[str] = None):
         if not items: return 0
@@ -148,14 +156,14 @@ class Postgres(Beansack):
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         """Partially update a list of Beans in the database."""
         if not beans: return 0
-        return self._update(BEANS, distinct(beans, K_URL), columns)
+        return self._update(BEANS, beans, columns)
     
     def update_embeddings(self, beans: list[Bean]):
         """Update embeddings for a list of Beans and the computed categories + sentiments during the process."""
         if not beans: return 0
-        data = distinct(beans, K_URL)
-        urls = [bean.url for bean in data]
-        embeddings = [Vector(bean.embedding) for bean in data]
+        # data = distinct(beans, K_URL)
+        urls = [bean.url for bean in beans]
+        embeddings = [Vector(bean.embedding) for bean in beans]
         SQL_UPDATE = """
         UPDATE beans AS b
         SET
@@ -190,7 +198,7 @@ class Postgres(Beansack):
     def update_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
         if not publishers: return 0
-        return self._update(PUBLISHERS, distinct(publishers, K_SOURCE))    
+        return self._update(PUBLISHERS, publishers, columns=None)    
 
     @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def _query_composites(self, expr: str, params: dict = None) -> list[Any]:
@@ -327,7 +335,7 @@ class Postgres(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[AggregatedBean]:
+    ) -> list[TrendingBean]:
         return self._fetch_all(
             table="trending_beans_view", 
             urls=None,
@@ -464,7 +472,8 @@ class Postgres(Beansack):
     def execute(self, sql: str, params = None):
         """Execute arbitrary SQL commands."""
         with self.pool.connection() as conn:
-            return conn.execute(sql, params=params, binary=True)
+            if params: return conn.execute(sql, params=params, binary=True)
+            return conn.execute(sql)
 
     def refresh_classifications(self):  
         SQL_UPDATE_CLASSIFICATIONS = """
@@ -535,24 +544,22 @@ class Postgres(Beansack):
     def refresh_chatters(self):
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
-    def optimize(self):        
-        self.refresh_chatters()
-        self.refresh_classifications()
-        # self.refresh_clusters()
+    def optimize(self):
+        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
     
     def close(self):
         self.pool.close()
         
-def create_db(conn_str: str, factory_dir: str) -> Postgres:
+def create_db(conn_str: str) -> Postgres:
     """Create the new tables, views, indexes etc."""
     db = Postgres(conn_str)  # Just to ensure the DB is reachable
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
-        init_sql = sql_file.read().format(vector_len = VECTOR_LEN, cluster_eps=CLUSTER_EPS)
+        init_sql = sql_file.read()         
     db.execute(init_sql)
 
-    factory_path = Path(factory_dir) 
-    _store_parquet(db, factory_path / "categories.parquet", "fixed_categories", True)
-    _store_parquet(db, factory_path / "sentiments.parquet", "fixed_sentiments", True)
+    # factory_path = Path(factory_dir) 
+    # _store_parquet(db, factory_path / "categories.parquet", "fixed_categories", True)
+    # _store_parquet(db, factory_path / "sentiments.parquet", "fixed_sentiments", True)
     return db
 
 def _store_parquet(db, file_path: Path, table_name: str, override: bool = False):

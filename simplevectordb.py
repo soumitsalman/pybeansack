@@ -16,12 +16,35 @@ DISTANCE_FUNC = Literal["l2", "cosine", "dot"]
 class SimpleVectorDB:
     db: lancedb.DBConnection
     id_keys: dict[str, str]
-    tables: dict[str, lancedb.Table]
 
-    def __init__(self, db_path: str, table_id_keys: dict[str, str]):
+    def __init__(self, db_path: str, table_id_keys: dict[str, str], **additional_tables):
+        """Opens connection to existing or new simple database on `db_path`.
+        Creates tables specified in `table_id_keys` if they don't exist. Each table will have an id and embedding columns.          
+        Additional static tables can be created (if they don't exist) by passing them as keyword arguments.
+        
+        Parameters:
+            db_path: path to the database
+            table_id_keys: dict where the key is the table name and the value is the id key for the table. The id key is used for upsert operations.
+            additional_tables: Names and data for additional static tables. Data should be dict[str, pd.DataFrame|list[dict[str, list[float]]]]. Once created, subsequent calls do not need to pass the same static tables.
+        """
         self.db = lancedb.connect(db_path)
         self.id_keys = table_id_keys.copy()
-        self.tables = {name: self.db.open_table(name) for name in self.db.table_names()}
+
+        for table_name, id_key in self.id_keys.items():
+            tab = self.db.create_table(
+                table_name, 
+                schema=pa.schema([
+                    (id_key, pa.string()), 
+                    ("embedding", pa.list_(pa.float32(), VECTOR_LEN)),
+                    (TS, pa.timestamp("s", tz="UTC"))
+                ]), 
+                exist_ok=True
+            )
+            try: tab.create_scalar_index(id_key, replace=False)
+            except: pass
+        # setup additonal tables
+        for table_name, table_data in additional_tables.items():
+            self.db.create_table(table_name, data=table_data, exist_ok=True)
         
     @classmethod
     def create_db(cls, db_path: str, table_id_keys: dict[str, str], **additional_tables):
@@ -47,27 +70,27 @@ class SimpleVectorDB:
         if not items: return 0
 
         id_key = self.id_keys[table]
-        from icecream import ic
-        result = self.tables[table].merge_insert(id_key) \
+        result = self.db[table].merge_insert(id_key) \
             .when_not_matched_insert_all() \
                 .execute(_prepare_to_store(items, id_key))
         return result.num_inserted_rows
         
     def search(self, table: str, embedding: list[float], distance_func: DISTANCE_FUNC = "l2", distance: Optional[float] = None, limit: Optional[int] = None, columns: list[str] = None):
-        query = self.tables[table].search(embedding, vector_column_name="embedding", query_type="vector").distance_type(distance_func)  
+        query = self.db[table].search(embedding, vector_column_name="embedding", query_type="vector").distance_type(distance_func)  
         if distance: query = query.distance_range(upper_bound = distance)
         if limit: query = query.limit(limit)
         if columns: query = query.select(columns+["_distance"])
         return query.to_list()
     
     def optimize(self, **kwargs):
-        # TODO: put vector indexing on ITEMS after it cross a certain threshold
-        [tbl.optimize(**kwargs) for tbl in self.tables.values()]
+        for tbl in self.db.table_names():
+            if self.db[tbl].count_rows() > INDEXING_THRESHOLD:
+                self.db[tbl].create_index(metric="l2", vector_column_name="embedding", index_type="IVF_RQ", replace=True)
+                self.db[tbl].optimize(**kwargs)
 
     def close(self):
         self.optimize()
         del self.db
-        del self.tables
 
 def _prepare_to_store(items: list[dict[str, Any]], id_key: str):
     """attaches timestamps"""

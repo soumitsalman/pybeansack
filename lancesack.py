@@ -13,7 +13,6 @@ import logging
 
 log = logging.getLogger(__name__)
 
-NOT_SUPPORTED = NotImplementedError("Querying trend data is not yet supported")
 VECTOR_TYPE = Vector(VECTOR_LEN, nullable=True)
 
 _PRIMARY_KEYS = {
@@ -22,7 +21,7 @@ _PRIMARY_KEYS = {
 }
 
 class _Bean(Bean, LanceModel):
-    embedding: VECTOR_TYPE = Field(None)
+    embedding: VECTOR_TYPE = Field()
 
 class _Publisher(Publisher, LanceModel):
     pass
@@ -33,9 +32,9 @@ class _Chatter(Chatter, LanceModel):
 class _Sip(Sip, LanceModel):    
     embedding: VECTOR_TYPE = Field(None, description="This is the embedding vector of title+content")
 
-class _Cluster(LanceModel):
+class _RelatedBean(LanceModel):
     url: str
-    related: list[str]
+    related_url: list[str]
 
 class _ScalarReranker(Reranker):
     column: str
@@ -74,47 +73,51 @@ ORDER_BY_LATEST = _ScalarReranker(column="created", desc=True)
 
 class LanceDB(Beansack): 
     db: lancedb.DBConnection
-    tables: dict[str, lancedb.Table]
-    allbeans: lancedb.Table
-    allpublishers: lancedb.Table
-    allchatters: lancedb.Table
-    allclusters: lancedb.Table
+    # tables: dict[str, lancedb.Table]
+    # allbeans: lancedb.Table
+    # allpublishers: lancedb.Table
+    # allchatters: lancedb.Table
+    # allclusters: lancedb.Table
 
     def __init__(self, storage_path: str):
         self.db = _connect(storage_path)
-        self.tables = {}
-        self.tables[BEANS] = self.allbeans = self.db.open_table(BEANS)        
-        self.tables[PUBLISHERS] = self.allpublishers = self.db.open_table(PUBLISHERS)
-        self.tables[CHATTERS] = self.allchatters = self.db.open_table(CHATTERS)
-        self.tables[FIXED_CATEGORIES] = self.fixed_categories = self.db.open_table(FIXED_CATEGORIES)
-        self.tables[FIXED_SENTIMENTS] = self.fixed_sentiments = self.db.open_table(FIXED_SENTIMENTS)
-        self.tables["clusters"] = self.allclusters = self.db.open_table("clusters")
+        self.db.create_table(BEANS, schema=_Bean, exist_ok=True)
+        self.db.create_table(PUBLISHERS, schema=_Publisher, exist_ok=True)
+        self.db.create_table(CHATTERS, schema=_Chatter, exist_ok=True)
+        self.db.create_table(RELATED_BEANS, schema = _RelatedBean, exist_ok=True)
+        # NOTE: no need to recreate indexes
 
     # INGESTION functions
     def store_beans(self, beans: list[Bean]):
         if not beans: return 0
 
-        to_store = prepare_beans_for_store(beans) 
-        result = self.allbeans.merge_insert("url") \
+        # to_store = prepare_beans_for_store(beans) 
+        result = self.db[BEANS].merge_insert("url") \
             .when_not_matched_insert_all() \
-            .execute([_Bean(**bean.model_dump(exclude_none=True)) for bean in to_store])
+            .execute([_Bean(**bean.model_dump(exclude_none=True)) for bean in beans])
         return result.num_inserted_rows
+    
+    def store_related(self, related_beans: list[dict[str, str]]):
+        if not related_beans: return 0
+        
+        self.db[RELATED_BEANS].add(data=related_beans)
+        return len(related_beans)
     
     def store_publishers(self, publishers: list[Publisher]):
         if not publishers: return 0
 
-        to_store = prepare_publishers_for_store(publishers)  
-        result = self.allpublishers.merge_insert(K_SOURCE) \
+        # to_store = prepare_publishers_for_store(publishers)  
+        result = self.db[PUBLISHERS].merge_insert(K_SOURCE) \
             .when_not_matched_insert_all() \
-            .execute([_Publisher(**publisher.model_dump(exclude_none=True)) for publisher in to_store])
+            .execute([_Publisher(**publisher.model_dump(exclude_none=True)) for publisher in publishers])
         return result.num_inserted_rows
     
     def store_chatters(self, chatters: list[Chatter]):
         if not chatters: return 0
 
-        to_store = prepare_chatters_for_store(chatters)
-        self.allchatters.add([_Chatter(**chatter.model_dump(exclude_none=True)) for chatter in to_store])
-        return len(to_store)
+        # to_store = prepare_chatters_for_store(chatters)
+        self.db[CHATTERS].add([_Chatter(**chatter.model_dump(exclude_none=True)) for chatter in chatters])
+        return len(chatters)
     
     def update_beans(self, beans: list[Bean], columns: list[str] = None):
         if not beans: return 0
@@ -127,12 +130,12 @@ class LanceDB(Beansack):
             fields = non_null_fields(updates)
 
         get_field_values = lambda field: [update.get(field) for update in updates]
-        result = self.allbeans.merge_insert("url") \
+        result = self.db[BEANS].merge_insert("url") \
             .when_matched_update_all() \
             .execute(
                 pa.table(
                     data={ field: get_field_values(field) for field in fields },
-                    schema=pa.schema(list(map(self.allbeans.schema.field, fields)))
+                    schema=pa.schema(list(map(self.db[BEANS].schema.field, fields)))
                 )
             )
         return result.num_updated_rows
@@ -154,19 +157,19 @@ class LanceDB(Beansack):
             K_CATEGORIES: categories.groupby('query_index')['category'].apply(list).sort_index().tolist(),
             K_SENTIMENTS: sentiments.groupby('query_index')['sentiment'].apply(list).sort_index().tolist()
         } 
-        result = self.allbeans.merge_insert("url") \
+        result = self.db[BEANS].merge_insert("url") \
             .when_matched_update_all() \
             .execute(
                 pa.table(
                     data=updates,
-                    schema=pa.schema(list(map(self.allbeans.schema.field, [K_URL, K_EMBEDDING, K_CATEGORIES, K_SENTIMENTS])))
+                    schema=pa.schema(list(map(self.db[BEANS].schema.field, [K_URL, K_EMBEDDING, K_CATEGORIES, K_SENTIMENTS])))
                 )
             )
 
         # compute clusters with existing items
-        clusters = self.allbeans.search(query=vecs, query_type="vector", vector_column_name=K_EMBEDDING).distance_type("l2").distance_range(upper_bound=CLUSTER_EPS).select(["url", "_distance"]).to_pandas()
-        self.allclusters.add([
-            _Cluster(url=url, related=related) for url, related
+        clusters = self.db[BEANS].search(query=vecs, query_type="vector", vector_column_name=K_EMBEDDING).distance_type("l2").distance_range(upper_bound=CLUSTER_EPS).select(["url", "_distance"]).to_pandas()
+        self.db[RELATED_BEANS].add([
+            _RelatedBean(url=url, related=related) for url, related
                 in zip(urls, clusters.groupby('query_index')['url'].apply(list).sort_index().tolist())
         ])   
 
@@ -179,12 +182,12 @@ class LanceDB(Beansack):
         fields = non_null_fields(updates)
 
         get_field_values = lambda field: [update.get(field) for update in updates]
-        result = self.allpublishers.merge_insert(K_SOURCE) \
+        result = self.db[PUBLISHERS].merge_insert(K_SOURCE) \
             .when_matched_update_all() \
             .execute(
                 pa.table(
                     data={field: get_field_values(field) for field in fields},
-                    schema=pa.schema(list(map(self.allpublishers.schema.field, fields)))
+                    schema=pa.schema(list(map(self.db[PUBLISHERS].schema.field, fields)))
                 )
             )
         return result.num_updated_rows
@@ -215,7 +218,7 @@ class LanceDB(Beansack):
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
     ) -> list[Bean]:
-        query = self.allbeans.search() if not embedding else self.allbeans.search(query=embedding, query_type="vector", vector_column_name=K_EMBEDDING)      
+        query = self.db[BEANS].search() if not embedding else self.db[BEANS].search(query=embedding, query_type="vector", vector_column_name=K_EMBEDDING)      
         where_expr = _where(urls=None, kind=kind, created=created, collected=collected, updated=updated, categories=categories, regions=regions, entities=entities, tags=tags, sources=sources, conditions=conditions)
         if where_expr: query = query.where(where_expr)
         if embedding: query = query.distance_type("cosine")
@@ -269,7 +272,7 @@ class LanceDB(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[AggregatedBean]:
+    ) -> list[TrendingBean]:
         raise NOT_SUPPORTED
     
     def query_aggregated_beans(self,
@@ -304,8 +307,8 @@ class LanceDB(Beansack):
             offset=offset,
             columns=columns
         )
-        publishers = self.allpublishers.search().where(_where(sources=[bean.source for bean in beans])).to_pydantic(_Publisher)
-        clusters = self.allclusters.search().where(_where(urls=[bean.url for bean in beans])).to_pydantic(_Cluster)
+        publishers = self.db[PUBLISHERS].search().where(_where(sources=[bean.source for bean in beans])).to_pydantic(_Publisher)
+        clusters = self.db[RELATED_BEANS].search().where(_where(urls=[bean.url for bean in beans])).to_pydantic(_RelatedBean)
         get_publisher = lambda source: next((pub.model_dump(exclude_none=True, exclude=[K_SOURCE]) for pub in publishers if pub.source == source), {})
         get_cluster = lambda url: next(({K_RELATED: cluster.related, K_CLUSTER_SIZE: len(cluster.related)} for cluster in clusters if cluster.url == url), {})
         beans = [AggregatedBean(**bean.model_dump(exclude_none=True), **get_publisher(bean.source), **get_cluster(bean.url)) for bean in beans]
@@ -315,10 +318,10 @@ class LanceDB(Beansack):
         return beans
 
     def query_aggregated_chatters(self, urls: list[str] = None, updated: DATETIME = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[AggregatedBean]:      
-        raise NOT_SUPPORTED
+        raise NOT_IMPLEMENTED
     
     def query_chatters(self, collected: DATETIME = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Chatter]:  
-        query = self.allchatters.search()
+        query = self.db[CHATTERS].search()
         if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
         if offset: query = query.offset(offset)
@@ -326,7 +329,7 @@ class LanceDB(Beansack):
         return query.to_pydantic(_Chatter)
     
     def query_publishers(self, collected: DATETIME = None, tags: list[str] = None, sources: list[str] = None, conditions: list[str] = None, limit: int = 0, offset: int = 0, columns: list[str] = None) -> list[Publisher]:  
-        query = self.allpublishers.search()
+        query = self.db[PUBLISHERS].search()
         if conditions: query = query.where(_where(collected=collected, sources=sources, conditions=conditions))
         if limit: query = query.limit(limit)
         if offset: query = query.offset(offset)
@@ -334,38 +337,37 @@ class LanceDB(Beansack):
         return query.to_pydantic(_Publisher)
     
     def distinct_categories(self, limit: int = 0, offset: int = 0) -> list[str]:
-        raise NOT_SUPPORTED
+        raise NOT_IMPLEMENTED
     
     def distinct_sentiments(self, limit: int = 0, offset: int = 0) -> list[str]:
-        raise NOT_SUPPORTED
+        raise NOT_IMPLEMENTED
     
     def distinct_entities(self, limit: int = 0, offset: int = 0) -> list[str]:
-        raise NOT_SUPPORTED
+        raise NOT_IMPLEMENTED
     
     def distinct_regions(self, limit: int = 0, offset: int = 0) -> list[str]:
-        raise NOT_SUPPORTED
+        raise NOT_IMPLEMENTED
     
     def distinct_publishers(self, limit: int = 0, offset: int = 0) -> list[str]:
-        raise NOT_SUPPORTED
+        raise NOT_IMPLEMENTED
     
     # MAINTENANCE functions
-    def refresh_classifications(self):
-        raise NOT_SUPPORTED
+    # def refresh_classifications(self):
+    #     raise NOT_SUPPORTED
 
-    def refresh_clusters(self):
-        raise NOT_SUPPORTED
+    # def refresh_clusters(self):
+    #     raise NOT_SUPPORTED
     
-    def refresh_chatters(self):
-        raise NOT_SUPPORTED
+    # def refresh_chatters(self):
+    #     raise NOT_SUPPORTED
 
     def optimize(self):
-        try: self.tables[BEANS].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_PQ", metric="cosine")
+        try: self.db[BEANS].create_index(vector_column_name=K_EMBEDDING, index_type="IVF_RQ", metric="cosine")
         except: pass
-        [table.optimize() for table in self.tables.values()]
+        [self.db[table].optimize() for table in self.db.table_names()]
 
     def close(self):
         del self.db
-        del self.tables
 
 class LanceDBCupboard(Cupboard): 
     db: lancedb.DBConnection
@@ -484,22 +486,12 @@ class LanceDBCupboard(Cupboard):
         del self.db
         del self.tables
 
-def create_db(storage_path: str, factory_dir: str):
+def create_db(storage_path: str):
     db = _connect(storage_path)
     beans = db.create_table(BEANS, schema=_Bean, exist_ok=True)
-    publishers = db.create_table(PUBLISHERS, schema=_Publisher, exist_ok=True)
+    publishers = db.create_table(PUBLISHERS, schema=_Publisher,  exist_ok=True)
     chatters = db.create_table(CHATTERS, schema=_Chatter, exist_ok=True)
-    categories = db.create_table(
-        "fixed_categories", 
-        pd.read_parquet(f"{factory_dir}/categories.parquet"),
-        mode="overwrite"
-    )
-    sentiments = db.create_table(
-        "fixed_sentiments", 
-        pd.read_parquet(f"{factory_dir}/sentiments.parquet"),
-        mode="overwrite"
-    )
-    clusters = db.create_table("clusters", schema = _Cluster, exist_ok=True)
+    related_beans = db.create_table(RELATED_BEANS, schema = _RelatedBean, exist_ok=True)
 
     beans.create_scalar_index(K_URL, index_type="BTREE")
     beans.create_scalar_index(K_KIND, index_type="BITMAP")
@@ -509,7 +501,7 @@ def create_db(storage_path: str, factory_dir: str):
     beans.create_scalar_index(K_ENTITIES, index_type="LABEL_LIST")
     publishers.create_scalar_index(K_SOURCE, index_type="BTREE")
     chatters.create_scalar_index(K_URL, index_type="BTREE")
-    clusters.create_scalar_index(K_URL, index_type="BTREE")
+    related_beans.create_scalar_index(K_URL, index_type="BTREE")
 
     return LanceDB(storage_path)
 

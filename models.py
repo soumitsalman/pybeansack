@@ -194,6 +194,34 @@ class Bean(BaseModel):
             'entities': 'object'  
         }
 
+class TrendingBean(Bean):
+    """Bean with additional fields for tracking social media engagement and propagation across other publishers"""
+    updated: Optional[datetime] = Field(default=None, description="The last updated date during chatter aggregation.")
+    likes: Optional[int] = Field(default=None, description="The number of likes.")
+    comments: Optional[int] = Field(default=None, description="The number of comments.")
+    shares: Optional[int] = Field(default=None, description="The number of shares.")
+    subscribers: Optional[int] = Field(default=None, description="The number of subscribers.")
+    related: Optional[int] = Field(default=None, description="The size of the cluster.")
+    related_urls: Optional[list[str]] = Field(default=None, description="Related bean URLs.")
+    trend_score: Optional[int] = Field(default=None, description="The trend score of the bean.")
+
+class AggregatedBean(TrendingBean, Publisher):
+    """Bean with additional trend stats and publisher fields."""
+    # modifying publisher fields for rendering
+    source: Optional[str] = Field(default=None, description="The domain name that matches the source field in Bean.")
+    base_url: Optional[str] = Field(default=None, description="The base URL of the publisher.")
+    # query support fields    
+    distance: Optional[float|int] = Field(default=None, description="The distance score for queries.")
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed=False
+        exclude_none = True
+        exclude_unset = True
+        by_alias=True
+        json_encoders={datetime: rfc3339}      
+
+
 # sip kinds
 HEADLINE = "headline"
 REPORT = "report"
@@ -232,36 +260,7 @@ class Sip(BaseModel):
         exclude_unset = True
         by_alias=True
         json_encoders={datetime: rfc3339}
-
-
-class AggregatedBean(Bean, Chatter, Publisher): 
-    # adding aggregated bean specific field
-    cluster_id: Optional[str] = Field(default=None, description="The ID of the cluster this bean belongs to.")
-    cluster_size: Optional[int] = Field(default=None, description="The size of the cluster.")
-    related: Optional[list[str]] = Field(default=None, description="Related bean URLs.")
-    trend_score: Optional[int] = Field(default=None, description="The trend score of the bean.")
-
-    # modifying publisher fields for rendering
-    source: Optional[str] = Field(default=None, description="The domain name that matches the source field in Bean.")
-    base_url: Optional[str] = Field(default=None, description="The base URL of the publisher.")
-
-    # modifying chatters fields for rendering
-    updated: Optional[datetime] = Field(default=None, description="The last updated date during chatter aggregation.")
-    likes: Optional[int] = Field(default=None, description="The number of likes.")
-    comments: Optional[int] = Field(default=None, description="The number of comments.")
-    shares: Optional[int] = Field(default=None, description="The number of shares.")
-    subscribers: Optional[int] = Field(default=None, description="The number of subscribers.")
-
-    # query support fields    
-    distance: Optional[float|int] = Field(default=None, description="The distance score for queries.")
-
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
-        by_alias=True
-        json_encoders={datetime: rfc3339}       
+ 
     
 class User(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id", description="The unique identifier of the user.")
@@ -300,64 +299,64 @@ class Page(BaseModel):
         arbitrary_types_allowed=False
         by_alias=True
 
-_EXCLUDE_AUTHORS = ["[no-author]", "noreply", "hidden", "admin", "isbpostadmin", "unknown", "anonymous"]
+# _EXCLUDE_AUTHORS = ["[no-author]", "noreply", "hidden", "admin", "isbpostadmin", "unknown", "anonymous"]
 
-distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
-non_null_fields = lambda items: list(set().union(*[[k for k, v in item.items() if v] for item in items]))
+# distinct = lambda items, key: list({getattr(item, key): item for item in items}.values())  # deduplicate by url
+# non_null_fields = lambda items: list(set().union(*[[k for k, v in item.items() if v] for item in items]))
 
-bean_filter = lambda x: bool(x.title and x.collected and x.created and x.source and x.kind)
-chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
-publisher_filter = lambda x: bool(x.source and x.base_url)
-count_words = lambda text: min(len(text.split()) if text else 0, (1<<15)-1)  # SMALLINT max value
+# bean_filter = lambda x: bool(x.title and x.collected and x.created and x.source and x.kind)
+# chatter_filter = lambda x: bool(x.chatter_url and x.url and (x.likes or x.comments or x.subscribers))
+# publisher_filter = lambda x: bool(x.source and x.base_url)
+# count_words = lambda text: min(len(text.split()) if text else 0, (1<<15)-1)  # SMALLINT max value
 
-clean_text = lambda text: text.strip() if text and text.strip() else None
-clean_author = lambda author: clean_text(author) if author and author.lower() not in _EXCLUDE_AUTHORS else None
+# clean_text = lambda text: text.strip() if text and text.strip() else None
+# clean_author = lambda author: clean_text(author) if author and author.lower() not in _EXCLUDE_AUTHORS else None
 
-def prepare_beans_for_store(items: list[Bean]) -> list[Bean]:
-    if not items: return items
+# def prepare_beans_for_store(items: list[Bean]) -> list[Bean]:
+#     if not items: return items
 
-    for item in items:
-        item.url = clean_text(item.url)
-        item.kind = clean_text(item.kind)
-        item.source = clean_text(item.source)
-        item.title = clean_text(item.title)
-        item.title_length = count_words(item.title)
-        item.summary = clean_text(item.summary)
-        item.summary_length = count_words(item.summary)
-        item.content = clean_text(item.content)
-        item.content_length = count_words(item.content)
-        item.author = clean_text(item.author)
-        item.image_url = clean_text(item.image_url)
-        item.created = item.created or now()
-        item.collected = item.collected or now()
-        item.author = clean_author(item.author)
-        if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
+#     for item in items:
+#         item.url = clean_text(item.url)
+#         item.kind = clean_text(item.kind)
+#         item.source = clean_text(item.source)
+#         item.title = clean_text(item.title)
+#         item.title_length = count_words(item.title)
+#         item.summary = clean_text(item.summary)
+#         item.summary_length = count_words(item.summary)
+#         item.content = clean_text(item.content)
+#         item.content_length = count_words(item.content)
+#         item.author = clean_text(item.author)
+#         item.image_url = clean_text(item.image_url)
+#         item.created = item.created or now()
+#         item.collected = item.collected or now()
+#         item.author = clean_author(item.author)
+#         if not item.created.tzinfo: item.created.replace(tzinfo=timezone.utc)
     
-    items = distinct(items, K_URL)
-    return list(filter(bean_filter, items))
+#     items = distinct(items, K_URL)
+#     return list(filter(bean_filter, items))
 
-def prepare_publishers_for_store(items: list[Publisher]) -> list[Publisher]:
-    if not items: return items
+# def prepare_publishers_for_store(items: list[Publisher]) -> list[Publisher]:
+#     if not items: return items
 
-    for item in items:        
-        item.source = clean_text(item.source)
-        item.base_url = clean_text(item.base_url)
-        item.favicon = clean_text(item.favicon)
-        item.rss_feed = clean_text(item.rss_feed)
-        item.description = clean_text(item.description)
-        item.site_name = clean_text(item.site_name)
-        item.collected = item.collected or now()
+#     for item in items:        
+#         item.source = clean_text(item.source)
+#         item.base_url = clean_text(item.base_url)
+#         item.favicon = clean_text(item.favicon)
+#         item.rss_feed = clean_text(item.rss_feed)
+#         item.description = clean_text(item.description)
+#         item.site_name = clean_text(item.site_name)
+#         item.collected = item.collected or now()
 
-    items = distinct(items, K_SOURCE)
-    return list(filter(publisher_filter, items))
+#     items = distinct(items, K_SOURCE)
+#     return list(filter(publisher_filter, items))
 
-def prepare_chatters_for_store(items: list[Chatter]) -> list[Chatter]:
-    if not items: return items
+# def prepare_chatters_for_store(items: list[Chatter]) -> list[Chatter]:
+#     if not items: return items
 
-    for item in items:        
-        item.chatter_url = clean_text(item.chatter_url)
-        item.url = clean_text(item.url)
-        item.forum = clean_text(item.forum)
-        item.source = clean_text(item.source)
+#     for item in items:        
+#         item.chatter_url = clean_text(item.chatter_url)
+#         item.url = clean_text(item.url)
+#         item.forum = clean_text(item.forum)
+#         item.source = clean_text(item.source)
         
-    return list(filter(chatter_filter, items))
+#     return list(filter(chatter_filter, items))

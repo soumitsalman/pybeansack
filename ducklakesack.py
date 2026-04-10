@@ -29,10 +29,10 @@ _TYPES = {
     BEANS: Bean,
     PUBLISHERS: Publisher,
     CHATTERS: Chatter,
-    "_materialized_chatter_aggregates": AggregatedBean,
-    "latest_beans_view": Bean,
+    # RELATED_BEANS: dict,
+    # "_materialized_chatter_aggregates": AggregatedBean,
+    "trending_beans_view": TrendingBean,   
     "aggregated_beans_view": AggregatedBean,
-    "trending_beans_view": AggregatedBean   
 }
 
 _PRIMARY_KEYS = {
@@ -84,7 +84,7 @@ class Ducklake(Beansack):
     def store_beans(self, beans: list[Bean]) -> list[Bean]:                   
         if not beans: return
        
-        df = _beans_to_df(prepare_beans_for_store(beans), None)
+        df = _beans_to_df(beans, None)
         fields=', '.join(df.columns.to_list())
         if not fields: return
 
@@ -99,6 +99,9 @@ class Ducklake(Beansack):
         current_count = self.count_rows(BEANS)
         self._execute_df(SQL_INSERT, df)
         return self.count_rows(BEANS) - current_count
+    
+    def store_related(self, related_beans: list[dict]):
+        raise NOT_IMPLEMENTED
     
     def store_publishers(self, publishers: list[Publisher]): 
         df = _publishers_to_df(publishers, publisher_filter)
@@ -291,7 +294,7 @@ class Ducklake(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[AggregatedBean]:
+    ) -> list[TrendingBean]:
         if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
         else: fields = None
         return self._fetch_all(
@@ -541,7 +544,7 @@ class Ducklake(Beansack):
         self.db.close()        
         log.debug("Database connection closed.")
 
-def create_db(catalogdb: str, storagedb: str, factory_dir: str = "factory"):
+def create_db(catalogdb: str, storagedb: str):
     config = {
         'threads': max(os.cpu_count() >> 1, 1),
         'enable_http_metadata_cache': True,
@@ -556,7 +559,6 @@ def create_db(catalogdb: str, storagedb: str, factory_dir: str = "factory"):
     with open(os.path.join(os.path.dirname(__file__), 'ducklakesack.sql'), 'r') as sql_file:
         init_sql = sql_file.read().format(
             # loading prefixed categories and sentiments
-            factory=os.path.expanduser(factory_dir),
             catalog_path=catalogdb,
             data_path=os.path.expanduser(storagedb),
             # s3 storage configurations
@@ -614,7 +616,7 @@ _EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "d
 def _beans_to_df(beans: list[Bean], columns):
     if not beans: return
 
-    beans = distinct(beans, K_URL)
+    # beans = distinct(beans, K_URL)
     if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
     else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_COLUMNS) for bean in beans] 
     
@@ -624,8 +626,8 @@ def _beans_to_df(beans: list[Bean], columns):
     return df.astype(dtype_specs)
 
 def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True):
-    if not publishers: return
-    publishers = prepare_publishers_for_store(publishers)        
-    publishers = distinct(publishers, K_SOURCE)
+    # if not publishers: return
+    # publishers = prepare_publishers_for_store(publishers)        
+    # publishers = distinct(publishers, K_SOURCE)
     if not publishers: return    
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])

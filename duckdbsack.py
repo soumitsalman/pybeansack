@@ -107,9 +107,10 @@ _TYPES = {
     BEANS: Bean,
     PUBLISHERS: Publisher,
     CHATTERS: Chatter,
-    "_materialized_chatter_aggregates": AggregatedBean,
+    # RELATED_BEANS: dict,
+    # "_materialized_chatter_aggregates": AggregatedBean,
+    "trending_beans_view": TrendingBean,   
     "aggregated_beans_view": AggregatedBean,
-    "trending_beans_view": AggregatedBean   
 }
 
 _PRIMARY_KEYS = {
@@ -118,6 +119,7 @@ _PRIMARY_KEYS = {
 }
 log = logging.getLogger(__name__)
 
+# TODO: merge this with ducklakesack since the logic is mostly the same, just different initialization
 class DuckDB(Beansack):
     storage_path: str
     db: duckdb.DuckDBPyConnection
@@ -150,7 +152,7 @@ class DuckDB(Beansack):
     def store_beans(self, beans: list[Bean]) -> list[Bean]:                   
         if not beans: return
        
-        df = _beans_to_df(prepare_beans_for_store(beans), None)
+        df = _beans_to_df(beans, None)
         fields=', '.join(df.columns.to_list())
         if not fields: return
 
@@ -163,6 +165,9 @@ class DuckDB(Beansack):
         );
         """
         return self._execute_df(SQL_INSERT, df)
+
+    def store_related(self, related_beans: list[dict]):
+        raise NOT_IMPLEMENTED
     
     def store_chatters(self, chatters: list[Chatter]):       
         if not chatters: return
@@ -340,7 +345,7 @@ class DuckDB(Beansack):
         conditions: list[str] = None,
         limit: int = 0, offset: int = 0, 
         columns: list[str] = None
-    ) -> list[AggregatedBean]:
+    ) -> list[TrendingBean]:
         if columns: fields = list(set(columns + [K_UPDATED, K_COMMENTS, K_LIKES]))
         else: fields = None
         return self._fetch_all(
@@ -549,7 +554,7 @@ _EXCLUDE_COLUMNS = ["tags", "chatter", "publisher", "trend_score", "updated", "d
 def _beans_to_df(beans: list[Bean], columns):
     if not beans: return
 
-    beans = distinct(beans, K_URL)
+    # beans = distinct(beans, K_URL)
     if columns: beans = [bean.model_dump(include=columns) for bean in beans] 
     else: beans = [bean.model_dump(exclude_none=True, exclude=_EXCLUDE_COLUMNS) for bean in beans] 
     
@@ -560,15 +565,15 @@ def _beans_to_df(beans: list[Bean], columns):
 
 def _publishers_to_df(publishers: list[Publisher], filter_func = lambda x: True):
     if not publishers: return
-    publishers = prepare_publishers_for_store(publishers)        
-    publishers = distinct(publishers, K_SOURCE)
-    if not publishers: return    
+    # publishers = prepare_publishers_for_store(publishers)        
+    # publishers = distinct(publishers, K_SOURCE)
+    # if not publishers: return    
     return pd.DataFrame([pub.model_dump(exclude_none=True) for pub in publishers])
 
-def create_db(storage_path: str, factory_dir: str) -> Beansack:
+def create_db(storage_path: str) -> Beansack:
     os.makedirs(os.path.dirname(storage_path), exist_ok=True)
     db = DuckDB(storage_path)
     with open(os.path.join(os.path.dirname(__file__), 'ducksack.sql'), 'r') as sql_file:
-        init_sql = sql_file.read().format(vector_len=VECTOR_LEN, factory=os.path.expanduser(factory_dir))
+        init_sql = sql_file.read().format(vector_len=VECTOR_LEN)
     db.db.execute(init_sql)
     return db
