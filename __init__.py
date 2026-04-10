@@ -1,12 +1,12 @@
 __all__ = [
     'models', 
-    'Bean', 'Chatter', 'Publisher', 'Sip', 'Mug', 
+    'Bean', 'Chatter', 'Publisher', 'Sip',  
     'Beansack', 'Cupboard', 'MongoDB', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', "LanceDBCupboard", 
     'SimpleVectorDB', 'AsyncCDNStore',
     "create_client", "create_db", "create_cupboard",
-    "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "MUGS", "DATETIME"
+    "BEANS", "PUBLISHERS", "CHATTERS", "SIPS", "DATETIME"
 ]  # Specify modules to be exported
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 from typing import Literal
 from .mongosack import MongoDB
