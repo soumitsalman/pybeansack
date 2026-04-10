@@ -45,7 +45,7 @@ def _guess_type(file_path: str) -> str:
     return content_type or 'application/octet-stream'
 
 class CDNStore:
-    def __init__(self, bucket: str, public_access_url_template: str = None):
+    def __init__(self, bucket: str, public_access_url: str = None):
         self.bucket = bucket.removeprefix("s3://").removesuffix("/")
         self.s3_client = boto3.client(
             's3',
@@ -55,7 +55,7 @@ class CDNStore:
             endpoint_url=os.getenv("S3_ENDPOINT")
         )        
         # self.endpoint_url = os.getenv("S3_ENDPOINT")
-        self.public_url_template = public_access_url_template.rstrip("/") if public_access_url_template else os.getenv("S3_ENDPOINT").rstrip("/")+"/{bucket}/{key}"
+        self.public_url = public_access_url.rstrip("/") if public_access_url else os.getenv("S3_ENDPOINT").rstrip("/")
 
     def upload_text(self, path: str, content: str) -> str:
         """Uploads a single text file.
@@ -70,7 +70,7 @@ class CDNStore:
             Body=content.encode('utf-8'), 
             ContentType=_guess_type(path)
         )
-        return _public_url(self.public_url_template, self.bucket, path)
+        return _public_url(self.public_url, path)
 
     def upload_binary(self, path: str, data: bytes) -> str:
         """Uploads a single binary file.
@@ -85,7 +85,7 @@ class CDNStore:
             Body=data, 
             ContentType=_guess_type(path)
         )
-        return _public_url(self.public_url_template, self.bucket, path)
+        return _public_url(self.public_url, path)
 
     # async def batch_upload_texts(self, data: list[dict]) -> dict[str, str]:
     #     """Uploads multiple text items concurrently. 
@@ -99,7 +99,7 @@ class CDNStore:
 
 
 class AsyncCDNStore:
-    def __init__(self, bucket: str, public_access_url_template: str = None, max_concurrency: int = _MAX_CONCURRENCY):
+    def __init__(self, bucket: str, public_access_url: str = None, max_concurrency: int = _MAX_CONCURRENCY):
         self.bucket = bucket.removeprefix("s3://").removesuffix("/")
         self.session = aioboto3.Session(
             aws_access_key_id=os.getenv("S3_ACCESS_KEY_ID"),
@@ -107,7 +107,7 @@ class AsyncCDNStore:
             region_name=os.getenv("S3_REGION")
         )
         self.endpoint_url = os.getenv("S3_ENDPOINT")
-        self.public_url_template = public_access_url_template.rstrip("/") if public_access_url_template else self.endpoint_url.rstrip("/")+"/{bucket}/{key}"
+        self.public_url = public_access_url.rstrip("/") if public_access_url else self.endpoint_url.rstrip("/")
         self.throttle = asyncio.Semaphore(max_concurrency) 
 
     async def _upload(self, s3_client, key: str, content: bytes) -> str:
@@ -118,7 +118,7 @@ class AsyncCDNStore:
                 Body=content.encode('utf-8'), 
                 ContentType="text/plain; charset=utf-8"
             )
-        return _public_url(self.public_url_template, self.bucket, key)
+        return _public_url(self.public_url, key)
 
     async def upload_text(self, path: str, content: str) -> str:
         """Uploads a single text file.
@@ -145,7 +145,7 @@ class AsyncCDNStore:
                     Body=data, 
                     ContentType=_guess_type(path)
                 )
-        return _public_url(self.public_url_template, self.bucket, path)
+        return _public_url(self.public_url, path)
 
     async def batch_upload_texts(self, data: list[dict]) -> dict[str, str]:
         """Uploads multiple text items concurrently. 
@@ -161,8 +161,8 @@ def _parse_s3_path(file_path: str) -> tuple[str, str]:
     """Parses bucket/folder/file_name.ext into (bucket, folder/file_name.ext)"""
     return tuple(file_path.strip().removeprefix("s3://").split('/', 1))        
 
-def _public_url(public_url_template: str, bucket: str, key: str) -> str:
+def _public_url(public_url: str, key: str) -> str:
     """Creates a public access URL based on template. Ex: https://{bucket}.t3.tigrisfiles.io/{key}"""
-    return public_url_template.format(bucket=bucket, key=key)
+    return f"{public_url}/{key}"
         
 

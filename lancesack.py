@@ -383,10 +383,9 @@ class LanceDBCupboard(Cupboard):
     def store_sips(self, sips: list[Sip]):
         if not sips: return 0
 
-        to_store = distinct(sips, "id") 
         result = self.tables[SIPS].merge_insert("id") \
             .when_not_matched_insert_all() \
-            .execute([_Sip(**sip.model_dump(exclude_none=True)) for sip in to_store])
+            .execute([_Sip(**sip.model_dump(exclude_none=True)) for sip in sips])
         return result.num_inserted_rows
 
     def count_rows(self, table=SIPS, conditions: list[str] = None) -> int:
