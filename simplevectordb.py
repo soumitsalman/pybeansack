@@ -85,7 +85,7 @@ class SimpleVectorDB:
     def optimize(self, **kwargs):
         for tbl in self.db.table_names():
             if self.db[tbl].count_rows() > INDEXING_THRESHOLD:
-                self.db[tbl].create_index(metric="l2", vector_column_name="embedding", index_type="IVF_RQ", replace=True)
+                # self.db[tbl].create_index(metric="l2", vector_column_name="embedding", index_type="IVF_RQ", replace=True)
                 self.db[tbl].optimize(**kwargs)
 
     def close(self):
