@@ -113,6 +113,7 @@ class Postgres(Beansack):
         return self._store(BEANS, beans)
     
     def store_related(self, related_beans: list[dict]):
+        if not related_beans: return 0
         SQL_INSERT = "INSERT INTO related_beans (url, related_url) VALUES (%s, %s) ON CONFLICT (url, related_url) DO NOTHING"
         with self.cursor() as cur:
             cur.executemany(sql.SQL(SQL_INSERT), [(d["url"], d["related_url"]) for d in related_beans])
