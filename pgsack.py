@@ -92,18 +92,22 @@ class Postgres(Beansack):
         if not columns: return 0
 
         fields = sql.SQL(', ').join(map(sql.Identifier, columns))
-        placeholders = sql.SQL(', ').join([sql.Placeholder(name=c) for c in columns])
+        values = sql.SQL(', ').join(
+            sql.SQL("({})").format(sql.SQL(', ').join(sql.Placeholder() for _ in columns))
+            for _ in data
+        )
         on_conflict = sql.SQL("ON CONFLICT ({}) DO NOTHING").format(sql.Identifier(_PRIMARY_KEYS[table])) if table in _PRIMARY_KEYS else sql.SQL("")
-        SQL_INSERT = sql.SQL("INSERT INTO {table} ({fields}) VALUES ({placeholders}) {on_conflict}").format(
+        SQL_INSERT = sql.SQL("INSERT INTO {table} ({fields}) VALUES {values} {on_conflict}").format(
             table=sql.Identifier(table),
             fields=fields,
-            placeholders=placeholders,
+            values=values,
             on_conflict=on_conflict
         )
-        
+
+        rows = [item[column] for item in data for column in columns]
         with self.cursor() as cur:
             if override: cur.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table)))
-            cur.executemany(SQL_INSERT, data)
+            cur.execute(SQL_INSERT, rows)
             count = cur.rowcount
         log.debug("stored", extra={"source": table, "num_items": count})
         return count
@@ -114,9 +118,24 @@ class Postgres(Beansack):
     
     def store_related(self, related_beans: list[dict]):
         if not related_beans: return 0
-        SQL_INSERT = "INSERT INTO related_beans (url, related_url) VALUES (%s, %s) ON CONFLICT (url, related_url) DO NOTHING"
         with self.cursor() as cur:
-            cur.executemany(sql.SQL(SQL_INSERT), [(d["url"], d["related_url"]) for d in related_beans])
+            cur.execute("""
+                CREATE TEMP TABLE related_beans_stage (
+                    url TEXT NOT NULL,
+                    related_url TEXT NOT NULL
+                ) ON COMMIT DROP
+            """)
+
+            with cur.copy("COPY related_beans_stage (url, related_url) FROM STDIN") as copy:
+                for bean in related_beans:
+                    copy.write_row((bean["url"], bean["related_url"]))
+
+            cur.execute("""
+                INSERT INTO related_beans (url, related_url)
+                SELECT url, related_url
+                FROM related_beans_stage
+                ON CONFLICT (url, related_url) DO NOTHING
+            """)
             count = cur.rowcount
         log.debug("stored", extra={"source": "related_beans", "num_items": count})
         return count
