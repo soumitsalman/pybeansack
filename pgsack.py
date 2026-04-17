@@ -40,6 +40,20 @@ ORDER_BY_DISTANCE = "distance ASC"
 
 log = logging.getLogger(__name__)
 
+_create_row = lambda item, columns: tuple(Vector(item.get(column)) if column == K_EMBEDDING else item.get(column) for column in columns)
+
+def _primary_key_fields(table: str) -> list[str]:
+    pk = _PRIMARY_KEYS.get(table)
+    if not pk: return []
+    return [pk] if isinstance(pk, str) else list(pk)
+
+def _conflict_target(table: str):
+    pk_fields = _primary_key_fields(table)
+    if not pk_fields: return sql.SQL("")
+    return sql.SQL(" ON CONFLICT ({}) DO NOTHING").format(
+        sql.SQL(', ').join(map(sql.Identifier, pk_fields))
+    )
+
 class Postgres(Beansack):
     pool: ConnectionPool
 
@@ -65,23 +79,9 @@ class Postgres(Beansack):
                 conn.commit()
     
     # STORE METHODS
-    def _primary_key_fields(self, table: str) -> list[str]:
-        pk = _PRIMARY_KEYS.get(table)
-        if not pk:
-            return []
-        return [pk] if isinstance(pk, str) else list(pk)
-
-    def _conflict_target(self, table: str):
-        pk_fields = self._primary_key_fields(table)
-        if not pk_fields:
-            return sql.SQL("")
-        return sql.SQL(" ON CONFLICT ({}) DO NOTHING").format(
-            sql.SQL(', ').join(map(sql.Identifier, pk_fields))
-        )
-
     def deduplicate(self, table: str, items: list) -> list:
         if not items: return items
-        pk_fields = self._primary_key_fields(table)
+        pk_fields = _primary_key_fields(table)
         if len(pk_fields) != 1:
             raise ValueError(f"deduplicate only supports single-column primary keys, got {pk_fields!r}")
         get_id = lambda item: getattr(item, pk_fields[0])
@@ -124,14 +124,15 @@ class Postgres(Beansack):
             table=sql.Identifier(table),
             fields=fields,
             stage=stage_table,
-            on_conflict=self._conflict_target(table),
+            on_conflict=_conflict_target(table),
         )
+       
         with self.cursor() as cur:
             if override: cur.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table)))
             cur.execute(create_stage)
             with cur.copy(copy_sql) as copy:
                 for item in data:
-                    copy.write_row(tuple(item.get(column) for column in columns))
+                    copy.write_row(_create_row(item, columns))
             cur.execute(SQL_INSERT)
             count = cur.rowcount
         log.debug("stored", extra={"source": table, "num_items": count})
