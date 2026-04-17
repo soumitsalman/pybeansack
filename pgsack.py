@@ -31,6 +31,7 @@ _TYPES = {
 _PRIMARY_KEYS = {
     BEANS: K_URL,
     PUBLISHERS: K_SOURCE,
+    RELATED_BEANS: [K_URL, "related_url"],
 }
 
 ORDER_BY_LATEST = "created DESC"
@@ -64,9 +65,26 @@ class Postgres(Beansack):
                 conn.commit()
     
     # STORE METHODS
+    def _primary_key_fields(self, table: str) -> list[str]:
+        pk = _PRIMARY_KEYS.get(table)
+        if not pk:
+            return []
+        return [pk] if isinstance(pk, str) else list(pk)
+
+    def _conflict_target(self, table: str):
+        pk_fields = self._primary_key_fields(table)
+        if not pk_fields:
+            return sql.SQL("")
+        return sql.SQL(" ON CONFLICT ({}) DO NOTHING").format(
+            sql.SQL(', ').join(map(sql.Identifier, pk_fields))
+        )
+
     def deduplicate(self, table: str, items: list) -> list:
         if not items: return items
-        get_id = lambda item: getattr(item, _PRIMARY_KEYS[table])
+        pk_fields = self._primary_key_fields(table)
+        if len(pk_fields) != 1:
+            raise ValueError(f"deduplicate only supports single-column primary keys, got {pk_fields!r}")
+        get_id = lambda item: getattr(item, pk_fields[0])
         ids = [get_id(item) for item in items]
 
         SQL_DEDUP = sql.SQL("""
@@ -92,22 +110,29 @@ class Postgres(Beansack):
         if not columns: return 0
 
         fields = sql.SQL(', ').join(map(sql.Identifier, columns))
-        values = sql.SQL(', ').join(
-            sql.SQL("({})").format(sql.SQL(', ').join(sql.Placeholder() for _ in columns))
-            for _ in data
+        stage_table = sql.Identifier(f"{table}_stage")
+        create_stage = sql.SQL("CREATE TEMP TABLE {stage} ON COMMIT DROP AS SELECT {fields} FROM {table} WITH NO DATA").format(
+            stage=stage_table,
+            fields=fields,
+            table=sql.Identifier(table),
         )
-        on_conflict = sql.SQL("ON CONFLICT ({}) DO NOTHING").format(sql.Identifier(_PRIMARY_KEYS[table])) if table in _PRIMARY_KEYS else sql.SQL("")
-        SQL_INSERT = sql.SQL("INSERT INTO {table} ({fields}) VALUES {values} {on_conflict}").format(
+        copy_sql = sql.SQL("COPY {stage} ({fields}) FROM STDIN").format(
+            stage=stage_table,
+            fields=fields,
+        )
+        SQL_INSERT = sql.SQL("INSERT INTO {table} ({fields}) SELECT {fields} FROM {stage} {on_conflict}").format(
             table=sql.Identifier(table),
             fields=fields,
-            values=values,
-            on_conflict=on_conflict
+            stage=stage_table,
+            on_conflict=self._conflict_target(table),
         )
-
-        rows = [item[column] for item in data for column in columns]
         with self.cursor() as cur:
             if override: cur.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table)))
-            cur.execute(SQL_INSERT, rows)
+            cur.execute(create_stage)
+            with cur.copy(copy_sql) as copy:
+                for item in data:
+                    copy.write_row(tuple(item.get(column) for column in columns))
+            cur.execute(SQL_INSERT)
             count = cur.rowcount
         log.debug("stored", extra={"source": table, "num_items": count})
         return count
@@ -117,36 +142,35 @@ class Postgres(Beansack):
         return self._store(BEANS, beans)
     
     def store_related(self, related_beans: list[dict]):
-        if not related_beans: return 0
-        with self.cursor() as cur:
-            cur.execute("""
-                CREATE TEMP TABLE related_beans_stage (
-                    url TEXT NOT NULL,
-                    related_url TEXT NOT NULL
-                ) ON COMMIT DROP
-            """)
-
-            with cur.copy("COPY related_beans_stage (url, related_url) FROM STDIN") as copy:
-                for bean in related_beans:
-                    copy.write_row((bean["url"], bean["related_url"]))
-
-            cur.execute("""
-                INSERT INTO related_beans (url, related_url)
-                SELECT url, related_url
-                FROM related_beans_stage
-                ON CONFLICT (url, related_url) DO NOTHING
-            """)
-            count = cur.rowcount
-        log.debug("stored", extra={"source": "related_beans", "num_items": count})
-        return count
+        return self._store(RELATED_BEANS, related_beans)
     
     def store_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
         return self._store(PUBLISHERS, publishers)
     
+    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
     def store_chatters(self, chatters: list[Chatter]):
         """Store a list of Chatters in the database."""
-        return self._store(CHATTERS, chatters)
+        if not chatters:
+            return 0
+
+        data = [chatter.model_dump() for chatter in chatters]
+        columns = list(Chatter.model_fields.keys())
+        if not columns:
+            return 0
+
+        copy_sql = sql.SQL("COPY chatters ({}) FROM STDIN").format(
+            sql.SQL(", ").join(map(sql.Identifier, columns)),
+        )
+
+        with self.cursor() as cur:
+            with cur.copy(copy_sql) as copy:
+                for item in data:
+                    copy.write_row(tuple(item.get(column) for column in columns))
+
+        count = len(data)
+        log.debug("stored", extra={"source": CHATTERS, "num_items": count})
+        return count
     
     def _update(self, table: str, items: list, columns: list[str] = None):
         if not items: return 0
