@@ -593,6 +593,7 @@ class Postgres(Beansack):
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
     
     def close(self):
+        self.optimize()
         self.pool.close()
         
 def create_db(conn_str: str) -> Postgres:
