@@ -571,9 +571,6 @@ class Postgres(Beansack):
         with self.cursor() as cur:
             cur.executemany(SQL_INSERT_CLUSTERS, [{"input_url": url, "cluster_eps": CLUSTER_EPS} for url in unmapped_urls])
             return cur.rowcount
-        # with ThreadPoolExecutor(max_workers=os.cpu_count(), thread_name_prefix="CLUSTERER") as executor: 
-        #     cluster_many = lambda urls: self.execute(SQL_INSERT_CLUSTERS, {"input_urls": [url for url in urls], "cluster_eps": CLUSTER_EPS})
-        #     executor.map(cluster_many, batched(unmapped_urls, BATCH_SIZE))
 
     def refresh_clusters(self):        
         SQL_QUERY_UNMAPPED = """
