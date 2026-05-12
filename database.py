@@ -5,8 +5,6 @@ BEANS = "beans"
 PUBLISHERS = "publishers"
 CHATTERS = "chatters"
 RELATED_BEANS = "related_beans"
-MUGS = "mugs"
-SIPS = "sips"
 FIXED_CATEGORIES = "fixed_categories"
 FIXED_SENTIMENTS = "fixed_sentiments"
 NOT_IMPLEMENTED = NotImplementedError("Method not implemented in base class")
@@ -160,29 +158,3 @@ class Beansack(ABC):
     def close(self):
         raise NOT_IMPLEMENTED
 
-class Cupboard(ABC):    
-    @abstractmethod
-    def store_sips(self, sips: list[Sip]) -> int:
-        raise NOT_IMPLEMENTED
-    
-    @abstractmethod
-    def query_sips(self, 
-        created: DATETIME = None, updated: DATETIME = None,
-        embedding: list[float]|list[list[float]] = None, distance: float = 0, 
-        conditions: list[str] = None,
-        limit: int = 0, offset: int = 0, 
-        columns: list[str] = None
-    ) -> list[Sip]:
-        raise NOT_IMPLEMENTED    
-    
-    @abstractmethod
-    def remove_sips(self, created: DATETIME = None, conditions: list[str] = None) -> int:
-        raise NOT_IMPLEMENTED   
-    
-    @abstractmethod
-    def optimize(self):
-        raise NOT_IMPLEMENTED
-    
-    @abstractmethod
-    def close(self):
-        raise NOT_IMPLEMENTED

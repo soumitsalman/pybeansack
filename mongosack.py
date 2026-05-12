@@ -6,6 +6,7 @@ import os
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from deprecation import deprecated
 from pymongo import MongoClient, UpdateMany, UpdateOne
 from pymongo.errors import BulkWriteError
 from pymongo.database import Database
@@ -152,6 +153,7 @@ _PRIMARY_KEYS = {
     PUBLISHERS: K_SOURCE
 }
 
+@deprecated
 class MongoDB(Beansack):
     db: Database
     beanstore: Collection
