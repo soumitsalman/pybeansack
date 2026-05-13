@@ -1,6 +1,7 @@
 from functools import cached_property
+from typing_extensions import deprecated
 from rfc3339 import rfc3339
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from .utils import *
@@ -45,8 +46,6 @@ K_CHATTER_URL = "chatter_url"
 K_LIKES = "likes"
 K_COMMENTS = "comments"
 K_SHARES = "shares"
-K_OWNER = "owner"
-K_FOLLOWING = "following"
 K_DESCRIPTION = "description"
 
 K_RESTRICTED_CONTENT = "restricted_content"
@@ -217,47 +216,7 @@ class AggregatedBean(TrendingBean, Publisher):
         by_alias=True
         json_encoders={datetime: rfc3339}      
 
-
-# sip kinds
-HEADLINE = "headline"
-REPORT = "report"
-EDITORIAL = "editorial"
-NEWSLETTER = "newsletter"
-SECTION = "section"
-
-class Sip(BaseModel):
-    """Generated article stored in cupboard"""
-    # ID must have
-    id: str = Field(description="The unique identifier of the item.")
-    
-    # Main body fields
-    kind: Optional[str] = Field(default=None, description="Kind of sip, e.g., headline, report, editorial, newsletter, post.")
-    title: Optional[str] = Field(default=None, description="Title of the sip.")    
-    content: Optional[str] = Field(default=None, description="Content of the sip.")
-    summary: Optional[str] = Field(default=None, description="Summary of the sip.")
-    tags: Optional[list[str]] = Field(default=None, description="List of tags associated with the sip.")
-    image_url: Optional[str] = Field(default=None, description="URL of the image associated with the sip.")
-    
-    # retrieval and linking fields
-    beans: Optional[list[str]] = Field(default=None, description="List of beans that were used to generate this sip.")
-    embedding: Optional[list[float]] = Field(default=None, description="Vector Embedding of the sip.")
-
-    # timestamps
-    created: Optional[datetime] = Field(default=None, description="The creation timestamp.")
-    updated: Optional[datetime] = Field(default=None, description="The last updated timestamp.")
-
-    def __str__(self):
-        return f"# {self.title}\n{self.content}"
-
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
-        by_alias=True
-        json_encoders={datetime: rfc3339}
- 
-    
+@deprecated("User will move to application-specific models outside of pybeansack")
 class User(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id", description="The unique identifier of the user.")
     email: str = Field(description="The email address of the user.")
@@ -273,6 +232,7 @@ class User(BaseModel):
         arbitrary_types_allowed=False
         by_alias=True
 
+@deprecated("Page will move to application-specific models outside of pybeansack")
 class Page(BaseModel):
     id: str = Field(alias="_id", description="The unique identifier of the page.")
     title: Optional[str] = Field(default=None, description="The title of the page.")

@@ -1,12 +1,12 @@
 __all__ = [
     'models', 
-    'Bean', 'Chatter', 'Publisher', 'Sip',  
+    'Bean', 'Chatter', 'Publisher', "TrendingBean", "AggregatedBean", 
     'Beansack', 'DuckDB', 'Ducklake', 'LanceDB', 'Postgres', 
     'SimpleVectorDB', 'AsyncCDNStore',
     "create_client", "create_db",
     "BEANS", "PUBLISHERS", "CHATTERS", "RELATED_BEANS", "DATETIME"
-]  # Specify modules to be exported
-__version__ = "0.6.0"
+] 
+__version__ = "0.7.0"
 
 from typing import Literal
 from .duckdbsack import DuckDB
