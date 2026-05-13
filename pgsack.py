@@ -65,7 +65,7 @@ class Postgres(Beansack):
             max_size=32,
             timeout=TIMEOUT,
             max_idle=TIMEOUT,
-            num_workers=os.cpu_count(),
+            num_workers=os.cpu_count()*2,
             configure=register_vector
         )
         self.pool.open()
