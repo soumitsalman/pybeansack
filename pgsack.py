@@ -4,7 +4,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Any
-from itertools import batched
+from itertools import batched, chain
 import pandas as pd
 from psycopg import sql
 from psycopg_pool import ConnectionPool
@@ -18,6 +18,7 @@ TIMEOUT = 270  # seconds
 RETRY_COUNT = 3
 RETRY_DELAY = (10,120)  # seconds
 CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.4))
+BATCH_SIZE = int(os.getenv('BATCH_SIZE', 512))
 
 _TYPES = {
     BEANS: Bean,
@@ -50,11 +51,20 @@ def _primary_key_fields(table: str) -> list[str]:
 def _conflict_target(table: str):
     pk_fields = _primary_key_fields(table)
     if not pk_fields: return sql.SQL("")
-    return sql.SQL(" ON CONFLICT ({}) DO NOTHING").format(
+    return sql.SQL("ON CONFLICT ({}) DO NOTHING").format(
         sql.SQL(', ').join(map(sql.Identifier, pk_fields))
     )
 
-class Postgres(Beansack):
+def _insert_multivalues_sql(table: str, columns: list[str], rowcount: int):
+    row_ph = sql.SQL("(" + ",".join(["%s"] * len(columns)) + ")")
+    return sql.SQL("INSERT INTO {table} ({fields}) VALUES {values}{on_conflict}").format(
+        table=sql.Identifier(table),
+        fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
+        values=sql.SQL(", ").join(row_ph for _ in range(rowcount)),
+        on_conflict=_conflict_target(table),
+    )
+
+class PGSack(Beansack):
     pool: ConnectionPool
 
     def __init__(self, conn_str: str):
@@ -99,7 +109,7 @@ class Postgres(Beansack):
         return [item for item in items if get_id(item) in non_existing_ids]
 
     @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
-    def _store(self, table: str, items: list[dict | BaseModel], override: bool = False) -> int:
+    def _store(self, table: str, items: list[dict | BaseModel]) -> int:
         if not items: return 0
 
         if isinstance(items[0], BaseModel): data = [item.model_dump() for item in items]
@@ -109,34 +119,31 @@ class Postgres(Beansack):
         columns = non_null_fields(data)
         if not columns: return 0
 
-        fields = sql.SQL(', ').join(map(sql.Identifier, columns))
-        stage_table = sql.Identifier(f"{table}_stage")
-        create_stage = sql.SQL("CREATE TEMP TABLE {stage} ON COMMIT DROP AS SELECT {fields} FROM {table} WITH NO DATA").format(
-            stage=stage_table,
-            fields=fields,
-            table=sql.Identifier(table),
-        )
-        copy_sql = sql.SQL("COPY {stage} ({fields}) FROM STDIN").format(
-            stage=stage_table,
-            fields=fields,
-        )
-        SQL_INSERT = sql.SQL("INSERT INTO {table} ({fields}) SELECT {fields} FROM {stage} {on_conflict}").format(
-            table=sql.Identifier(table),
-            fields=fields,
-            stage=stage_table,
-            on_conflict=_conflict_target(table),
-        )
-       
-        with self.cursor() as cur:
-            if override: cur.execute(sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table)))
-            cur.execute(create_stage)
-            with cur.copy(copy_sql) as copy:
-                for item in data:
-                    copy.write_row(_create_row(item, columns))
-            cur.execute(SQL_INSERT)
-            count = cur.rowcount
-        log.debug("stored", extra={"source": table, "num_items": count})
-        return count
+        # rows = [_create_row(item, columns) for item in data]
+        row_placeholder = sql.SQL("(" + ",".join(["%s"] * len(columns)) + ")")
+        store_batches = [
+            {
+                "expr": sql.SQL(
+                    "INSERT INTO {table} ({cols}) VALUES {values} {on_conflict}"
+                ).format(
+                    table=sql.Identifier(table),
+                    cols=sql.SQL(", ").join(map(sql.Identifier, columns)),
+                    values=sql.SQL(", ").join(row_placeholder for _ in chunk),
+                    on_conflict=_conflict_target(table),
+                ),
+                "params": list(chain.from_iterable(_create_row(item, columns) for item in chunk)),
+            }
+            for chunk in batched(data, BATCH_SIZE)
+        ]
+
+        def insert_chunk(chunk: dict):
+            with self.pool.connection() as conn:
+                return conn.execute(chunk["expr"], params=chunk["params"], binary=True).rowcount
+        
+        with ThreadPoolExecutor(max_workers=len(store_batches)) as exec:
+            counts = list(exec.map(insert_chunk, store_batches))
+        return sum(counts)
+
 
     def store_beans(self, beans: list[Bean]):
         """Store a list of Beans in the database."""
@@ -592,9 +599,9 @@ class Postgres(Beansack):
     def close(self):        
         self.pool.close()
         
-def create_db(conn_str: str) -> Postgres:
+def create_db(conn_str: str) -> PGSack:
     """Create the new tables, views, indexes etc."""
-    db = Postgres(conn_str)  # Just to ensure the DB is reachable
+    db = PGSack(conn_str)  # Just to ensure the DB is reachable
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read()         
     db.execute(init_sql)

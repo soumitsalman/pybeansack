@@ -42,7 +42,7 @@ _PRIMARY_KEYS = {
 
 log = logging.getLogger(__name__)
 
-class Ducklake(Beansack):
+class DuckSack(Beansack):
     db: duckdb.DuckDBPyConnection
 
     def __init__(self, catalogdb: str, storagedb: str):
@@ -572,7 +572,7 @@ def create_db(catalogdb: str, storagedb: str):
     db.execute(init_sql)
     db.close()
     log.debug("Data warehouse initialized.")
-    return Ducklake(catalogdb, storagedb)
+    return DuckSack(catalogdb, storagedb)
 
 def _select(table: str, columns: list[str] = None, embedding: list[float] = None):
     if columns: fields = columns.copy()

@@ -71,7 +71,7 @@ class _ScalarReranker(Reranker):
 
 ORDER_BY_LATEST = _ScalarReranker(column="created", desc=True)
 
-class LanceDB(Beansack): 
+class LanceSack(Beansack): 
     db: lancedb.DBConnection
     # tables: dict[str, lancedb.Table]
     # allbeans: lancedb.Table
@@ -387,7 +387,7 @@ def create_db(storage_path: str):
     chatters.create_scalar_index(K_URL, index_type="BTREE")
     related_beans.create_scalar_index(K_URL, index_type="BTREE")
 
-    return LanceDB(storage_path)
+    return LanceSack(storage_path)
 
 def _connect(storage_path: str):
     storage_options = None
