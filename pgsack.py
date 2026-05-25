@@ -19,6 +19,7 @@ RETRY_COUNT = 3
 RETRY_DELAY = (10,120)  # seconds
 CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.4))
 BATCH_SIZE = int(os.getenv('BATCH_SIZE', 512))
+MAX_WORKERS = os.cpu_count() * 2
 
 _TYPES = {
     BEANS: Bean,
@@ -75,7 +76,7 @@ class PGSack(Beansack):
             max_size=32,
             timeout=TIMEOUT,
             max_idle=TIMEOUT,
-            num_workers=os.cpu_count()*2,
+            num_workers=MAX_WORKERS,
             configure=register_vector
         )
         self.pool.open()
@@ -140,7 +141,7 @@ class PGSack(Beansack):
             with self.pool.connection() as conn:
                 return conn.execute(chunk["expr"], params=chunk["params"], binary=True).rowcount
         
-        with ThreadPoolExecutor(max_workers=len(store_batches)) as exec:
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as exec:
             counts = list(exec.map(insert_chunk, store_batches))
         return sum(counts)
 
