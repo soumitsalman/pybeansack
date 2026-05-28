@@ -1,3 +1,7 @@
+__author__ = "Soumit Salman Rahman"
+__license__ = "MIT"
+__version__ = "1.0.0"
+
 __all__ = [
     'models', 
     'Bean', 'Chatter', 'Publisher', "TrendingBean", "AggregatedBean", 
@@ -6,7 +10,6 @@ __all__ = [
     "create_client", "create_db",
     "BEANS", "PUBLISHERS", "CHATTERS", "RELATED_BEANS", "DATETIME"
 ] 
-__version__ = "0.7.0"
 
 from typing import Literal
 from .duckdbsack import DuckDB
