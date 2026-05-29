@@ -5,7 +5,7 @@ import logging
 import duckdb
 from duckdb import TransactionException
 import pandas as pd
-from retry import retry
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_random
 from .models import *
 from .utils import *
 from .database import *
@@ -74,7 +74,12 @@ class DuckSack(Beansack):
         SQL_EXISTS = f"SELECT {field} FROM warehouse.{table} WHERE {field} IN ({','.join('?' for _ in ids)})"
         return self.query(SQL_EXISTS, params=ids)
 
-    @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(
+        retry=retry_if_exception_type(TransactionException),
+        stop=stop_after_attempt(RETRY_COUNT),
+        wait=wait_random(*RETRY_DELAY),
+        reraise=True,
+    )
     def _execute_df(self, sql, df):
         cursor = self.db.cursor()
         cursor.execute(sql)        
@@ -425,7 +430,12 @@ class DuckSack(Beansack):
             count = rel.fetchone()[0]
         return count
 
-    @retry(exceptions=TransactionException, tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(
+        retry=retry_if_exception_type(TransactionException),
+        stop=stop_after_attempt(RETRY_COUNT),
+        wait=wait_random(*RETRY_DELAY),
+        reraise=True,
+    )
     def execute(self, expr: str, params: list = None):
         with self.db.cursor() as cursor:
             cursor.execute(expr, params)

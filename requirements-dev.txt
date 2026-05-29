@@ -5,7 +5,7 @@ pandas
 duckdb
 lancedb
 rfc3339
-retry
+tenacity
 icecream
 python-dotenv
 s3fs

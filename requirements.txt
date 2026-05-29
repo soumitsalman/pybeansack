@@ -9,6 +9,6 @@ psycopg
 psycopg[binary,pool]
 s3fs
 rfc3339
-retry
+tenacity
 aioboto3
 surrealdb

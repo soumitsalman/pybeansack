@@ -12,7 +12,7 @@ from pgvector.psycopg import register_vector, Vector
 from .models import *
 from .utils import *
 from .database import *
-from retry import retry
+from tenacity import retry, stop_after_attempt, wait_random
 
 TIMEOUT = 270  # seconds
 RETRY_COUNT = 3
@@ -109,7 +109,7 @@ class PGSack(Beansack):
         non_existing_ids = self._query_scalars(SQL_DEDUP, {"ids": ids})
         return [item for item in items if get_id(item) in non_existing_ids]
 
-    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
     def _store(self, table: str, items: list[dict | BaseModel]) -> int:
         if not items: return 0
 
@@ -157,7 +157,7 @@ class PGSack(Beansack):
         """Store a list of Publishers in the database."""
         return self._store(PUBLISHERS, publishers)
     
-    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
     def store_chatters(self, chatters: list[Chatter]):
         """Store a list of Chatters in the database."""
         if not chatters:
@@ -253,7 +253,7 @@ class PGSack(Beansack):
         if not publishers: return 0
         return self._update(PUBLISHERS, publishers, columns=None)    
 
-    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
     def _query_composites(self, expr: str, params: dict = None) -> list[Any]:
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur:
@@ -262,7 +262,7 @@ class PGSack(Beansack):
                 items = [dict(zip(cols, row)) for row in rows]
         return items    
 
-    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
     def _query_scalars(self, expr: str, params: dict = None) -> list:
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur: 
@@ -270,7 +270,7 @@ class PGSack(Beansack):
                 items = [row[0] for row in rows]
         return items
     
-    @retry(tries=RETRY_COUNT, jitter=RETRY_DELAY)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
     def _query_one(self, expr: str, params: dict = None):
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur: 

@@ -352,7 +352,7 @@ pgvector
 psycopg[binary,pool]
 s3fs
 rfc3339
-retry
+tenacity
 ```
 
 ### Running Tests
