@@ -1,7 +1,7 @@
 from functools import cached_property
 from typing_extensions import deprecated
 from rfc3339 import rfc3339
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 from .utils import *
@@ -86,13 +86,13 @@ class Chatter(BaseModel):
             self.subscribers
         )
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
-        by_alias=True
-        json_encoders={datetime: rfc3339}
+    model_config = ConfigDict(
+        populate_by_name = True,
+        arbitrary_types_allowed=False,
+        exclude_none = True,
+        exclude_unset = True,
+        by_alias=True,
+        json_encoders={datetime: rfc3339},
         dtype_specs = {
             'chatter_url': 'string',
             'url': 'string',
@@ -102,6 +102,8 @@ class Chatter(BaseModel):
             'comments': 'uint32',
             'subscribers': 'uint32'
         }
+    )
+
 
 class Publisher(BaseModel):
     """Metadata of the website, publication or social medium from which an article or chatter is sourced."""
@@ -113,13 +115,13 @@ class Publisher(BaseModel):
     rss_feed: Optional[str] = Field(default=None, description="The URL of the publisher's RSS feed.")
     collected: Optional[datetime] = Field(default=None, description="The date and time when the publisher information was collected.")
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
-        by_alias=True
-        json_encoders={datetime: rfc3339}
+    model_config = ConfigDict(
+        populate_by_name = True,
+        arbitrary_types_allowed = False,
+        exclude_none = True,
+        exclude_unset = True,
+        by_alias=True,
+        json_encoders={datetime: rfc3339},
         dtype_specs = {
             'source': 'string',
             'base_url': 'string',
@@ -128,6 +130,8 @@ class Publisher(BaseModel):
             'favicon': 'string',
             'rss_feed': 'string'
         }
+    )
+
 
 class Bean(BaseModel):    
     """Metadata of an article such as a news or blog post."""
@@ -135,11 +139,11 @@ class Bean(BaseModel):
     kind: Optional[str] = Field(default=None, description="The content type of the article, e.g., news, blog, oped, job, post.")
     source: Optional[str] = Field(default=None, description="The publisher ID of the article.")
     title: Optional[str] = Field(default=None, description="The title of the article.")
-    title_length: Optional[int] = Field(default=None, description="The length of the title in words.")
+    # title_length: Optional[int] = Field(default=None, description="The length of the title in words.")
     summary: Optional[str] = Field(default=None, description="A summary of the article.")
-    summary_length: Optional[int] = Field(default=None, description="The length of the summary in words.")
+    # summary_length: Optional[int] = Field(default=None, description="The length of the summary in words.")
     content: Optional[str] = Field(default=None, description="The full content of the article if available.")
-    content_length: Optional[int] = Field(default=None, description="The length of the content in words.")
+    # content_length: Optional[int] = Field(default=None, description="The length of the content in words.")
     restricted_content: Optional[bool] = Field(default=None, description="Indicates if the content is restricted.")
     image_url: Optional[str] = Field(default=None, description="The URL of the article's featured image.")
     author: Optional[str] = Field(default=None, description="The author of the article (if available).")
@@ -148,46 +152,47 @@ class Bean(BaseModel):
 
     # llm fields
     embedding: Optional[list[float]] = Field(default=None, description="The vector embedding for the article content.")
-    gist: Optional[str] = Field(default=None, description="The highlights and key points of the article content.")
+    # gist: Optional[str] = Field(default=None, description="The highlights and key points of the article content.")
     entities: Optional[list[str]] = Field(default=None, description="Named entities mentioned in the article content.")
     regions: Optional[list[str]] = Field(default=None, description="Geographic regions mentioned in the article content.")
     categories: Optional[list[str]] = Field(default=None, description="Categories/topics of the article content.")
     sentiments: Optional[list[str]] = Field(default=None, description="Sentiments expressed in the article content.")
     
-    @cached_property
-    def digest(self) -> str:
-        text = ""
-        if self.kind: text += f"{self.kind};"
-        if self.created: text += f"{self.created.strftime('%b-%d-%Y')};"
-        if self.gist: text += self.gist
-        # TODO: add entities and region down the road
-        if self.categories: text += f"C:{'|'.join(self.categories)};"
-        if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
-        return text
+    # @cached_property
+    # def digest(self) -> str:
+    #     text = ""
+    #     if self.kind: text += f"{self.kind};"
+    #     if self.created: text += f"{self.created.strftime('%b-%d-%Y')};"
+    #     if self.gist: text += self.gist
+    #     # TODO: add entities and region down the road
+    #     if self.categories: text += f"C:{'|'.join(self.categories)};"
+    #     if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
+    #     return text
     
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
-        by_alias=True
-        json_encoders={datetime: rfc3339}
+    model_config = ConfigDict(
+        populate_by_name = True,
+        arbitrary_types_allowed = False,
+        exclude_none = True,
+        exclude_unset = True,
+        by_alias=True,
+        json_encoders={datetime: rfc3339},
         dtype_specs = {            
             'kind': 'string',
             'title': 'string',
-            'title_length': 'uint16',
+            # 'title_length': 'uint16',
             'summary': 'string',
-            'summary_length': 'uint16',
+            # 'summary_length': 'uint16',
             'content': 'string',
-            'content_length': 'uint16',
+            # 'content_length': 'uint16',
             'author': 'string',
             'source': 'string',
             'image_url': 'string',
             'embedding': 'object',
-            'gist': 'string',
+            # 'gist': 'string',
             'regions': 'object', 
             'entities': 'object'  
         }
+    )
 
 class TrendingBean(Bean):
     """Bean with additional fields for tracking social media engagement and propagation across other publishers"""
@@ -200,6 +205,15 @@ class TrendingBean(Bean):
     related_urls: Optional[list[str]] = Field(default=None, description="Related bean URLs.")
     trend_score: Optional[int] = Field(default=None, description="The trend score of the bean.")
 
+    model_config = ConfigDict(
+        populate_by_name = True,
+        arbitrary_types_allowed = False,
+        exclude_none = True,
+        exclude_unset = True,
+        by_alias=True,
+        json_encoders={datetime: rfc3339},
+    )
+
 class AggregatedBean(TrendingBean, Publisher):
     """Bean with additional trend stats and publisher fields."""
     # modifying publisher fields for rendering
@@ -208,52 +222,54 @@ class AggregatedBean(TrendingBean, Publisher):
     # query support fields    
     distance: Optional[float|int] = Field(default=None, description="The distance score for queries.")
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        exclude_none = True
-        exclude_unset = True
-        by_alias=True
-        json_encoders={datetime: rfc3339}      
+    model_config = ConfigDict(
+        populate_by_name = True,
+        arbitrary_types_allowed=False,
+        exclude_none = True,
+        exclude_unset = True,
+        by_alias=True,
+        json_encoders={datetime: rfc3339},
+    )
 
-@deprecated("User will move to application-specific models outside of pybeansack")
-class User(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id", description="The unique identifier of the user.")
-    email: str = Field(description="The email address of the user.")
-    name: Optional[str] = Field(default=None, description="The name of the user.")
-    image_url: Optional[str] = Field(default=None, description="The URL of the user's profile image.")
-    linked_accounts: Optional[list[str]] = Field(default=None, description="List of linked account identifiers.")
-    following: Optional[list[str]] = Field(default=None, description="List of users or entities the user is following.")
-    created: Optional[datetime] = Field(default=None, description="The creation date of the user account.")
-    updated: Optional[datetime] = Field(default=None, description="The last updated date of the user account.")
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        by_alias=True
+# @deprecated("User will move to application-specific models outside of pybeansack")
+# class User(BaseModel):
+#     id: Optional[str] = Field(default=None, alias="_id", description="The unique identifier of the user.")
+#     email: str = Field(description="The email address of the user.")
+#     name: Optional[str] = Field(default=None, description="The name of the user.")
+#     image_url: Optional[str] = Field(default=None, description="The URL of the user's profile image.")
+#     linked_accounts: Optional[list[str]] = Field(default=None, description="List of linked account identifiers.")
+#     following: Optional[list[str]] = Field(default=None, description="List of users or entities the user is following.")
+#     created: Optional[datetime] = Field(default=None, description="The creation date of the user account.")
+#     updated: Optional[datetime] = Field(default=None, description="The last updated date of the user account.")
 
-@deprecated("Page will move to application-specific models outside of pybeansack")
-class Page(BaseModel):
-    id: str = Field(alias="_id", description="The unique identifier of the page.")
-    title: Optional[str] = Field(default=None, description="The title of the page.")
-    description: Optional[str] = Field(default=None, description="A description of the page.")
-    created: Optional[datetime] = Field(default_factory=datetime.now, description="The creation date of the page.")
-    owner: Optional[str] = Field(default=SYSTEM, description="The owner of the page.")
-    public: Optional[bool] = Field(default=False, description="Indicates if the page is public.")
-    related: Optional[list[str]] = Field(default=None, description="Related page identifiers.")
+#     class Config:
+#         populate_by_name = True
+#         arbitrary_types_allowed=False
+#         by_alias=True
+
+# @deprecated("Page will move to application-specific models outside of pybeansack")
+# class Page(BaseModel):
+#     id: str = Field(alias="_id", description="The unique identifier of the page.")
+#     title: Optional[str] = Field(default=None, description="The title of the page.")
+#     description: Optional[str] = Field(default=None, description="A description of the page.")
+#     created: Optional[datetime] = Field(default_factory=datetime.now, description="The creation date of the page.")
+#     owner: Optional[str] = Field(default=SYSTEM, description="The owner of the page.")
+#     public: Optional[bool] = Field(default=False, description="Indicates if the page is public.")
+#     related: Optional[list[str]] = Field(default=None, description="Related page identifiers.")
     
-    query_urls: Optional[list[str]] = Field(default=None, alias="urls", description="Query URLs for the page.")
-    query_kinds: Optional[list[str]] = Field(default=None, alias="kinds", description="Query kinds for the page.")
-    query_sources: Optional[list[str]] = Field(default=None, alias="sources", description="Query sources for the page.")
-    query_tags :Optional[list[str]] = Field(default=None, alias="tags", description="Query tags for the page.")
-    query_text: Optional[str] = Field(default=None, alias="text", description="Query text for the page.")
-    query_embedding: Optional[list[float]] = Field(default=None, alias="embedding", description="Query embedding for the page.")
-    query_distance: Optional[float] = Field(default=None, alias="distance", description="Query distance for the page.")
+#     query_urls: Optional[list[str]] = Field(default=None, alias="urls", description="Query URLs for the page.")
+#     query_kinds: Optional[list[str]] = Field(default=None, alias="kinds", description="Query kinds for the page.")
+#     query_sources: Optional[list[str]] = Field(default=None, alias="sources", description="Query sources for the page.")
+#     query_tags :Optional[list[str]] = Field(default=None, alias="tags", description="Query tags for the page.")
+#     query_text: Optional[str] = Field(default=None, alias="text", description="Query text for the page.")
+#     query_embedding: Optional[list[float]] = Field(default=None, alias="embedding", description="Query embedding for the page.")
+#     query_distance: Optional[float] = Field(default=None, alias="distance", description="Query distance for the page.")
     
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed=False
-        by_alias=True
+#     class Config:
+#         populate_by_name = True
+#         arbitrary_types_allowed=False
+#         by_alias=True
 
 # _EXCLUDE_AUTHORS = ["[no-author]", "noreply", "hidden", "admin", "isbpostadmin", "unknown", "anonymous"]
 
