@@ -12,20 +12,18 @@ from pgvector.psycopg import register_vector, Vector
 from .models import *
 from .utils import *
 from .database import *
-from tenacity import retry, stop_after_attempt, wait_random
+from tenacity import retry, stop_after_attempt, wait_fixed
 
-TIMEOUT = 270  # seconds
+PG_TIMEOUT = int(os.getenv('PG_TIMEOUT', 300))
+PG_WORKERS = int(os.getenv('PG_WORKERS', 4))
+BATCH_SIZE = 512
 RETRY_COUNT = 3
-RETRY_DELAY = (10,120)  # seconds
-CLUSTER_EPS = float(os.getenv('CLUSTER_EPS', 0.4))
-BATCH_SIZE = int(os.getenv('BATCH_SIZE', 512))
-MAX_WORKERS = os.cpu_count() * 2
+RETRY_DELAY = 15
 
 _TYPES = {
     BEANS: Bean,
     PUBLISHERS: Publisher,
     CHATTERS: Chatter,
-    # "_materialized_chatter_aggregates": AggregatedBean,
     "trending_beans_view": TrendingBean,
     "aggregated_beans_view": AggregatedBean,
 }
@@ -73,10 +71,11 @@ class PGSack(Beansack):
         self.pool = ConnectionPool(
             conn_str, 
             min_size=0,
-            max_size=32,
-            timeout=TIMEOUT,
-            max_idle=TIMEOUT,
-            num_workers=MAX_WORKERS,
+            max_size=16,
+            timeout=PG_TIMEOUT,
+            max_idle=120,
+            max_lifetime=180,
+            num_workers=PG_WORKERS,
             configure=register_vector
         )
         self.pool.open()
@@ -109,7 +108,7 @@ class PGSack(Beansack):
         non_existing_ids = self._query_scalars(SQL_DEDUP, {"ids": ids})
         return [item for item in items if get_id(item) in non_existing_ids]
 
-    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_fixed(RETRY_DELAY), reraise=True)
     def _store(self, table: str, items: list[dict | BaseModel]) -> int:
         if not items: return 0
 
@@ -141,7 +140,7 @@ class PGSack(Beansack):
             with self.pool.connection() as conn:
                 return conn.execute(chunk["expr"], params=chunk["params"], binary=True).rowcount
         
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as exec:
+        with ThreadPoolExecutor(max_workers=PG_WORKERS) as exec:
             counts = list(exec.map(insert_chunk, store_batches))
         return sum(counts)
 
@@ -157,7 +156,7 @@ class PGSack(Beansack):
         """Store a list of Publishers in the database."""
         return self._store(PUBLISHERS, publishers)
     
-    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_fixed(RETRY_DELAY), reraise=True)
     def store_chatters(self, chatters: list[Chatter]):
         """Store a list of Chatters in the database."""
         if not chatters:
@@ -253,7 +252,7 @@ class PGSack(Beansack):
         if not publishers: return 0
         return self._update(PUBLISHERS, publishers, columns=None)    
 
-    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_fixed(RETRY_DELAY), reraise=True)
     def _query_composites(self, expr: str, params: dict = None) -> list[Any]:
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur:
@@ -262,7 +261,7 @@ class PGSack(Beansack):
                 items = [dict(zip(cols, row)) for row in rows]
         return items    
 
-    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_fixed(RETRY_DELAY), reraise=True)
     def _query_scalars(self, expr: str, params: dict = None) -> list:
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur: 
@@ -270,7 +269,7 @@ class PGSack(Beansack):
                 items = [row[0] for row in rows]
         return items
     
-    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_random(*RETRY_DELAY), reraise=True)
+    @retry(stop=stop_after_attempt(RETRY_COUNT), wait=wait_fixed(RETRY_DELAY), reraise=True)
     def _query_one(self, expr: str, params: dict = None):
         with self.pool.connection() as conn:
             with conn.execute(expr, params=params, binary=True) as cur: 
