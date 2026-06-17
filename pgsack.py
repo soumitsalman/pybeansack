@@ -210,42 +210,42 @@ class PGSack(Beansack):
         if not beans: return 0
         return self._update(BEANS, beans, columns)
     
-    def update_embeddings(self, beans: list[Bean]):
-        """Update embeddings for a list of Beans and the computed categories + sentiments during the process."""
-        if not beans: return 0
-        # data = distinct(beans, K_URL)
-        urls = [bean.url for bean in beans]
-        embeddings = [Vector(bean.embedding) for bean in beans]
-        SQL_UPDATE = """
-        UPDATE beans AS b
-        SET
-            embedding = d.embedding::vector,
-            categories = (
-                SELECT ARRAY(
-                    SELECT category
-                    FROM fixed_categories fc
-                    ORDER BY d.embedding <=> fc.embedding LIMIT 2
-                )
-            ),
-            sentiments = (
-                SELECT ARRAY(
-                    SELECT sentiment
-                    FROM fixed_sentiments fs
-                    ORDER BY d.embedding <=> fs.embedding LIMIT 2
-                )
-            )
-        FROM (
-            SELECT 
-                u.url,
-                u.embedding
-            FROM unnest(%s::varchar[], %s) AS u(url, embedding)
-        ) AS d
-        WHERE b.url = d.url;
-        """
-        count = self.execute(SQL_UPDATE, (urls, embeddings)).rowcount
-        # NOTE: system gets overwhelmed
-        # self._cluster_unmapped_beans(urls)  # re-cluster only the updated beans
-        return count
+    # def update_embeddings(self, beans: list[Bean]):
+    #     """Update embeddings for a list of Beans and the computed categories + sentiments during the process."""
+    #     if not beans: return 0
+    #     # data = distinct(beans, K_URL)
+    #     urls = [bean.url for bean in beans]
+    #     embeddings = [Vector(bean.embedding) for bean in beans]
+    #     SQL_UPDATE = """
+    #     UPDATE beans AS b
+    #     SET
+    #         embedding = d.embedding::vector,
+    #         categories = (
+    #             SELECT ARRAY(
+    #                 SELECT category
+    #                 FROM fixed_categories fc
+    #                 ORDER BY d.embedding <=> fc.embedding LIMIT 2
+    #             )
+    #         ),
+    #         sentiments = (
+    #             SELECT ARRAY(
+    #                 SELECT sentiment
+    #                 FROM fixed_sentiments fs
+    #                 ORDER BY d.embedding <=> fs.embedding LIMIT 2
+    #             )
+    #         )
+    #     FROM (
+    #         SELECT 
+    #             u.url,
+    #             u.embedding
+    #         FROM unnest(%s::varchar[], %s) AS u(url, embedding)
+    #     ) AS d
+    #     WHERE b.url = d.url;
+    #     """
+    #     count = self.execute(SQL_UPDATE, (urls, embeddings)).rowcount
+    #     # NOTE: system gets overwhelmed
+    #     # self._cluster_unmapped_beans(urls)  # re-cluster only the updated beans
+    #     return count
     
     def update_publishers(self, publishers: list[Publisher]):
         """Store a list of Publishers in the database."""
@@ -527,75 +527,90 @@ class PGSack(Beansack):
             if params: return conn.execute(sql, params=params, binary=True)
             return conn.execute(sql)
 
-    def refresh_classifications(self):  
-        SQL_UPDATE_CLASSIFICATIONS = """
-        WITH pack AS (
-            SELECT 
-                b.url,
-                ARRAY(
-                    SELECT category FROM fixed_categories fc
-                    ORDER BY b.embedding <=> fc.embedding LIMIT 2
-                )  AS categories,
-                ARRAY(
-                    SELECT sentiment FROM fixed_sentiments fs
-                    ORDER BY b.embedding <=> fs.embedding LIMIT 2
-                )  AS sentiments
-            FROM beans b
-            WHERE b.embedding is NOT NULL AND b.categories IS NULL
-        )
-        UPDATE beans b
-        SET 
-            categories = pack.categories,
-            sentiments = pack.sentiments
-        FROM pack
-        WHERE b.url = pack.url;
-        """      
-        self.execute(SQL_UPDATE_CLASSIFICATIONS)
+    # def refresh_classifications(self):  
+    #     SQL_UPDATE_CLASSIFICATIONS = """
+    #     WITH pack AS (
+    #         SELECT 
+    #             b.url,
+    #             ARRAY(
+    #                 SELECT category FROM fixed_categories fc
+    #                 ORDER BY b.embedding <=> fc.embedding LIMIT 2
+    #             )  AS categories,
+    #             ARRAY(
+    #                 SELECT sentiment FROM fixed_sentiments fs
+    #                 ORDER BY b.embedding <=> fs.embedding LIMIT 2
+    #             )  AS sentiments
+    #         FROM beans b
+    #         WHERE b.embedding is NOT NULL AND b.categories IS NULL
+    #     )
+    #     UPDATE beans b
+    #     SET 
+    #         categories = pack.categories,
+    #         sentiments = pack.sentiments
+    #     FROM pack
+    #     WHERE b.url = pack.url;
+    #     """      
+    #     self.execute(SQL_UPDATE_CLASSIFICATIONS)
 
-    def _cluster_unmapped_beans(self, unmapped_urls):
-        BATCH_SIZE = 8
-        SQL_INSERT_CLUSTERS = """
-        INSERT INTO _internal_clusters (url, related)
-        WITH input_embeddings AS (
-            SELECT url, categories, embedding
-            FROM beans
-            WHERE url = %(input_url)s
-        ),
-        similar_beans AS (
-            SELECT DISTINCT ie.url, b.url AS related
-            FROM input_embeddings ie
-            CROSS JOIN beans b
-            WHERE ie.url <> b.url
-                AND ie.categories = b.categories
-                AND b.embedding IS NOT NULL
-                AND (ie.embedding <-> b.embedding) <= %(cluster_eps)s
-        )
-        SELECT url, related FROM similar_beans
-        UNION
-        SELECT related, url FROM similar_beans
-        ON CONFLICT (url, related) DO NOTHING;
-        """
-        with self.cursor() as cur:
-            cur.executemany(SQL_INSERT_CLUSTERS, [{"input_url": url, "cluster_eps": CLUSTER_EPS} for url in unmapped_urls])
-            return cur.rowcount
+    # def _cluster_unmapped_beans(self, unmapped_urls):
+    #     SQL_INSERT_CLUSTERS = """
+    #     INSERT INTO _internal_clusters (url, related)
+    #     WITH input_embeddings AS (
+    #         SELECT url, categories, embedding
+    #         FROM beans
+    #         WHERE url = %(input_url)s
+    #     ),
+    #     similar_beans AS (
+    #         SELECT DISTINCT ie.url, b.url AS related
+    #         FROM input_embeddings ie
+    #         CROSS JOIN beans b
+    #         WHERE ie.url <> b.url
+    #             AND ie.categories = b.categories
+    #             AND b.embedding IS NOT NULL
+    #             AND (ie.embedding <-> b.embedding) <= %(cluster_eps)s
+    #     )
+    #     SELECT url, related FROM similar_beans
+    #     UNION
+    #     SELECT related, url FROM similar_beans
+    #     ON CONFLICT (url, related) DO NOTHING;
+    #     """
+    #     with self.cursor() as cur:
+    #         cur.executemany(SQL_INSERT_CLUSTERS, [{"input_url": url, "cluster_eps": CLUSTER_EPS} for url in unmapped_urls])
+    #         return cur.rowcount
 
-    def refresh_clusters(self):        
-        SQL_QUERY_UNMAPPED = """
-        SELECT url FROM beans b
-        WHERE b.embedding IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM _internal_clusters ic WHERE ic.url = b.url
-        );
-        """
-        self._cluster_unmapped_beans(self._query_scalars(SQL_QUERY_UNMAPPED))  
-        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;")
+    # def refresh_clusters(self):        
+    #     SQL_QUERY_UNMAPPED = """
+    #     SELECT url FROM beans b
+    #     WHERE b.embedding IS NOT NULL
+    #     AND NOT EXISTS (
+    #         SELECT 1 FROM _internal_clusters ic WHERE ic.url = b.url
+    #     );
+    #     """
+    #     self._cluster_unmapped_beans(self._query_scalars(SQL_QUERY_UNMAPPED))  
+    #     self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_cluster_aggregates;")
 
-    def refresh_chatters(self):
-        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
+    # def refresh_chatters(self):
+    #     self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
     def optimize(self):
-        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_stats;")
-        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_related_stats;")
+        self.execute("""
+        DELETE FROM beans 
+        WHERE collected < CURRENT_DATE - INTERVAL '3 months' AND entities IS NULL AND regions IS NULL;        
+        """)
+        self.execute("""
+        DELETE FROM chatters 
+        WHERE collected < CURRENT_DATE - INTERVAL '3 months';
+
+        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_stats;
+        """)
+        self.execute("""
+        DELETE FROM related_beans rb 
+        WHERE NOT EXISTS (
+            SELECT 1 FROM beans WHERE url = rb.url
+        );
+
+        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_related_stats;
+        """)
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
     
     def close(self):        
