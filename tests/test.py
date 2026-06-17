@@ -8,7 +8,7 @@ from datetime import timedelta
 from icecream import ic
 
 # Import from package using relative imports
-from .. import ducklakesack, mongosack, lancesack
+from .. import ducksack, mongosack, lancesack
 from ..models import *
 
 import argparse
@@ -31,7 +31,10 @@ get_test_beansack = lambda dbname="test": mongosack.MongoDB(
     os.getenv("MONGODB_CONN_STR", "mongodb://localhost:27017"), dbname
 )
 
-get_test_warehouse = lambda: ducklakesack.DuckSack()
+get_test_warehouse = lambda: ducksack.DuckSack(
+    catalog_db=os.getenv("DUCKLAKE_CATALOG", os.getenv("PG_CONNECTION_STRING")),
+    storage_path=os.getenv("DUCKLAKE_STORAGE", os.getenv("STORAGE_DATAPATH")),
+)
 
 def _run_test_func(test_func, total=1000):
     # with ThreadPoolExecutor(max_workers=8) as executor:

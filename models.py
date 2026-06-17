@@ -139,11 +139,8 @@ class Bean(BaseModel):
     kind: Optional[str] = Field(default=None, description="The content type of the article, e.g., news, blog, oped, job, post.")
     source: Optional[str] = Field(default=None, description="The publisher ID of the article.")
     title: Optional[str] = Field(default=None, description="The title of the article.")
-    # title_length: Optional[int] = Field(default=None, description="The length of the title in words.")
     summary: Optional[str] = Field(default=None, description="A summary of the article.")
-    # summary_length: Optional[int] = Field(default=None, description="The length of the summary in words.")
     content: Optional[str] = Field(default=None, description="The full content of the article if available.")
-    # content_length: Optional[int] = Field(default=None, description="The length of the content in words.")
     restricted_content: Optional[bool] = Field(default=None, description="Indicates if the content is restricted.")
     image_url: Optional[str] = Field(default=None, description="The URL of the article's featured image.")
     author: Optional[str] = Field(default=None, description="The author of the article (if available).")
@@ -152,23 +149,11 @@ class Bean(BaseModel):
 
     # llm fields
     embedding: Optional[list[float]] = Field(default=None, description="The vector embedding for the article content.")
-    # gist: Optional[str] = Field(default=None, description="The highlights and key points of the article content.")
     entities: Optional[list[str]] = Field(default=None, description="Named entities mentioned in the article content.")
     regions: Optional[list[str]] = Field(default=None, description="Geographic regions mentioned in the article content.")
     categories: Optional[list[str]] = Field(default=None, description="Categories/topics of the article content.")
     sentiments: Optional[list[str]] = Field(default=None, description="Sentiments expressed in the article content.")
-    
-    # @cached_property
-    # def digest(self) -> str:
-    #     text = ""
-    #     if self.kind: text += f"{self.kind};"
-    #     if self.created: text += f"{self.created.strftime('%b-%d-%Y')};"
-    #     if self.gist: text += self.gist
-    #     # TODO: add entities and region down the road
-    #     if self.categories: text += f"C:{'|'.join(self.categories)};"
-    #     if self.sentiments: text += f"S:{'|'.join(self.sentiments)};"
-    #     return text
-    
+  
     model_config = ConfigDict(
         populate_by_name = True,
         arbitrary_types_allowed = False,
@@ -179,16 +164,12 @@ class Bean(BaseModel):
         dtype_specs = {            
             'kind': 'string',
             'title': 'string',
-            # 'title_length': 'uint16',
             'summary': 'string',
-            # 'summary_length': 'uint16',
             'content': 'string',
-            # 'content_length': 'uint16',
             'author': 'string',
             'source': 'string',
             'image_url': 'string',
             'embedding': 'object',
-            # 'gist': 'string',
             'regions': 'object', 
             'entities': 'object'  
         }

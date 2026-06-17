@@ -217,6 +217,22 @@ Relational backend with pgvector extension for semantic search.
 db = create_client("postgres", pg_connection_string="postgresql://user:password@localhost/beansack")
 ```
 
+`trend_aggregates` includes `cluster_id` (most globally linked `related_url` among a bean's neighbors). `CREATE MATERIALIZED VIEW IF NOT EXISTS` does not alter an existing view. To pick up schema changes on a deployed database:
+
+```sql
+DROP VIEW IF EXISTS aggregated_beans_view;
+DROP VIEW IF EXISTS trending_beans_view;
+DROP MATERIALIZED VIEW IF EXISTS trend_aggregates;
+```
+
+Re-run `pgsack.sql` (or `factory/setup.py --beansack pg`), then:
+
+```sql
+REFRESH MATERIALIZED VIEW trend_aggregates;
+```
+
+Or call `db.optimize()` which refreshes `trend_aggregates` concurrently.
+
 ### DuckDB
 Embedded OLAP database, great for local development and analytics.
 

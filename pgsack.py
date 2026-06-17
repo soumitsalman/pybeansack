@@ -605,10 +605,6 @@ def create_db(conn_str: str) -> PGSack:
     with open(os.path.join(os.path.dirname(__file__), 'pgsack.sql'), 'r') as sql_file:
         init_sql = sql_file.read()         
     db.execute(init_sql)
-
-    # factory_path = Path(factory_dir) 
-    # _store_parquet(db, factory_path / "categories.parquet", "fixed_categories", True)
-    # _store_parquet(db, factory_path / "sentiments.parquet", "fixed_sentiments", True)
     return db
 
 def _store_parquet(db, file_path: Path, table_name: str, override: bool = False):
