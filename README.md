@@ -217,21 +217,45 @@ Relational backend with pgvector extension for semantic search.
 db = create_client("postgres", pg_connection_string="postgresql://user:password@localhost/beansack")
 ```
 
-`trend_aggregates` includes `cluster_id` (most globally linked `related_url` among a bean's neighbors). `CREATE MATERIALIZED VIEW IF NOT EXISTS` does not alter an existing view. To pick up schema changes on a deployed database:
+`trend_aggregates` is built from two smaller materialized views (`_materialized_chatter_stats`, `_materialized_related_stats`) to keep refresh temp disk low on hosted Postgres (e.g. Neon).
+
+Staged migration (run one block at a time in `psql`; avoids disk-quota failures from one giant `CREATE`):
 
 ```sql
+-- 1. related stats + cluster_id (scans related_beans only)
+CREATE MATERIALIZED VIEW _materialized_related_stats AS
+WITH hub_sizes AS (
+    SELECT related_url, COUNT(*) AS hub_size FROM related_beans GROUP BY related_url
+),
+ranked AS (
+    SELECT rb.url, rb.related_url,
+        ROW_NUMBER() OVER (PARTITION BY rb.url ORDER BY hs.hub_size DESC, rb.related_url) AS rn
+    FROM related_beans rb
+    INNER JOIN hub_sizes hs ON rb.related_url = hs.related_url
+)
+SELECT url, COUNT(*) AS related, MAX(related_url) FILTER (WHERE rn = 1) AS cluster_id
+FROM ranked GROUP BY url;
+CREATE UNIQUE INDEX idx_mat_related_stats_url ON _materialized_related_stats(url);
+
+-- 2. chatter stats (scans chatters only)
+-- paste _materialized_chatter_stats definition from pgsack.sql
+CREATE UNIQUE INDEX idx_mat_chatter_stats_url ON _materialized_chatter_stats(url);
+
+-- 3. drop old trend MV + views, create slim trend_aggregates from pgsack.sql
 DROP VIEW IF EXISTS aggregated_beans_view;
 DROP VIEW IF EXISTS trending_beans_view;
 DROP MATERIALIZED VIEW IF EXISTS trend_aggregates;
+-- then CREATE MATERIALIZED VIEW trend_aggregates ... and dependent views from pgsack.sql
+CREATE UNIQUE INDEX idx_trend_agg_url ON trend_aggregates(url);
 ```
 
-Re-run `pgsack.sql` (or `factory/setup.py --beansack pg`), then:
+Refresh (or `db.optimize()`):
 
 ```sql
-REFRESH MATERIALIZED VIEW trend_aggregates;
+REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_stats;
+REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_related_stats;
+REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;
 ```
-
-Or call `db.optimize()` which refreshes `trend_aggregates` concurrently.
 
 ### DuckDB
 Embedded OLAP database, great for local development and analytics.

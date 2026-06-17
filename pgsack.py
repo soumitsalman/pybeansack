@@ -594,6 +594,8 @@ class PGSack(Beansack):
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_aggregates;")
         
     def optimize(self):
+        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_stats;")
+        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_related_stats;")
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
     
     def close(self):        
