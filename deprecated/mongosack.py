@@ -1,5 +1,5 @@
 ############################
-## BEANSACK DB OPERATIONS ##
+## BEANSACK DB OPERATIONS (deprecated — see deprecated/README.md) ##
 ############################
 from concurrent.futures import ThreadPoolExecutor
 import os
@@ -12,9 +12,9 @@ from pymongo.errors import BulkWriteError
 from pymongo.database import Database
 from pymongo.collection import Collection
 from bson import SON
-from .models import *
-from .utils import *
-from .database import *
+from ..models import *
+from ..utils import *
+from ..database import *
 
 log = logging.getLogger(__name__)
 

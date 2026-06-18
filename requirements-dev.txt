@@ -1,6 +1,5 @@
 pydantic
 pyarrow
-pymongo
 pandas
 duckdb
 lancedb

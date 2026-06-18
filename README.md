@@ -4,7 +4,7 @@ An intelligent SDK for storing, querying, and analyzing articles ("beans"), soci
 
 ## Features
 
-- **Multi-Backend Support**: MongoDB, PostgreSQL (with pgvector), DuckDB, LanceDB, and DuckLake
+- **Multi-Backend Support**: PostgreSQL (with pgvector), DuckDB, LanceDB, and DuckLake
 - **Semantic Search**: Vector-based similarity search with embeddings
 - **Social Signal Integration**: Correlate articles with social media likes, comments, and shares
 - **Rich Filtering**: Query by categories, sentiments, entities, regions, sources, date ranges, and more
@@ -29,13 +29,6 @@ from pybeansack import create_client
 db = create_client(
     "postgres",
     pg_connection_string="postgresql://user:password@localhost/beansack"
-)
-
-# MongoDB
-db = create_client(
-    "mongodb",
-    mongodb_uri="mongodb://localhost:27017",
-    database_name="beansack"
 )
 
 # DuckDB
@@ -203,13 +196,6 @@ Combines Bean, Chatter, and Publisher data for rich content representation.
 
 ## Database Backends
 
-### MongoDB
-Full NoSQL backend with vector search via Atlas Vector Search.
-
-```python
-db = create_client("mongodb", mongodb_uri="mongodb://localhost:27017", database_name="beansack")
-```
-
 ### PostgreSQL
 Relational backend with pgvector extension for semantic search.
 
@@ -312,20 +298,11 @@ recent_count = db.count_rows("beans", conditions=["created > NOW() - INTERVAL 7 
 Each backend has specialized features accessible via their specific classes:
 
 ```python
-from pybeansack.mongosack import MongoDB
-from pybeansack.pgsack import Postgres
-from pybeansack.lancesack import LanceDB
+from pybeansack.pgsack import PGSack
+from pybeansack.lancesack import LanceSack
 
-# MongoDB-specific operations
-mongo_db = MongoDB("mongodb://localhost:27017", "beansack")
-mongo_db.refresh_classifications()
-mongo_db.refresh_clusters()
-
-# Postgres operations
-pg_db = Postgres("postgresql://user:password@localhost/beansack")
-
-# LanceDB operations  
-lance_db = LanceDB("/path/to/lancedb")
+pg_db = create_client("pg", pg_connection_string="postgresql://user:password@localhost/beansack")
+lance_db = create_client("lance", lancedb_storage="/path/to/lancedb")
 ```
 
 ### Batch Processing
@@ -350,7 +327,6 @@ with ThreadPoolExecutor(max_workers=8) as executor:
 ```
 pydantic
 pyarrow
-pymongo
 pandas
 duckdb
 lancedb
@@ -368,7 +344,7 @@ tenacity
 pytest pybeansack/tests -m "integration and pg"
 
 # Or run the test module directly (forwards args to pytest)
-python pybeansack/tests/test_backends.py -m "integration and pg"
+python pybeansack/tests/db_test.py -m "integration and pg"
 ```
 
 ### Docker Setup
@@ -379,13 +355,13 @@ A `docker-compose.yml` is included for local development with multiple databases
 docker-compose up -d
 ```
 
-This starts MongoDB, PostgreSQL, and other services needed for testing.
+This starts PostgreSQL, and other services needed for testing.
 
 ## Architecture
 
 - **Beansack** (Abstract): Base interface for all database backends
 - **Cupboard** (Abstract): Base interface for catalog operations
-- **Backend Implementations**: MongoDB, Postgres, DuckDB, LanceDB, DuckLake
+- **Backend Implementations**: Postgres, DuckDB, LanceDB, DuckLake (legacy MongoDB in `deprecated/`)
 - **Models**: Pydantic-based data models with validation
 - **Utils**: Helper functions for data processing, deduplication, and transformation
 
