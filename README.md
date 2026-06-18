@@ -217,43 +217,9 @@ Relational backend with pgvector extension for semantic search.
 db = create_client("postgres", pg_connection_string="postgresql://user:password@localhost/beansack")
 ```
 
-`trend_aggregates` is built from two smaller materialized views (`_materialized_chatter_stats`, `_materialized_related_stats`) to keep refresh temp disk low on hosted Postgres (e.g. Neon).
-
-Staged migration (run one block at a time in `psql`; avoids disk-quota failures from one giant `CREATE`):
+`trend_aggregates` is a single materialized view over `chatters`, `related_beans`, and `beans`. Refresh via `db.optimize()` or:
 
 ```sql
--- 1. related stats + cluster_id (scans related_beans only)
-CREATE MATERIALIZED VIEW _materialized_related_stats AS
-WITH hub_sizes AS (
-    SELECT related_url, COUNT(*) AS hub_size FROM related_beans GROUP BY related_url
-),
-ranked AS (
-    SELECT rb.url, rb.related_url,
-        ROW_NUMBER() OVER (PARTITION BY rb.url ORDER BY hs.hub_size DESC, rb.related_url) AS rn
-    FROM related_beans rb
-    INNER JOIN hub_sizes hs ON rb.related_url = hs.related_url
-)
-SELECT url, COUNT(*) AS related, MAX(related_url) FILTER (WHERE rn = 1) AS cluster_id
-FROM ranked GROUP BY url;
-CREATE UNIQUE INDEX idx_mat_related_stats_url ON _materialized_related_stats(url);
-
--- 2. chatter stats (scans chatters only)
--- paste _materialized_chatter_stats definition from pgsack.sql
-CREATE UNIQUE INDEX idx_mat_chatter_stats_url ON _materialized_chatter_stats(url);
-
--- 3. drop old trend MV + views, create slim trend_aggregates from pgsack.sql
-DROP VIEW IF EXISTS aggregated_beans_view;
-DROP VIEW IF EXISTS trending_beans_view;
-DROP MATERIALIZED VIEW IF EXISTS trend_aggregates;
--- then CREATE MATERIALIZED VIEW trend_aggregates ... and dependent views from pgsack.sql
-CREATE UNIQUE INDEX idx_trend_agg_url ON trend_aggregates(url);
-```
-
-Refresh (or `db.optimize()`):
-
-```sql
-REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_stats;
-REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_related_stats;
 REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;
 ```
 
@@ -398,12 +364,11 @@ tenacity
 ### Running Tests
 
 ```bash
-# Set environment variables
-export MONGODB_CONN_STR="mongodb://localhost:27017"
-export DATA_DIR=".coffeemaker"
+# From repo root (integration tests opt-in via marker)
+pytest pybeansack/tests -m "integration and pg"
 
-# Run tests
-python -m pytest tests/
+# Or run the test module directly (forwards args to pytest)
+python pybeansack/tests/test_backends.py -m "integration and pg"
 ```
 
 ### Docker Setup

@@ -745,19 +745,6 @@ class DuckSack(Beansack):
                 FROM {qualified_related}
                 GROUP BY url
             ),
-            related_hub_sizes AS (
-                SELECT related_url, COUNT(*) AS hub_size
-                FROM {qualified_related}
-                GROUP BY related_url
-            ),
-            url_cluster AS (
-                SELECT
-                    rb.url,
-                    FIRST(rb.related_url ORDER BY rhs.hub_size DESC, rb.related_url) AS cluster_id
-                FROM {qualified_related} rb
-                INNER JOIN related_hub_sizes rhs ON rb.related_url = rhs.related_url
-                GROUP BY rb.url
-            ),
             trend_stats AS (
                 SELECT
                     b.url,
@@ -766,12 +753,10 @@ class DuckSack(Beansack):
                     COALESCE(cg.subscribers, 0) AS subscribers,
                     COALESCE(cg.shares, 0) AS shares,
                     COALESCE(rg.related, 0) AS related,
-                    uc.cluster_id,
                     GREATEST(DATE(b.created), COALESCE(cg.updated, DATE(b.created))) AS updated
                 FROM {qualified_beans} b
                 LEFT JOIN related_stats rg ON b.url = rg.url
                 LEFT JOIN chatter_stats cg ON b.url = cg.url
-                LEFT JOIN url_cluster uc ON b.url = uc.url
             )
         SELECT
             url,
@@ -780,7 +765,6 @@ class DuckSack(Beansack):
             subscribers,
             shares,
             related,
-            cluster_id,
             updated,
             CAST((100 * related + 50 * comments + 10 * shares + likes) AS FLOAT) / (CURRENT_DATE + 2 - updated) AS trend_score
         FROM trend_stats

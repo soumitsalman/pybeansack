@@ -596,22 +596,18 @@ class PGSack(Beansack):
         self.execute("""
         DELETE FROM beans 
         WHERE collected < CURRENT_DATE - INTERVAL '3 months' AND entities IS NULL AND regions IS NULL;        
-        """)
-        self.execute("""
+        
         DELETE FROM chatters 
         WHERE collected < CURRENT_DATE - INTERVAL '3 months';
-
-        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_chatter_stats;
-        """)
+        """)        
+        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
+        # NOTE: ideally this should be before the refresh but the current deletion is a hit or miss
         self.execute("""
         DELETE FROM related_beans rb 
         WHERE NOT EXISTS (
             SELECT 1 FROM beans WHERE url = rb.url
         );
-
-        REFRESH MATERIALIZED VIEW CONCURRENTLY _materialized_related_stats;
         """)
-        self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
     
     def close(self):        
         self.pool.close()

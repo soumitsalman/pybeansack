@@ -59,7 +59,6 @@ CREATE TABLE IF NOT EXISTS trend_aggregates (
     subscribers UINT32 DEFAULT 0,
     shares UINT32 DEFAULT 0,
     related UINT32 DEFAULT 0,
-    cluster_id VARCHAR,
     updated DATE,
     trend_score FLOAT DEFAULT 0.0
 );
@@ -67,7 +66,7 @@ CREATE TABLE IF NOT EXISTS trend_aggregates (
 CREATE VIEW IF NOT EXISTS trending_beans_view AS
 SELECT
     b.*,
-    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.cluster_id, tr.trend_score
+    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.trend_score
 FROM beans b
 INNER JOIN trend_aggregates tr ON b.url = tr.url;
 
@@ -79,7 +78,7 @@ WITH related_groups AS (
 )
 SELECT
     b.*,
-    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.cluster_id, tr.trend_score,
+    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.trend_score,
     rel.related_urls,
     p.base_url, p.site_name, p.description, p.favicon, p.rss_feed
 FROM beans b

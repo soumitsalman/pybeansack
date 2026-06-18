@@ -90,7 +90,7 @@ DROP MATERIALIZED VIEW IF EXISTS trend_aggregates CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS _materialized_chatter_stats CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS _materialized_related_stats CASCADE;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS _materialized_chatter_stats AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS trend_aggregates AS
 WITH
     max_chatters AS (
         SELECT
@@ -108,67 +108,46 @@ WITH
         LEFT JOIN max_chatters mx ON fs.chatter_url = mx.chatter_url
         WHERE fs.likes = mx.likes AND fs.comments = mx.comments
         GROUP BY fs.chatter_url
-    )
-SELECT
-    url,
-    DATE(MAX(collected)) as updated,
-    SUM(likes) as likes,
-    SUM(comments) as comments,
-    SUM(subscribers) as subscribers,
-    COUNT(chatter_url) as shares
-FROM (
-    SELECT ch.* FROM chatters ch
-    LEFT JOIN first_seen_max_chatters fs ON fs.chatter_url = ch.chatter_url
-    WHERE fs.collected = ch.collected
-)
-GROUP BY url;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS _materialized_related_stats AS
-WITH
-    hub_sizes AS (
-        SELECT related_url, COUNT(*) AS hub_size
-        FROM related_beans
-        GROUP BY related_url
     ),
-    ranked AS (
+    chatter_stats AS (
         SELECT
-            rb.url,
-            rb.related_url,
-            ROW_NUMBER() OVER (
-                PARTITION BY rb.url
-                ORDER BY hs.hub_size DESC, rb.related_url
-            ) AS rn
-        FROM related_beans rb
-        INNER JOIN hub_sizes hs ON rb.related_url = hs.related_url
+            url,
+            DATE(MAX(collected)) as updated,
+            SUM(likes) as likes,
+            SUM(comments) as comments,
+            SUM(subscribers) as subscribers,
+            COUNT(chatter_url) as shares
+        FROM (
+            SELECT ch.* FROM chatters ch
+            LEFT JOIN first_seen_max_chatters fs ON fs.chatter_url = ch.chatter_url
+            WHERE fs.collected = ch.collected
+        )
+        GROUP BY url
+    ),
+    related_stats AS (
+        SELECT url, COUNT(*) AS related
+        FROM related_beans
+        GROUP BY url
+    ),
+    active AS (
+        SELECT url FROM chatter_stats
+        UNION
+        SELECT url FROM related_stats
+    ),
+    trend_stats AS (
+        SELECT
+            a.url,
+            COALESCE(cg.likes, 0) as likes,
+            COALESCE(cg.comments, 0) as comments,
+            COALESCE(cg.subscribers, 0) as subscribers,
+            COALESCE(cg.shares, 0) as shares,
+            COALESCE(rg.related, 0) as related,
+            GREATEST(DATE(b.created), COALESCE(cg.updated, DATE(b.created))) as updated
+        FROM active a
+        INNER JOIN beans b ON b.url = a.url
+        LEFT JOIN chatter_stats cg ON a.url = cg.url
+        LEFT JOIN related_stats rg ON a.url = rg.url
     )
-SELECT
-    url,
-    COUNT(*) AS related,
-    MAX(related_url) FILTER (WHERE rn = 1) AS cluster_id
-FROM ranked
-GROUP BY url;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS trend_aggregates AS
-WITH active AS (
-    SELECT url FROM _materialized_chatter_stats
-    UNION
-    SELECT url FROM _materialized_related_stats
-),
-trend_stats AS (
-    SELECT
-        a.url,
-        COALESCE(cg.likes, 0) as likes,
-        COALESCE(cg.comments, 0) as comments,
-        COALESCE(cg.subscribers, 0) as subscribers,
-        COALESCE(cg.shares, 0) as shares,
-        COALESCE(rg.related, 0) as related,
-        rg.cluster_id,
-        GREATEST(DATE(b.created), COALESCE(cg.updated, DATE(b.created))) as updated
-    FROM active a
-    INNER JOIN beans b ON b.url = a.url
-    LEFT JOIN _materialized_chatter_stats cg ON a.url = cg.url
-    LEFT JOIN _materialized_related_stats rg ON a.url = rg.url
-)
 SELECT
     *,
     ((100*related + 50*comments + 10*shares + likes) / (CURRENT_DATE + 2 - updated))::float AS trend_score
@@ -179,7 +158,7 @@ DROP VIEW IF EXISTS trending_beans_view CASCADE;
 CREATE VIEW trending_beans_view AS
 SELECT
     b.*,
-    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.cluster_id, tr.trend_score
+    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.trend_score
 FROM beans b
 INNER JOIN trend_aggregates tr ON b.url = tr.url;
 
@@ -192,7 +171,7 @@ WITH related_groups AS (
 )
 SELECT
     b.*,
-    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.cluster_id, tr.trend_score,
+    tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.trend_score,
     rel.related_urls,
     p.base_url, p.site_name, p.description, p.favicon, p.rss_feed
 FROM beans b
@@ -228,6 +207,4 @@ CREATE INDEX IF NOT EXISTS idx_chatters_collected ON chatters(collected DESC);
 CREATE INDEX IF NOT EXISTS idx_related_beans_related_url ON related_beans(related_url);
 CREATE INDEX IF NOT EXISTS idx_chatters_chatter_url ON chatters(chatter_url);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mat_chatter_stats_url ON _materialized_chatter_stats(url);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mat_related_stats_url ON _materialized_related_stats(url);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_agg_url ON trend_aggregates(url);
