@@ -595,10 +595,10 @@ class PGSack(Beansack):
     def optimize(self):
         self.execute("""
         DELETE FROM beans 
-        WHERE collected < CURRENT_DATE - INTERVAL '3 months' AND entities IS NULL AND regions IS NULL;        
+        WHERE collected < CURRENT_DATE - INTERVAL '6 months';        
         
         DELETE FROM chatters 
-        WHERE collected < CURRENT_DATE - INTERVAL '3 months';
+        WHERE collected < CURRENT_DATE - INTERVAL '6 months';
         """)        
         self.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY trend_aggregates;")
         # NOTE: ideally this should be before the refresh but the current deletion is a hit or miss
