@@ -86,9 +86,6 @@ CREATE TABLE IF NOT EXISTS related_beans (
     UNIQUE (url, related_url)
 );
 
-DROP MATERIALIZED VIEW IF EXISTS trend_aggregates CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS _materialized_chatter_stats CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS _materialized_related_stats CASCADE;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS trend_aggregates AS
 WITH
@@ -154,16 +151,14 @@ SELECT
 FROM trend_stats
 WHERE GREATEST(likes, comments, shares, related) > 0;
 
-DROP VIEW IF EXISTS trending_beans_view CASCADE;
-CREATE VIEW trending_beans_view AS
+CREATE OR REPLACE VIEW trending_beans_view AS
 SELECT
     b.*,
     tr.updated, tr.comments, tr.shares, tr.likes, tr.subscribers, tr.related, tr.trend_score
 FROM beans b
 INNER JOIN trend_aggregates tr ON b.url = tr.url;
 
-DROP VIEW IF EXISTS aggregated_beans_view CASCADE;
-CREATE VIEW aggregated_beans_view AS
+CREATE OR REPLACE VIEW aggregated_beans_view AS
 WITH related_groups AS (
     SELECT url, ARRAY_AGG(related_url) AS related_urls
     FROM related_beans
