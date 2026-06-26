@@ -19,6 +19,7 @@ PG_WORKERS = int(os.getenv('PG_WORKERS', 4))
 BATCH_SIZE = 512
 RETRY_COUNT = 3
 RETRY_DELAY = 15
+_store_executor = ThreadPoolExecutor(max_workers=PG_WORKERS, thread_name_prefix="pgstore")
 
 _TYPES = {
     BEANS: Bean,
@@ -140,8 +141,7 @@ class PGSack(Beansack):
             with self.pool.connection() as conn:
                 return conn.execute(chunk["expr"], params=chunk["params"], binary=True).rowcount
         
-        with ThreadPoolExecutor(max_workers=PG_WORKERS) as exec:
-            counts = list(exec.map(insert_chunk, store_batches))
+        counts = list(_store_executor.map(insert_chunk, store_batches))
         return sum(counts)
 
 
