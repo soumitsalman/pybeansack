@@ -1,4 +1,14 @@
-# PYBEANSACK
+# PYBEANSACK (archived)
+
+**This repository is archived.** Development has moved to the [pycoffeemaker](https://github.com/soumitsalman/pycoffeemaker) monorepo.
+
+| What | Where |
+|------|-------|
+| Source code | [`pybeansack/`](https://github.com/soumitsalman/pycoffeemaker/tree/main/pybeansack) |
+| Package docs | [`pybeansack/README.md`](https://github.com/soumitsalman/pycoffeemaker/blob/main/pybeansack/README.md) |
+| Issues & contributions | [pycoffeemaker](https://github.com/soumitsalman/pycoffeemaker) |
+
+Do not open PRs or issues here — use the monorepo.
 
 An intelligent SDK for storing, querying, and analyzing articles ("beans"), social media chatter, and publisher metadata. Designed for news aggregation, trend analysis, and content discovery with support for vector search and semantic queries.
 
